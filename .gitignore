@@ -1,0 +1,13 @@
+/target
+**/*.rs.bk
+*.pdb
+
+# Tauri / node
+node_modules/
+dist/
+app/src-tauri/target/
+app/src-tauri/gen/
+
+# Local experiments and captured tables
+/scratch
+*.local.toml
