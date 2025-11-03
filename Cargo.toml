@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["antaresjeet"]
+repository = "https://github.com/antaresjay/freeplay"
+rust-version = "1.82"
+
+[workspace.dependencies]
+thiserror = "2"
+tracing = "0.1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
