@@ -9,6 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+memchr = "2.8.3"
 rayon = "1.12"
 thiserror.workspace = true
 tracing.workspace = true
