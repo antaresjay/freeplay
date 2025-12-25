@@ -10,6 +10,7 @@ pub mod guard;
 pub mod pattern;
 pub mod region;
 pub mod scanner;
+pub mod search;
 pub mod target;
 pub mod value;
 
