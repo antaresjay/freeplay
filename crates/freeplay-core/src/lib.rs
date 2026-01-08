@@ -7,7 +7,9 @@
 
 pub mod error;
 pub mod guard;
+pub mod patch;
 pub mod pattern;
+pub mod pointer;
 pub mod region;
 pub mod scanner;
 pub mod search;
