@@ -16,7 +16,7 @@ pub mod search;
 pub mod target;
 pub mod value;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "mock"))]
 pub mod mock;
 
 #[cfg(windows)]

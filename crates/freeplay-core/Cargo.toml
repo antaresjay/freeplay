@@ -8,6 +8,10 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+# Exposes the in-memory target so other crates can test against it.
+mock = []
+
 [dependencies]
 memchr = "2.8.3"
 rayon = "1.12"
