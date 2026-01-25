@@ -1,0 +1,19 @@
+[package]
+name = "freeplay-table"
+description = "Cheat table format: what a game offers and how to find it."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+freeplay-core = { path = "../freeplay-core" }
+serde = { version = "1", features = ["derive"] }
+thiserror.workspace = true
+toml = "0.9"
+tracing.workspace = true
+
+[dev-dependencies]
+freeplay-core = { path = "../freeplay-core", features = ["mock"] }
