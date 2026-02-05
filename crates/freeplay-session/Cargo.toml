@@ -1,0 +1,18 @@
+[package]
+name = "freeplay-session"
+description = "Attaching to a game and holding cheats on."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+freeplay-core = { path = "../freeplay-core" }
+freeplay-table = { path = "../freeplay-table" }
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+freeplay-core = { path = "../freeplay-core", features = ["mock"] }
