@@ -11,6 +11,33 @@ use crate::target::Target;
 /// enough that scanning a 2GB region does not need 2GB of our own memory.
 const CHUNK: usize = 4 * 1024 * 1024;
 
+/// Retry size when a whole chunk will not read. Small enough that one dead
+/// page costs almost nothing, big enough not to turn a scan into a syscall
+/// storm.
+const FALLBACK: usize = 64 * 1024;
+
+/// Read as much of `buf` as the target will give us.
+///
+/// A live game is allocating and freeing constantly, so a region enumerated a
+/// moment ago may already be gone or split in two. Failing the whole read
+/// would throw away four megabytes of search space because of one dead page,
+/// so drop to smaller reads and keep whatever comes back.
+fn read_best_effort(target: &dyn Target, addr: usize, buf: &mut [u8]) -> bool {
+    if target.read_into(addr, buf).is_ok() {
+        return true;
+    }
+
+    let mut any = false;
+    for (index, piece) in buf.chunks_mut(FALLBACK).enumerate() {
+        if target.read_into(addr + index * FALLBACK, piece).is_ok() {
+            any = true;
+        } else {
+            piece.fill(0);
+        }
+    }
+    any
+}
+
 #[derive(Debug, Clone, Default)]
 pub enum Scope {
     /// Executable pages. Where instructions live, so where signatures live.
@@ -53,10 +80,7 @@ fn scan_region(target: &dyn Target, region: &Region, pattern: &Pattern) -> Vec<u
         let len = CHUNK.min(region.size - offset);
         buf.resize(len, 0);
 
-        // Pages can be freed between enumerating and reading them, and a game
-        // that just unloaded a level does this constantly. Skip and continue
-        // rather than failing the whole scan.
-        if target.read_into(region.base + offset, &mut buf).is_ok() {
+        if read_best_effort(target, region.base + offset, &mut buf) {
             hits.extend(pattern.find_all(&buf).into_iter().map(|at| region.base + offset + at));
         }
 
@@ -169,6 +193,56 @@ mod tests {
 
         let pattern = Pattern::parse("AA BB CC DD").unwrap();
         assert_eq!(find_all(&target, &pattern, Scope::Code).unwrap(), vec![BASE + at]);
+    }
+
+    #[test]
+    fn a_partly_unreadable_chunk_still_yields_what_it_can() {
+        // The mock refuses reads past its end, which is what a region that got
+        // shorter between enumeration and reading looks like.
+        struct Truncating(MockTarget, usize);
+
+        impl Target for Truncating {
+            fn pid(&self) -> u32 {
+                self.0.pid()
+            }
+            fn name(&self) -> &str {
+                self.0.name()
+            }
+            fn modules(&self) -> Result<Vec<crate::target::Module>> {
+                self.0.modules()
+            }
+            fn regions(&self) -> Result<Vec<Region>> {
+                // Claim more than we will actually serve.
+                let mut regions = self.0.regions()?;
+                regions[0].size += 8192;
+                Ok(regions)
+            }
+            fn read_into(&self, addr: usize, buf: &mut [u8]) -> Result<()> {
+                if addr + buf.len() > self.1 {
+                    return Err(Error::NotFound);
+                }
+                self.0.read_into(addr, buf)
+            }
+            fn write_bytes(&self, addr: usize, data: &[u8]) -> Result<()> {
+                self.0.write_bytes(addr, data)
+            }
+            fn make_writable(&self, addr: usize, len: usize) -> Result<u32> {
+                self.0.make_writable(addr, len)
+            }
+            fn restore_protection(&self, addr: usize, len: usize, prev: u32) -> Result<()> {
+                self.0.restore_protection(addr, len, prev)
+            }
+            fn alive(&self) -> bool {
+                true
+            }
+        }
+
+        let inner = target_with(&[0xAB, 0xCD, 0xEF], 1024);
+        let limit = BASE + 64 * 1024;
+        let target = Truncating(inner, limit);
+
+        let pattern = Pattern::parse("AB CD EF").unwrap();
+        assert_eq!(find_all(&target, &pattern, Scope::Code).unwrap(), vec![BASE + 1024]);
     }
 
     #[test]

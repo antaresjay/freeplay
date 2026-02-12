@@ -85,7 +85,19 @@ fn scans_real_memory_for_a_known_needle() {
 
     let target = attach();
     let pattern = Pattern::parse("1B AD C0 DE FE ED FA CE 13 37").unwrap();
-    let hits = scanner::find_all(&target, &pattern, Scope::Data).expect("scan");
+
+    // The other tests in this binary run on their own threads and allocate
+    // while this scan is walking the heap, so a region can be split or freed
+    // between being listed and being read. Any real scan of a running game has
+    // the same problem, which is why every guide tells you to pause the game
+    // first. One retry is enough to ride out the churn.
+    let mut hits = Vec::new();
+    for _ in 0..3 {
+        hits = scanner::find_all(&target, &pattern, Scope::Data).expect("scan");
+        if hits.contains(&addr) {
+            break;
+        }
+    }
 
     assert!(hits.contains(&addr), "expected {addr:#x} among {} hits", hits.len());
     black_box(haystack);
