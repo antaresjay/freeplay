@@ -1,0 +1,22 @@
+[package]
+name = "freeplay-cli"
+description = "Command line driver for Freeplay."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "freeplay"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+freeplay-core = { path = "../freeplay-core" }
+freeplay-library = { path = "../freeplay-library" }
+freeplay-session = { path = "../freeplay-session" }
+freeplay-table = { path = "../freeplay-table" }
+tracing.workspace = true
+tracing-subscriber = "0.3"
