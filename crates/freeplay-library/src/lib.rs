@@ -65,13 +65,44 @@ const NOT_A_GAME: &[&str] = &[
     "crashhandler",
     "crashreport",
     "crashsender",
+    "crashpad",
+    "breakpad",
     "easyanticheat",
     "beservice",
+    "battleye",
     "touchup",
     "setup",
     "redist",
     "installscript",
+    "cleanup",
+    "activation",
+    "helper",
+    "webhelper",
+    "epicwebhelper",
+    "subprocess",
+    "handler",
+    "updater",
+    "patcher",
+    "diagnostic",
+    "benchmark",
+    "config",
+    "settings",
+    "server",
 ];
+
+/// Steam entries that are tooling rather than something you play.
+const NOT_A_TITLE: &[&str] = &[
+    "steamworks common redistributables",
+    "steam linux runtime",
+    "proton",
+    "steamvr",
+    "steam controller",
+];
+
+fn is_a_title(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    !NOT_A_TITLE.iter().any(|skip| lower.contains(skip))
+}
 
 fn looks_like_a_game(path: &Path) -> bool {
     let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().to_lowercase()) else {
@@ -80,13 +111,33 @@ fn looks_like_a_game(path: &Path) -> bool {
     !NOT_A_GAME.iter().any(|bad| stem.contains(bad))
 }
 
+/// Folders that never hold the game binary and can be large.
+const SKIP_DIRS: &[&str] = &[
+    "_commonredist",
+    "redist",
+    "directx",
+    "vcredist",
+    "dotnet",
+    "content",
+    "data",
+    "movies",
+    "sound",
+    "audio",
+    "textures",
+    "docs",
+    "manual",
+    "saves",
+    "mods",
+];
+
 /// Executables under `dir`, no deeper than `depth` levels.
 ///
-/// Games bury the real binary in Binaries/Win64 or similar, but walking the
-/// whole tree on a 100GB install is slow and turns up mod tools and editors.
+/// Depth has to be generous because engines bury the real binary a long way
+/// down. Mass Effect Legendary Edition keeps it at Game/ME1/Binaries/Win64,
+/// which is five levels in. Skipping the asset folders keeps that affordable.
 fn find_executables(dir: &Path, depth: usize) -> Vec<PathBuf> {
     let mut found = Vec::new();
-    let mut here = Vec::new();
+    let mut subdirs = Vec::new();
 
     let Ok(entries) = std::fs::read_dir(dir) else {
         return found;
@@ -101,26 +152,80 @@ fn find_executables(dir: &Path, depth: usize) -> Vec<PathBuf> {
                 found.push(path);
             }
         } else if depth > 0 {
-            here.push(path);
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            if !SKIP_DIRS.iter().any(|skip| name == *skip) {
+                subdirs.push(path);
+            }
         }
     }
 
-    for sub in here {
+    for sub in subdirs {
         found.extend(find_executables(&sub, depth - 1));
     }
     found
 }
 
-/// Shallower executables first, since a game's launcher usually sits at the
-/// root and the deeper ones tend to be tools.
-fn rank(dir: &Path, mut exes: Vec<PathBuf>) -> Vec<PathBuf> {
-    exes.sort_by_key(|p| {
-        let depth = p.strip_prefix(dir).map(|r| r.components().count()).unwrap_or(9);
-        let name = p.file_stem().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default();
-        // A binary named after its folder is almost always the game.
-        let folder = dir.file_name().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default();
-        let matches_folder = if folder.contains(&name) || name.contains(&folder) { 0 } else { 1 };
-        (matches_folder, depth)
+/// How much two squashed names look like each other. Bigger is better.
+///
+/// Containment wins outright, which covers "witcher2" inside "The Witcher 2:
+/// Assassins of Kings". Otherwise a shared prefix counts, which is what links
+/// "MassEffect1" to "Mass Effect Legendary Edition" where neither contains the
+/// other.
+fn similarity(title: &str, stem: &str) -> usize {
+    if title.is_empty() || stem.is_empty() {
+        return 0;
+    }
+    // Both sides have to be long enough to mean anything. A folder called "ME"
+    // otherwise matches inside "Something" and wins outright.
+    if title.len() >= 4 && stem.len() >= 4 && (title.contains(stem) || stem.contains(title)) {
+        return 1000;
+    }
+    let shared = title.chars().zip(stem.chars()).take_while(|(a, b)| a == b).count();
+    if shared >= 4 {
+        shared
+    } else {
+        0
+    }
+}
+
+/// Strip everything but letters and digits so "Mass Effect™ Legendary Edition"
+/// and "MassEffectLauncher" can be compared.
+fn squash(text: &str) -> String {
+    text.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()
+}
+
+/// Best guess at the real game binary, first.
+///
+/// Name is the strongest signal by far. After that, size: the game itself is
+/// nearly always the largest executable in its own folder, while the launchers
+/// and helpers around it are small.
+fn rank(dir: &Path, game_name: &str, mut exes: Vec<PathBuf>) -> Vec<PathBuf> {
+    let title = squash(game_name);
+    let folder = squash(&dir.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default());
+
+    let stem_of = |path: &Path| {
+        squash(&path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default())
+    };
+    let score = |path: &Path| {
+        let stem = stem_of(path);
+        similarity(&title, &stem).max(similarity(&folder, &stem))
+    };
+
+    // Launchers score deceptively well on name alone: "MassEffectLauncher"
+    // shares more letters with "Mass Effect Legendary Edition" than
+    // "MassEffect1" does. Push them below anything else that looks related,
+    // but only when there is something else, since plenty of games really are
+    // launched through one.
+    let has_alternative =
+        exes.iter().any(|p| !stem_of(p).contains("launch") && score(p) > 0);
+
+    exes.sort_by_key(|path| {
+        let demoted = usize::from(has_alternative && stem_of(path).contains("launch"));
+        let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        (demoted, std::cmp::Reverse(score(path)), std::cmp::Reverse(size))
     });
     exes
 }
@@ -141,10 +246,13 @@ pub fn discover() -> Vec<InstalledGame> {
 }
 
 fn build(name: String, store: Store, dir: PathBuf, app_id: Option<String>) -> Option<InstalledGame> {
-    if !dir.is_dir() {
+    if !dir.is_dir() || !is_a_title(&name) {
         return None;
     }
-    let executables = rank(&dir, find_executables(&dir, 3));
+    let executables = rank(&dir, &name, find_executables(&dir, 5));
+    if executables.is_empty() {
+        return None;
+    }
     Some(InstalledGame { name, store, install_dir: dir, app_id, executables })
 }
 
@@ -350,24 +458,73 @@ mod tests {
     }
 
     #[test]
-    fn ranks_a_binary_named_after_its_folder_first() {
-        let dir = Path::new(r"C:\Games\Witcher2");
+    fn ignores_the_helpers_that_sit_next_to_games() {
+        assert!(!looks_like_a_game(Path::new(r"C:\g\breakpad_server.exe")));
+        assert!(!looks_like_a_game(Path::new(r"C:\g\Cleanup.exe")));
+        assert!(!looks_like_a_game(Path::new(r"C:\g\EpicWebHelper.exe")));
+        assert!(!looks_like_a_game(Path::new(r"C:\g\Discovery_Server.exe")));
+    }
+
+    #[test]
+    fn ranks_a_binary_named_after_the_game_first() {
+        let dir = Path::new(r"C:\Games\ME");
         let exes = vec![
-            PathBuf::from(r"C:\Games\Witcher2\bin\tools\editor.exe"),
-            PathBuf::from(r"C:\Games\Witcher2\witcher2.exe"),
+            PathBuf::from(r"C:\Games\ME\Something.exe"),
+            PathBuf::from(r"C:\Games\ME\MassEffect1.exe"),
         ];
-        let ranked = rank(dir, exes);
+        let ranked = rank(dir, "Mass Effect\u{2122} Legendary Edition", exes);
+        assert!(ranked[0].ends_with("MassEffect1.exe"));
+    }
+
+    #[test]
+    fn punctuation_and_case_do_not_matter_when_matching() {
+        let dir = Path::new(r"C:\Games\W2");
+        let exes = vec![
+            PathBuf::from(r"C:\Games\W2\other.exe"),
+            PathBuf::from(r"C:\Games\W2\witcher2.exe"),
+        ];
+        let ranked = rank(dir, "The Witcher 2: Assassins of Kings", exes);
         assert!(ranked[0].ends_with("witcher2.exe"));
     }
 
     #[test]
-    fn ranks_shallower_binaries_first_otherwise() {
+    fn a_launcher_loses_to_the_game_itself() {
         let dir = Path::new(r"C:\Games\Thing");
         let exes = vec![
-            PathBuf::from(r"C:\Games\Thing\a\b\deep.exe"),
-            PathBuf::from(r"C:\Games\Thing\shallow.exe"),
+            PathBuf::from(r"C:\Games\Thing\ThingLauncher.exe"),
+            PathBuf::from(r"C:\Games\Thing\Thing.exe"),
         ];
-        assert!(rank(dir, exes)[0].ends_with("shallow.exe"));
+        assert!(rank(dir, "Thing", exes)[0].ends_with("Thing.exe"));
+    }
+
+    #[test]
+    fn a_launcher_that_scores_higher_still_loses() {
+        // The real case: MassEffectLauncher shares more letters with the title
+        // than MassEffect1 does, purely by accident.
+        let dir = Path::new(r"C:\Games\Mass Effect Legendary Edition");
+        let exes = vec![
+            PathBuf::from(r"C:\Games\Mass Effect Legendary Edition\Game\Launcher\MassEffectLauncher.exe"),
+            PathBuf::from(r"C:\Games\Mass Effect Legendary Edition\Game\ME1\MassEffect1.exe"),
+        ];
+        let ranked = rank(dir, "Mass Effect\u{2122} Legendary Edition", exes);
+        assert!(ranked[0].ends_with("MassEffect1.exe"), "got {:?}", ranked[0]);
+    }
+
+    #[test]
+    fn a_launcher_wins_when_it_is_the_only_thing_that_matches() {
+        let dir = Path::new(r"C:\Games\Thing");
+        let exes = vec![
+            PathBuf::from(r"C:\Games\Thing\unrelated.exe"),
+            PathBuf::from(r"C:\Games\Thing\ThingLauncher.exe"),
+        ];
+        assert!(rank(dir, "Thing", exes)[0].ends_with("ThingLauncher.exe"));
+    }
+
+    #[test]
+    fn redistributables_are_not_games() {
+        assert!(!is_a_title("Steamworks Common Redistributables"));
+        assert!(!is_a_title("Steam Linux Runtime 3.0"));
+        assert!(is_a_title("Mass Effect Legendary Edition"));
     }
 
     #[test]
