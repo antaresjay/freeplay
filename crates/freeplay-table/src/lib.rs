@@ -39,10 +39,14 @@ impl Table {
 
     pub fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref();
-        let text = std::fs::read_to_string(path)
-            .map_err(|source| Error::Read { path: path.into(), source })?;
-        let table: Table =
-            toml::from_str(&text).map_err(|source| Error::Parse { path: path.into(), source })?;
+        let text = std::fs::read_to_string(path).map_err(|source| Error::Read {
+            path: path.into(),
+            source,
+        })?;
+        let table: Table = toml::from_str(&text).map_err(|source| Error::Parse {
+            path: path.into(),
+            source,
+        })?;
         table.validate().map_err(Error::Invalid)?;
         Ok(table)
     }
@@ -161,12 +165,16 @@ mod tests {
     #[test]
     fn reads_hops_written_as_hex_strings() {
         let table = Table::parse(SAMPLE).unwrap();
-        let Locator::Pattern { hops, offset, .. } = &table.cheat("infinite-health").unwrap().locator
+        let Locator::Pattern { hops, offset, .. } =
+            &table.cheat("infinite-health").unwrap().locator
         else {
             panic!("expected a pattern locator");
         };
         assert_eq!(offset, &3);
-        assert_eq!(hops.iter().map(|h| h.0).collect::<Vec<_>>(), vec![0x28, -0x8]);
+        assert_eq!(
+            hops.iter().map(|h| h.0).collect::<Vec<_>>(),
+            vec![0x28, -0x8]
+        );
     }
 
     #[test]

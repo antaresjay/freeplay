@@ -71,24 +71,41 @@ mod tests {
     use super::*;
 
     fn module(name: &str) -> Module {
-        Module { name: name.into(), base: 0, size: 0 }
+        Module {
+            name: name.into(),
+            base: 0,
+            size: 0,
+        }
     }
 
     #[test]
     fn clean_process_passes() {
-        let modules = [module("ntdll.dll"), module("MassEffect1.exe"), module("d3d11.dll")];
+        let modules = [
+            module("ntdll.dll"),
+            module("MassEffect1.exe"),
+            module("d3d11.dll"),
+        ];
         assert_eq!(inspect_modules(&modules), None);
     }
 
     #[test]
     fn spots_easy_anti_cheat_under_any_name() {
-        assert_eq!(inspect_modules(&[module("EasyAntiCheat_x64.dll")]), Some("EasyAntiCheat"));
-        assert_eq!(inspect_modules(&[module("easyanticheat.dll")]), Some("EasyAntiCheat"));
+        assert_eq!(
+            inspect_modules(&[module("EasyAntiCheat_x64.dll")]),
+            Some("EasyAntiCheat")
+        );
+        assert_eq!(
+            inspect_modules(&[module("easyanticheat.dll")]),
+            Some("EasyAntiCheat")
+        );
     }
 
     #[test]
     fn spots_battleye() {
-        assert_eq!(inspect_modules(&[module("BEClient_x64.dll")]), Some("BattlEye"));
+        assert_eq!(
+            inspect_modules(&[module("BEClient_x64.dll")]),
+            Some("BattlEye")
+        );
     }
 
     #[test]
@@ -99,7 +116,10 @@ mod tests {
 
     #[test]
     fn generic_match_still_refuses() {
-        assert_eq!(inspect_modules(&[module("gameanticheat64.dll")]), Some("an anti-cheat"));
+        assert_eq!(
+            inspect_modules(&[module("gameanticheat64.dll")]),
+            Some("an anti-cheat")
+        );
     }
 
     #[test]

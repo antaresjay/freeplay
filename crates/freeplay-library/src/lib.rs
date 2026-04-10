@@ -146,7 +146,9 @@ fn find_executables(dir: &Path, depth: usize) -> Vec<PathBuf> {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_file() {
-            if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+            if path
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
                 && looks_like_a_game(&path)
             {
                 found.push(path);
@@ -183,7 +185,11 @@ fn similarity(title: &str, stem: &str) -> usize {
     if title.len() >= 4 && stem.len() >= 4 && (title.contains(stem) || stem.contains(title)) {
         return 1000;
     }
-    let shared = title.chars().zip(stem.chars()).take_while(|(a, b)| a == b).count();
+    let shared = title
+        .chars()
+        .zip(stem.chars())
+        .take_while(|(a, b)| a == b)
+        .count();
     if shared >= 4 {
         shared
     } else {
@@ -194,7 +200,10 @@ fn similarity(title: &str, stem: &str) -> usize {
 /// Strip everything but letters and digits so "Mass Effect™ Legendary Edition"
 /// and "MassEffectLauncher" can be compared.
 fn squash(text: &str) -> String {
-    text.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()
+    text.chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>()
+        .to_lowercase()
 }
 
 /// Best guess at the real game binary, first.
@@ -204,10 +213,19 @@ fn squash(text: &str) -> String {
 /// and helpers around it are small.
 fn rank(dir: &Path, game_name: &str, mut exes: Vec<PathBuf>) -> Vec<PathBuf> {
     let title = squash(game_name);
-    let folder = squash(&dir.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default());
+    let folder = squash(
+        &dir.file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    );
 
     let stem_of = |path: &Path| {
-        squash(&path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default())
+        squash(
+            &path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default(),
+        )
     };
     let score = |path: &Path| {
         let stem = stem_of(path);
@@ -219,13 +237,18 @@ fn rank(dir: &Path, game_name: &str, mut exes: Vec<PathBuf>) -> Vec<PathBuf> {
     // "MassEffect1" does. Push them below anything else that looks related,
     // but only when there is something else, since plenty of games really are
     // launched through one.
-    let has_alternative =
-        exes.iter().any(|p| !stem_of(p).contains("launch") && score(p) > 0);
+    let has_alternative = exes
+        .iter()
+        .any(|p| !stem_of(p).contains("launch") && score(p) > 0);
 
     exes.sort_by_key(|path| {
         let demoted = usize::from(has_alternative && stem_of(path).contains("launch"));
         let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-        (demoted, std::cmp::Reverse(score(path)), std::cmp::Reverse(size))
+        (
+            demoted,
+            std::cmp::Reverse(score(path)),
+            std::cmp::Reverse(size),
+        )
     });
     exes
 }
@@ -245,7 +268,12 @@ pub fn discover() -> Vec<InstalledGame> {
     games
 }
 
-fn build(name: String, store: Store, dir: PathBuf, app_id: Option<String>) -> Option<InstalledGame> {
+fn build(
+    name: String,
+    store: Store,
+    dir: PathBuf,
+    app_id: Option<String>,
+) -> Option<InstalledGame> {
     if !dir.is_dir() || !is_a_title(&name) {
         return None;
     }
@@ -253,7 +281,13 @@ fn build(name: String, store: Store, dir: PathBuf, app_id: Option<String>) -> Op
     if executables.is_empty() {
         return None;
     }
-    Some(InstalledGame { name, store, install_dir: dir, app_id, executables })
+    Some(InstalledGame {
+        name,
+        store,
+        install_dir: dir,
+        app_id,
+        executables,
+    })
 }
 
 #[cfg(windows)]
@@ -264,7 +298,9 @@ pub mod steam {
     use winreg::RegKey;
 
     fn steam_root() -> Option<PathBuf> {
-        let key = RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Software\Valve\Steam").ok()?;
+        let key = RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey(r"Software\Valve\Steam")
+            .ok()?;
         let path: String = key.get_value("SteamPath").ok()?;
         Some(PathBuf::from(path.replace('/', "\\")))
     }
@@ -374,7 +410,7 @@ pub mod epic {
         let mut games = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.extension().is_some_and(|e| e == "item") {
+            if path.extension().is_none_or(|e| e != "item") {
                 continue;
             }
             let Ok(text) = std::fs::read_to_string(&path) else {
@@ -412,10 +448,9 @@ pub mod gog {
     use winreg::RegKey;
 
     pub fn discover() -> Vec<InstalledGame> {
-        let Ok(root) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey_with_flags(
-            r"SOFTWARE\GOG.com\Games",
-            KEY_READ | KEY_WOW64_32KEY,
-        ) else {
+        let Ok(root) = RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey_with_flags(r"SOFTWARE\GOG.com\Games", KEY_READ | KEY_WOW64_32KEY)
+        else {
             return Vec::new();
         };
 
@@ -443,10 +478,14 @@ mod tests {
 
     #[test]
     fn ignores_installers_and_crash_handlers() {
-        assert!(!looks_like_a_game(Path::new(r"C:\g\UnityCrashHandler64.exe")));
+        assert!(!looks_like_a_game(Path::new(
+            r"C:\g\UnityCrashHandler64.exe"
+        )));
         assert!(!looks_like_a_game(Path::new(r"C:\g\vcredist_x64.exe")));
         assert!(!looks_like_a_game(Path::new(r"C:\g\unins000.exe")));
-        assert!(!looks_like_a_game(Path::new(r"C:\g\EasyAntiCheat_Setup.exe")));
+        assert!(!looks_like_a_game(Path::new(
+            r"C:\g\EasyAntiCheat_Setup.exe"
+        )));
         assert!(!looks_like_a_game(Path::new(r"C:\g\DXSETUP.exe")));
     }
 
@@ -503,11 +542,17 @@ mod tests {
         // than MassEffect1 does, purely by accident.
         let dir = Path::new(r"C:\Games\Mass Effect Legendary Edition");
         let exes = vec![
-            PathBuf::from(r"C:\Games\Mass Effect Legendary Edition\Game\Launcher\MassEffectLauncher.exe"),
+            PathBuf::from(
+                r"C:\Games\Mass Effect Legendary Edition\Game\Launcher\MassEffectLauncher.exe",
+            ),
             PathBuf::from(r"C:\Games\Mass Effect Legendary Edition\Game\ME1\MassEffect1.exe"),
         ];
         let ranked = rank(dir, "Mass Effect\u{2122} Legendary Edition", exes);
-        assert!(ranked[0].ends_with("MassEffect1.exe"), "got {:?}", ranked[0]);
+        assert!(
+            ranked[0].ends_with("MassEffect1.exe"),
+            "got {:?}",
+            ranked[0]
+        );
     }
 
     #[test]

@@ -79,7 +79,11 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     tracing_subscriber::fmt()
-        .with_max_level(if cli.verbose { tracing::Level::DEBUG } else { tracing::Level::WARN })
+        .with_max_level(if cli.verbose {
+            tracing::Level::DEBUG
+        } else {
+            tracing::Level::WARN
+        })
         .without_time()
         .init();
 
@@ -94,9 +98,21 @@ fn run(command: Command) -> Result<(), String> {
         Command::Games { all } => games(all),
         Command::Ps { filter } => list_processes(filter.as_deref()),
         Command::Cheats { table, process } => cheats(&table, process.as_deref()),
-        Command::On { table, process, ids } => turn_on(&table, process.as_deref(), &ids),
-        Command::Scan { process, r#type, value } => scan(&process, &r#type, value.as_deref()),
-        Command::Read { process, address, r#type } => read(&process, &address, &r#type),
+        Command::On {
+            table,
+            process,
+            ids,
+        } => turn_on(&table, process.as_deref(), &ids),
+        Command::Scan {
+            process,
+            r#type,
+            value,
+        } => scan(&process, &r#type, value.as_deref()),
+        Command::Read {
+            process,
+            address,
+            r#type,
+        } => read(&process, &address, &r#type),
     }
 }
 
@@ -118,7 +134,10 @@ fn parse_type(text: &str) -> Result<ValueKind, String> {
 }
 
 fn parse_address(text: &str) -> Result<usize, String> {
-    let trimmed = text.trim().trim_start_matches("0x").trim_start_matches("0X");
+    let trimmed = text
+        .trim()
+        .trim_start_matches("0x")
+        .trim_start_matches("0X");
     usize::from_str_radix(trimmed, 16).map_err(|_| format!("bad address {text:?}"))
 }
 
@@ -143,7 +162,7 @@ fn games(all: bool) -> Result<(), String> {
         return Ok(());
     }
 
-    println!("{:<44} {:<7} {}", "GAME", "STORE", "EXECUTABLE");
+    println!("{:<44} {:<7} EXECUTABLE", "GAME", "STORE");
     for game in &found {
         println!(
             "{:<44} {:<7} {}",
@@ -223,7 +242,10 @@ fn turn_on(path: &PathBuf, process: Option<&str>, ids: &[String]) -> Result<(), 
     }
 
     session.start();
-    println!("\nHolding {} cheats. Press enter to stop.", session.active_ids().len());
+    println!(
+        "\nHolding {} cheats. Press enter to stop.",
+        session.active_ids().len()
+    );
     let _ = io::stdin().lock().read_line(&mut String::new());
 
     session.stop();
@@ -240,7 +262,9 @@ fn scan(process: &str, type_name: &str, value: Option<&str>) -> Result<(), Strin
 
     let first = match value {
         Some(text) => {
-            let scalar = kind.parse(text).ok_or_else(|| format!("bad {kind} value {text:?}"))?;
+            let scalar = kind
+                .parse(text)
+                .ok_or_else(|| format!("bad {kind} value {text:?}"))?;
             Filter::Exact(scalar)
         }
         None => Filter::Unknown,

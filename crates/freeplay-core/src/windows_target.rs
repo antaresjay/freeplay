@@ -64,8 +64,10 @@ fn os_error(err: windows::core::Error) -> io::Error {
 }
 
 pub fn processes() -> Result<Vec<ProcessInfo>> {
-    let snapshot = Snapshot(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
-        .map_err(|e| Error::Io(os_error(e)))?);
+    let snapshot = Snapshot(
+        unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
+            .map_err(|e| Error::Io(os_error(e)))?,
+    );
 
     let mut entry = PROCESSENTRY32W {
         dwSize: size_of::<PROCESSENTRY32W>() as u32,
@@ -108,24 +110,36 @@ impl WindowsTarget {
             .unwrap_or_else(|| format!("pid {pid}"));
 
         if guard::is_protected_process(&name) {
-            return Err(Error::Protected { process: name, guard: "an anti-cheat service" });
+            return Err(Error::Protected {
+                process: name,
+                guard: "an anti-cheat service",
+            });
         }
 
         let handle = unsafe {
             OpenProcess(
-                PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION,
+                PROCESS_VM_READ
+                    | PROCESS_VM_WRITE
+                    | PROCESS_VM_OPERATION
+                    | PROCESS_QUERY_INFORMATION,
                 false,
                 pid,
             )
         }
-        .map_err(|e| Error::OpenFailed { pid, source: os_error(e) })?;
+        .map_err(|e| Error::OpenFailed {
+            pid,
+            source: os_error(e),
+        })?;
 
         let target = Self { handle, pid, name };
 
         // Refuse before the handle is used for anything else.
         let modules = target.modules()?;
         if let Some(product) = guard::inspect_modules(&modules) {
-            return Err(Error::Protected { process: target.name.clone(), guard: product });
+            return Err(Error::Protected {
+                process: target.name.clone(),
+                guard: product,
+            });
         }
 
         if target.is_wow64()? {
@@ -175,7 +189,12 @@ fn decode_protection(flags: PAGE_PROTECTION_FLAGS) -> Protection {
         _ => (false, false, false),
     };
 
-    Protection { read, write, execute, guard: raw & GUARD != 0 }
+    Protection {
+        read,
+        write,
+        execute,
+        guard: raw & GUARD != 0,
+    }
 }
 
 impl Target for WindowsTarget {
@@ -274,7 +293,11 @@ impl Target for WindowsTarget {
                 Some(&mut read),
             )
         }
-        .map_err(|e| Error::ReadFailed { addr, len: buf.len(), source: os_error(e) })?;
+        .map_err(|e| Error::ReadFailed {
+            addr,
+            len: buf.len(),
+            source: os_error(e),
+        })?;
 
         if read != buf.len() {
             return Err(Error::ReadFailed {
@@ -297,7 +320,11 @@ impl Target for WindowsTarget {
                 Some(&mut written),
             )
         }
-        .map_err(|e| Error::WriteFailed { addr, len: data.len(), source: os_error(e) })?;
+        .map_err(|e| Error::WriteFailed {
+            addr,
+            len: data.len(),
+            source: os_error(e),
+        })?;
 
         if written != data.len() {
             return Err(Error::WriteFailed {
@@ -320,7 +347,11 @@ impl Target for WindowsTarget {
                 &mut previous,
             )
         }
-        .map_err(|e| Error::WriteFailed { addr, len, source: os_error(e) })?;
+        .map_err(|e| Error::WriteFailed {
+            addr,
+            len,
+            source: os_error(e),
+        })?;
         Ok(previous.0)
     }
 
@@ -335,7 +366,11 @@ impl Target for WindowsTarget {
                 &mut ignored,
             )
         }
-        .map_err(|e| Error::WriteFailed { addr, len, source: os_error(e) })?;
+        .map_err(|e| Error::WriteFailed {
+            addr,
+            len,
+            source: os_error(e),
+        })?;
         Ok(())
     }
 

@@ -15,11 +15,17 @@ use crate::schema::{Locator, Scope};
 /// just means they are sat in a menu and it will light up on its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum State {
-    Ready { addr: usize },
+    Ready {
+        addr: usize,
+    },
     /// Found the code, but the object is not there yet.
-    Unavailable { reason: String },
+    Unavailable {
+        reason: String,
+    },
     /// Could not find the code at all, so the table is out of date.
-    Broken { reason: String },
+    Broken {
+        reason: String,
+    },
 }
 
 impl State {
@@ -47,20 +53,37 @@ impl From<Scope> for CoreScope {
 
 pub fn evaluate(target: &dyn Target, locator: &Locator) -> State {
     match locator {
-        Locator::Static { module, offset, hops } => {
+        Locator::Static {
+            module,
+            offset,
+            hops,
+        } => {
             let base = match target.module(module) {
                 Ok(m) => m.base,
                 Err(_) => {
-                    return State::Broken { reason: format!("{module} is not loaded") };
+                    return State::Broken {
+                        reason: format!("{module} is not loaded"),
+                    };
                 }
             };
             follow(target, base + offset, hops)
         }
 
-        Locator::Pattern { pattern, scope, module, offset, rip, hops } => {
+        Locator::Pattern {
+            pattern,
+            scope,
+            module,
+            offset,
+            rip,
+            hops,
+        } => {
             let compiled = match Pattern::parse(pattern) {
                 Ok(p) => p,
-                Err(e) => return State::Broken { reason: e.to_string() },
+                Err(e) => {
+                    return State::Broken {
+                        reason: e.to_string(),
+                    }
+                }
             };
 
             let search_scope = match module {
@@ -77,10 +100,16 @@ pub fn evaluate(target: &dyn Target, locator: &Locator) -> State {
                 }
                 Err(CoreError::Ambiguous { found }) => {
                     return State::Broken {
-                        reason: format!("signature matches {found} places, it is not specific enough"),
+                        reason: format!(
+                            "signature matches {found} places, it is not specific enough"
+                        ),
                     };
                 }
-                Err(e) => return State::Broken { reason: e.to_string() },
+                Err(e) => {
+                    return State::Broken {
+                        reason: e.to_string(),
+                    }
+                }
             };
 
             let mut addr = found.wrapping_add_signed(*offset as isize);
@@ -91,7 +120,11 @@ pub fn evaluate(target: &dyn Target, locator: &Locator) -> State {
                 // instruction begins.
                 let raw = match target.read_bytes(found + rip.displacement_at, 4) {
                     Ok(bytes) => bytes,
-                    Err(e) => return State::Broken { reason: e.to_string() },
+                    Err(e) => {
+                        return State::Broken {
+                            reason: e.to_string(),
+                        }
+                    }
                 };
                 let displacement = i32::from_ne_bytes([raw[0], raw[1], raw[2], raw[3]]) as isize;
                 addr = (found + rip.instruction_length).wrapping_add_signed(displacement);
@@ -111,9 +144,14 @@ fn follow(target: &dyn Target, start: usize, hops: &[crate::schema::Hop]) -> Sta
     match path.resolve(target) {
         Ok(addr) => State::Ready { addr },
         Err(CoreError::BrokenChain { hop, .. }) => State::Unavailable {
-            reason: format!("pointer is empty at step {}, load into the game first", hop + 1),
+            reason: format!(
+                "pointer is empty at step {}, load into the game first",
+                hop + 1
+            ),
         },
-        Err(e) => State::Unavailable { reason: e.to_string() },
+        Err(e) => State::Unavailable {
+            reason: e.to_string(),
+        },
     }
 }
 
@@ -152,7 +190,11 @@ mod tests {
     #[test]
     fn static_locator_with_no_hops_is_the_address_itself() {
         let t = target();
-        let locator = Locator::Static { module: "game.exe".into(), offset: 0x40, hops: vec![] };
+        let locator = Locator::Static {
+            module: "game.exe".into(),
+            offset: 0x40,
+            hops: vec![],
+        };
         assert_eq!(evaluate(&t, &locator), State::Ready { addr: BASE + 0x40 });
     }
 
@@ -173,7 +215,11 @@ mod tests {
     #[test]
     fn missing_module_is_broken_not_unavailable() {
         let t = target();
-        let locator = Locator::Static { module: "other.exe".into(), offset: 0, hops: vec![] };
+        let locator = Locator::Static {
+            module: "other.exe".into(),
+            offset: 0,
+            hops: vec![],
+        };
         assert!(matches!(evaluate(&t, &locator), State::Broken { .. }));
     }
 
@@ -254,10 +300,18 @@ mod tests {
             scope: Scope::Data,
             module: None,
             offset: 0,
-            rip: Some(Rip { displacement_at: 3, instruction_length: 7 }),
+            rip: Some(Rip {
+                displacement_at: 3,
+                instruction_length: 7,
+            }),
             hops: vec![],
         };
-        assert_eq!(evaluate(&t, &locator), State::Ready { addr: BASE + 0x300 + 7 + 0x100 });
+        assert_eq!(
+            evaluate(&t, &locator),
+            State::Ready {
+                addr: BASE + 0x300 + 7 + 0x100
+            }
+        );
     }
 
     #[test]

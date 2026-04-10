@@ -37,7 +37,10 @@ pub enum Error {
 }
 
 enum Engaged {
-    Freeze { addr: usize, value: Scalar },
+    Freeze {
+        addr: usize,
+        value: Scalar,
+    },
     Patched(Patch),
     /// Written once, nothing to hold or undo.
     Done,
@@ -75,7 +78,12 @@ impl Session {
         self.table
             .cheats
             .iter()
-            .map(|cheat| (cheat.id.clone(), resolve::evaluate(self.target.as_ref(), &cheat.locator)))
+            .map(|cheat| {
+                (
+                    cheat.id.clone(),
+                    resolve::evaluate(self.target.as_ref(), &cheat.locator),
+                )
+            })
             .collect()
     }
 
@@ -102,7 +110,10 @@ impl Session {
         let addr = match resolve::evaluate(self.target.as_ref(), &cheat.locator) {
             State::Ready { addr } => addr,
             State::Unavailable { reason } | State::Broken { reason } => {
-                return Err(Error::NotReady { name: cheat.name.clone(), reason })
+                return Err(Error::NotReady {
+                    name: cheat.name.clone(),
+                    reason,
+                })
             }
         };
 
@@ -121,7 +132,10 @@ impl Session {
             Action::Freeze { kind, value } => {
                 let scalar = value.to_scalar(kind.0);
                 self.target.write_scalar(addr, scalar)?;
-                Ok(Engaged::Freeze { addr, value: scalar })
+                Ok(Engaged::Freeze {
+                    addr,
+                    value: scalar,
+                })
             }
             Action::Nop { length } => {
                 let mut patch = Patch::nop(self.target.as_ref(), addr, *length)?;
@@ -280,9 +294,7 @@ mod tests {
     }
 
     fn session() -> (Arc<MockTarget>, Session) {
-        let mock = Arc::new(
-            MockTarget::zeroed(BASE, 0x400).with_module("mock.exe", BASE, 0x400),
-        );
+        let mock = Arc::new(MockTarget::zeroed(BASE, 0x400).with_module("mock.exe", BASE, 0x400));
         mock.poke(BASE + 0xC0, &[0x29, 0x43, 0x24]);
         let target: Arc<dyn Target> = Arc::clone(&mock) as Arc<dyn Target>;
         (mock, Session::new(target, table()))
@@ -331,10 +343,16 @@ mod tests {
     fn nop_patches_and_reverts() {
         let (mock, s) = session();
         s.enable("timer").unwrap();
-        assert_eq!(mock.read_bytes(BASE + 0xC0, 3).unwrap(), vec![0x90, 0x90, 0x90]);
+        assert_eq!(
+            mock.read_bytes(BASE + 0xC0, 3).unwrap(),
+            vec![0x90, 0x90, 0x90]
+        );
 
         s.disable("timer").unwrap();
-        assert_eq!(mock.read_bytes(BASE + 0xC0, 3).unwrap(), vec![0x29, 0x43, 0x24]);
+        assert_eq!(
+            mock.read_bytes(BASE + 0xC0, 3).unwrap(),
+            vec![0x29, 0x43, 0x24]
+        );
     }
 
     #[test]
@@ -359,7 +377,10 @@ mod tests {
         s.enable("timer").unwrap();
         s.enable("timer").unwrap();
         s.disable("timer").unwrap();
-        assert_eq!(mock.read_bytes(BASE + 0xC0, 3).unwrap(), vec![0x29, 0x43, 0x24]);
+        assert_eq!(
+            mock.read_bytes(BASE + 0xC0, 3).unwrap(),
+            vec![0x29, 0x43, 0x24]
+        );
     }
 
     #[test]
@@ -401,7 +422,10 @@ mod tests {
         s.disable_all();
 
         assert!(s.active_ids().is_empty());
-        assert_eq!(mock.read_bytes(BASE + 0xC0, 3).unwrap(), vec![0x29, 0x43, 0x24]);
+        assert_eq!(
+            mock.read_bytes(BASE + 0xC0, 3).unwrap(),
+            vec![0x29, 0x43, 0x24]
+        );
     }
 
     #[test]

@@ -36,9 +36,15 @@ fn attaches_to_this_process() {
 #[test]
 fn enumerates_our_own_modules() {
     let modules = attach().modules().expect("modules");
-    let names: Vec<String> = modules.iter().map(|m| m.name.to_ascii_lowercase()).collect();
+    let names: Vec<String> = modules
+        .iter()
+        .map(|m| m.name.to_ascii_lowercase())
+        .collect();
 
-    assert!(names.iter().any(|n| n == "ntdll.dll"), "no ntdll in {names:?}");
+    assert!(
+        names.iter().any(|n| n == "ntdll.dll"),
+        "no ntdll in {names:?}"
+    );
     assert!(modules.iter().all(|m| m.base != 0));
 }
 
@@ -46,8 +52,14 @@ fn enumerates_our_own_modules() {
 fn enumerates_committed_regions() {
     let regions = attach().regions().expect("regions");
     assert!(regions.len() > 10);
-    assert!(regions.iter().any(|r| r.scannable_code()), "no executable pages");
-    assert!(regions.iter().any(|r| r.scannable_data()), "no private writable pages");
+    assert!(
+        regions.iter().any(|r| r.scannable_code()),
+        "no executable pages"
+    );
+    assert!(
+        regions.iter().any(|r| r.scannable_data()),
+        "no private writable pages"
+    );
 }
 
 #[test]
@@ -65,7 +77,9 @@ fn writes_a_value_back_into_our_own_memory() {
     let mut cell: u32 = 5;
     let addr = &mut cell as *mut u32 as usize;
 
-    attach().write_scalar(addr, Scalar::U32(9999)).expect("write");
+    attach()
+        .write_scalar(addr, Scalar::U32(9999))
+        .expect("write");
 
     assert_eq!(black_box(cell), 9999);
 }
@@ -99,6 +113,10 @@ fn scans_real_memory_for_a_known_needle() {
         }
     }
 
-    assert!(hits.contains(&addr), "expected {addr:#x} among {} hits", hits.len());
+    assert!(
+        hits.contains(&addr),
+        "expected {addr:#x} among {} hits",
+        hits.len()
+    );
     black_box(haystack);
 }

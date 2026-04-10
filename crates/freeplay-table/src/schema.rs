@@ -209,7 +209,9 @@ impl<'de> Deserialize<'de> for TypeName {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         use serde::de::Error as _;
         let text = String::deserialize(d)?;
-        text.parse::<ValueKind>().map(TypeName).map_err(D::Error::custom)
+        text.parse::<ValueKind>()
+            .map(TypeName)
+            .map_err(D::Error::custom)
     }
 }
 
@@ -236,7 +238,9 @@ impl Number {
             Number::Float(v) => v.to_string(),
         };
         kind.parse(&text).unwrap_or_else(|| match self {
-            Number::Int(v) => kind.parse(&(v as f64).to_string()).unwrap_or(Scalar::I64(v)),
+            Number::Int(v) => kind
+                .parse(&(v as f64).to_string())
+                .unwrap_or(Scalar::I64(v)),
             Number::Float(v) => Scalar::F64(v),
         })
     }

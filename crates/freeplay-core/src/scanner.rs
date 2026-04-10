@@ -61,7 +61,11 @@ impl Scope {
 }
 
 fn regions_for(target: &dyn Target, scope: &Scope) -> Result<Vec<Region>> {
-    let mut regions: Vec<Region> = target.regions()?.into_iter().filter(|r| scope.accepts(r)).collect();
+    let mut regions: Vec<Region> = target
+        .regions()?
+        .into_iter()
+        .filter(|r| scope.accepts(r))
+        .collect();
 
     if let Scope::Module(name) = scope {
         let module = target.module(name)?;
@@ -81,7 +85,12 @@ fn scan_region(target: &dyn Target, region: &Region, pattern: &Pattern) -> Vec<u
         buf.resize(len, 0);
 
         if read_best_effort(target, region.base + offset, &mut buf) {
-            hits.extend(pattern.find_all(&buf).into_iter().map(|at| region.base + offset + at));
+            hits.extend(
+                pattern
+                    .find_all(&buf)
+                    .into_iter()
+                    .map(|at| region.base + offset + at),
+            );
         }
 
         if len < CHUNK {
@@ -147,14 +156,20 @@ mod tests {
     fn find_one_returns_the_address() {
         let target = target_with(&[0x11, 0x22, 0x33, 0x44], 200);
         let pattern = Pattern::parse("11 22 33 44").unwrap();
-        assert_eq!(find_one(&target, &pattern, Scope::Code).unwrap(), BASE + 200);
+        assert_eq!(
+            find_one(&target, &pattern, Scope::Code).unwrap(),
+            BASE + 200
+        );
     }
 
     #[test]
     fn find_one_refuses_when_nothing_matches() {
         let target = target_with(&[0x11], 0);
         let pattern = Pattern::parse("DE AD BE EF").unwrap();
-        assert!(matches!(find_one(&target, &pattern, Scope::Code), Err(Error::NotFound)));
+        assert!(matches!(
+            find_one(&target, &pattern, Scope::Code),
+            Err(Error::NotFound)
+        ));
     }
 
     #[test]
@@ -178,8 +193,13 @@ mod tests {
         let data_only = MockTarget::new(BASE, target.snapshot());
         let pattern = Pattern::parse("48 8B 05").unwrap();
 
-        assert!(find_all(&data_only, &pattern, Scope::Code).unwrap().is_empty());
-        assert_eq!(find_all(&data_only, &pattern, Scope::Data).unwrap(), vec![BASE + 512]);
+        assert!(find_all(&data_only, &pattern, Scope::Code)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            find_all(&data_only, &pattern, Scope::Data).unwrap(),
+            vec![BASE + 512]
+        );
     }
 
     #[test]
@@ -192,7 +212,10 @@ mod tests {
         let target = MockTarget::new(BASE, memory).executable();
 
         let pattern = Pattern::parse("AA BB CC DD").unwrap();
-        assert_eq!(find_all(&target, &pattern, Scope::Code).unwrap(), vec![BASE + at]);
+        assert_eq!(
+            find_all(&target, &pattern, Scope::Code).unwrap(),
+            vec![BASE + at]
+        );
     }
 
     #[test]
@@ -242,13 +265,19 @@ mod tests {
         let target = Truncating(inner, limit);
 
         let pattern = Pattern::parse("AB CD EF").unwrap();
-        assert_eq!(find_all(&target, &pattern, Scope::Code).unwrap(), vec![BASE + 1024]);
+        assert_eq!(
+            find_all(&target, &pattern, Scope::Code).unwrap(),
+            vec![BASE + 1024]
+        );
     }
 
     #[test]
     fn wildcards_work_through_the_scanner() {
         let target = target_with(&[0x48, 0x8B, 0x0D, 0x11, 0x22, 0x33, 0x44], 300);
         let pattern = Pattern::parse("48 8B 0D ?? ?? ?? ??").unwrap();
-        assert_eq!(find_one(&target, &pattern, Scope::Code).unwrap(), BASE + 300);
+        assert_eq!(
+            find_one(&target, &pattern, Scope::Code).unwrap(),
+            BASE + 300
+        );
     }
 }

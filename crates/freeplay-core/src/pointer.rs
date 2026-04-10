@@ -40,11 +40,20 @@ pub struct PointerPath {
 
 impl PointerPath {
     pub fn module(module: impl Into<String>, offset: usize, hops: Vec<isize>) -> Self {
-        Self { anchor: Anchor::Module { module: module.into(), offset }, hops }
+        Self {
+            anchor: Anchor::Module {
+                module: module.into(),
+                offset,
+            },
+            hops,
+        }
     }
 
     pub fn absolute(addr: usize, hops: Vec<isize>) -> Self {
-        Self { anchor: Anchor::Absolute(addr), hops }
+        Self {
+            anchor: Anchor::Absolute(addr),
+            hops,
+        }
     }
 
     /// Walk the chain and return the address the value sits at.
@@ -66,7 +75,10 @@ impl PointerPath {
         }
 
         if addr == 0 {
-            return Err(Error::BrokenChain { hop: self.hops.len(), addr: 0 });
+            return Err(Error::BrokenChain {
+                hop: self.hops.len(),
+                addr: 0,
+            });
         }
         Ok(addr)
     }
@@ -81,7 +93,9 @@ fn read_hop(target: &dyn Target, addr: usize, hop: usize) -> Result<usize> {
     if addr == 0 {
         return Err(Error::BrokenChain { hop, addr });
     }
-    let next = target.read_pointer(addr).map_err(|_| Error::BrokenChain { hop, addr })?;
+    let next = target
+        .read_pointer(addr)
+        .map_err(|_| Error::BrokenChain { hop, addr })?;
     // User space on 64-bit Windows stops well below this. Anything larger is a
     // float or a string being misread as a pointer, so stop rather than
     // chasing it into nothing.
@@ -132,7 +146,10 @@ mod tests {
 
         let addr = path.resolve(&t).unwrap();
         assert_eq!(addr, BASE + 0x908);
-        assert_eq!(t.read_scalar(addr, ValueKind::I32).unwrap(), Scalar::I32(4242));
+        assert_eq!(
+            t.read_scalar(addr, ValueKind::I32).unwrap(),
+            Scalar::I32(4242)
+        );
     }
 
     #[test]

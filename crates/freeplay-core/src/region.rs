@@ -11,7 +11,12 @@ pub struct Protection {
 }
 
 impl Protection {
-    pub const NONE: Self = Self { read: false, write: false, execute: false, guard: false };
+    pub const NONE: Self = Self {
+        read: false,
+        write: false,
+        execute: false,
+        guard: false,
+    };
 
     pub fn scannable(&self) -> bool {
         self.read && !self.guard

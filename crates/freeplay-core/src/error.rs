@@ -15,7 +15,10 @@ pub enum Error {
     /// Freeplay will not attach to anything running an anti-cheat. Cheating in
     /// multiplayer ruins other people's games and gets accounts banned.
     #[error("{process} is running {guard}, refusing to attach")]
-    Protected { process: String, guard: &'static str },
+    Protected {
+        process: String,
+        guard: &'static str,
+    },
 
     #[error("read of {len} bytes at {addr:#x} failed: {source}")]
     ReadFailed {

@@ -21,7 +21,12 @@ impl MockTarget {
             base,
             memory: Mutex::new(memory),
             modules: Vec::new(),
-            protection: Protection { read: true, write: true, execute: false, guard: false },
+            protection: Protection {
+                read: true,
+                write: true,
+                execute: false,
+                guard: false,
+            },
             mapped: false,
         }
     }
@@ -31,7 +36,11 @@ impl MockTarget {
     }
 
     pub fn with_module(mut self, name: &str, base: usize, size: usize) -> Self {
-        self.modules.push(Module { name: name.into(), base, size });
+        self.modules.push(Module {
+            name: name.into(),
+            base,
+            size,
+        });
         self
     }
 

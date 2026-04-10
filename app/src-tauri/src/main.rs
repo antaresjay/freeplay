@@ -130,7 +130,10 @@ fn list_processes() -> Vec<ProcessRow> {
     let mut all: Vec<ProcessRow> = processes()
         .unwrap_or_default()
         .into_iter()
-        .map(|p| ProcessRow { pid: p.pid, name: p.name })
+        .map(|p| ProcessRow {
+            pid: p.pid,
+            name: p.name,
+        })
         .collect();
     all.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     all
@@ -173,7 +176,12 @@ fn attach(state: tauri::State<'_, App>, exe: String) -> Result<Attached, String>
     *state.target.lock().unwrap() = Some(shared);
     *state.search.lock().unwrap() = None;
 
-    Ok(Attached { process: exe, pid, game: name, table: has_table })
+    Ok(Attached {
+        process: exe,
+        pid,
+        game: name,
+        table: has_table,
+    })
 }
 
 #[tauri::command]
@@ -241,7 +249,10 @@ fn report(search: &Search) -> ScanReport {
         results: search
             .results(200)
             .into_iter()
-            .map(|c| Hit { address: format!("{:#018x}", c.addr), value: c.value.to_string() })
+            .map(|c| Hit {
+                address: format!("{:#018x}", c.addr),
+                value: c.value.to_string(),
+            })
             .collect(),
     }
 }
@@ -257,9 +268,10 @@ fn scan_start(
     let target = guard.as_ref().ok_or("nothing is attached")?;
 
     let filter = match value.as_deref().filter(|v| !v.trim().is_empty()) {
-        Some(text) => {
-            Filter::Exact(kind.parse(text).ok_or_else(|| format!("{text:?} is not a {kind}"))?)
-        }
+        Some(text) => Filter::Exact(
+            kind.parse(text)
+                .ok_or_else(|| format!("{text:?} is not a {kind}"))?,
+        ),
         None => Filter::Unknown,
     };
 
@@ -289,12 +301,17 @@ fn scan_next(
         "exact" => {
             let text = value.ok_or("give a value to search for")?;
             let kind = search.kind;
-            Filter::Exact(kind.parse(&text).ok_or_else(|| format!("{text:?} is not a {kind}"))?)
+            Filter::Exact(
+                kind.parse(&text)
+                    .ok_or_else(|| format!("{text:?} is not a {kind}"))?,
+            )
         }
         other => return Err(format!("unknown filter {other}")),
     };
 
-    search.next(target.as_ref(), chosen).map_err(|e| e.to_string())?;
+    search
+        .next(target.as_ref(), chosen)
+        .map_err(|e| e.to_string())?;
     Ok(report(search))
 }
 
@@ -306,7 +323,9 @@ fn write_value(
     value: String,
 ) -> Result<(), String> {
     let kind = parse_kind(&kind)?;
-    let scalar = kind.parse(&value).ok_or_else(|| format!("{value:?} is not a {kind}"))?;
+    let scalar = kind
+        .parse(&value)
+        .ok_or_else(|| format!("{value:?} is not a {kind}"))?;
     let raw = address.trim().trim_start_matches("0x");
     let addr = usize::from_str_radix(raw, 16).map_err(|_| "bad address".to_string())?;
 
@@ -316,7 +335,9 @@ fn write_value(
 }
 
 fn main() {
-    tracing_subscriber::fmt().with_max_level(tracing::Level::INFO).init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
 
     tauri::Builder::default()
         .manage(App::default())

@@ -56,7 +56,11 @@ impl Pattern {
             .position(|f| *f)
             .ok_or_else(|| Error::BadPattern("pattern is all wildcards".into()))?;
 
-        Ok(Self { bytes, fixed, anchor })
+        Ok(Self {
+            bytes,
+            fixed,
+            anchor,
+        })
     }
 
     pub fn len(&self) -> usize {
@@ -130,12 +134,18 @@ mod tests {
 
     #[test]
     fn parses_unspaced_hex() {
-        assert_eq!(Pattern::parse("488B05").unwrap(), Pattern::parse("48 8B 05").unwrap());
+        assert_eq!(
+            Pattern::parse("488B05").unwrap(),
+            Pattern::parse("48 8B 05").unwrap()
+        );
     }
 
     #[test]
     fn treats_single_and_double_question_marks_alike() {
-        assert_eq!(Pattern::parse("48 ? 05").unwrap(), Pattern::parse("48 ?? 05").unwrap());
+        assert_eq!(
+            Pattern::parse("48 ? 05").unwrap(),
+            Pattern::parse("48 ?? 05").unwrap()
+        );
     }
 
     #[test]
@@ -155,7 +165,10 @@ mod tests {
     #[test]
     fn wildcards_match_anything() {
         let hay = [0x48, 0x11, 0x05, 0x48, 0x99, 0x05];
-        assert_eq!(Pattern::parse("48 ?? 05").unwrap().find_all(&hay), vec![0, 3]);
+        assert_eq!(
+            Pattern::parse("48 ?? 05").unwrap().find_all(&hay),
+            vec![0, 3]
+        );
     }
 
     #[test]
@@ -173,7 +186,10 @@ mod tests {
     #[test]
     fn no_match_when_the_tail_is_short() {
         let hay = [0x48, 0x8B];
-        assert!(Pattern::parse("48 8B 05").unwrap().find_all(&hay).is_empty());
+        assert!(Pattern::parse("48 8B 05")
+            .unwrap()
+            .find_all(&hay)
+            .is_empty());
     }
 
     #[test]

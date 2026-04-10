@@ -1,4 +1,4 @@
-﻿//! Reading, scanning and patching another process's memory.
+//! Reading, scanning and patching another process's memory.
 //!
 //! Everything platform specific lives behind [`Target`]. The scanner, pointer
 //! chains and patch logic sit on top of that trait and never call an OS API
@@ -24,8 +24,8 @@ pub mod windows_target;
 
 pub use error::{Error, Result};
 pub use pattern::Pattern;
-pub use scanner::Scope;
 pub use region::{Protection, Region};
+pub use scanner::Scope;
 pub use target::{Module, Target};
 pub use value::{Scalar, ValueKind};
 

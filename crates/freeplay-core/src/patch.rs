@@ -27,7 +27,12 @@ impl Patch {
             return Err(Error::BadPattern("replacement is empty".into()));
         }
         let original = target.read_bytes(addr, replacement.len())?;
-        Ok(Self { addr, original, replacement, applied: false })
+        Ok(Self {
+            addr,
+            original,
+            replacement,
+            applied: false,
+        })
     }
 
     /// Replace `len` bytes with no-ops.
@@ -78,7 +83,11 @@ impl Patch {
     /// else has been here, and reverting would put back bytes that are no
     /// longer correct.
     pub fn is_intact(&self, target: &dyn Target) -> bool {
-        let expected: &[u8] = if self.applied { &self.replacement } else { &self.original };
+        let expected: &[u8] = if self.applied {
+            &self.replacement
+        } else {
+            &self.original
+        };
         target
             .read_bytes(self.addr, expected.len())
             .map(|now| now == expected)
@@ -120,7 +129,10 @@ mod tests {
 
         patch.apply(&t).unwrap();
 
-        assert_eq!(t.read_bytes(BASE + 16, 5).unwrap(), vec![0x90, 0x90, 0x90, 0x48, 0x8B]);
+        assert_eq!(
+            t.read_bytes(BASE + 16, 5).unwrap(),
+            vec![0x90, 0x90, 0x90, 0x48, 0x8B]
+        );
         assert!(patch.is_applied());
     }
 
@@ -147,7 +159,10 @@ mod tests {
 
         // If the second apply had captured the nops as the original, this
         // would come back as 0x90s.
-        assert_eq!(t.read_bytes(BASE + 16, 3).unwrap(), INSTRUCTION[..3].to_vec());
+        assert_eq!(
+            t.read_bytes(BASE + 16, 3).unwrap(),
+            INSTRUCTION[..3].to_vec()
+        );
     }
 
     #[test]
@@ -168,7 +183,10 @@ mod tests {
         assert_eq!(t.read_bytes(BASE + 16, 3).unwrap(), vec![0x31, 0xC0, 0xC3]);
 
         patch.revert(&t).unwrap();
-        assert_eq!(t.read_bytes(BASE + 16, 3).unwrap(), INSTRUCTION[..3].to_vec());
+        assert_eq!(
+            t.read_bytes(BASE + 16, 3).unwrap(),
+            INSTRUCTION[..3].to_vec()
+        );
     }
 
     #[test]

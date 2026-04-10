@@ -86,8 +86,11 @@ impl Search {
 
     pub fn first(target: &dyn Target, kind: ValueKind, filter: Filter) -> Result<Self> {
         let align = kind.size();
-        let regions: Vec<Region> =
-            target.regions()?.into_iter().filter(Region::scannable_data).collect();
+        let regions: Vec<Region> = target
+            .regions()?
+            .into_iter()
+            .filter(Region::scannable_data)
+            .collect();
 
         let snapshots: Vec<Snapshot> = regions
             .par_iter()
@@ -106,11 +109,20 @@ impl Search {
                     }
                 }
 
-                Some(Snapshot { base: region.base, previous: bytes, live })
+                Some(Snapshot {
+                    base: region.base,
+                    previous: bytes,
+                    live,
+                })
             })
             .collect();
 
-        Ok(Self { kind, align, snapshots, rounds: 1 })
+        Ok(Self {
+            kind,
+            align,
+            snapshots,
+            rounds: 1,
+        })
     }
 
     /// Narrow the candidates using how each one changed since the last round.
@@ -131,7 +143,10 @@ impl Search {
                     continue;
                 }
                 let at = slot * align;
-                match (kind.read(&snapshot.previous[at..]), kind.read(&current[at..])) {
+                match (
+                    kind.read(&snapshot.previous[at..]),
+                    kind.read(&current[at..]),
+                ) {
                     (Some(old), Some(new)) => *flag = filter.keep(old, new),
                     _ => *flag = false,
                 }
@@ -167,7 +182,10 @@ impl Search {
                 }
                 let at = slot * self.align;
                 if let Some(value) = self.kind.read(&snapshot.previous[at..]) {
-                    out.push(Candidate { addr: snapshot.base + at, value });
+                    out.push(Candidate {
+                        addr: snapshot.base + at,
+                        value,
+                    });
                     if out.len() >= limit {
                         return out;
                     }
@@ -220,7 +238,8 @@ mod tests {
         put(&t, 128, 100);
         put(&t, 256, 100);
 
-        let mut search = Search::first(&t, ValueKind::I32, Filter::Exact(Scalar::I32(100))).unwrap();
+        let mut search =
+            Search::first(&t, ValueKind::I32, Filter::Exact(Scalar::I32(100))).unwrap();
         assert_eq!(search.len(), 3);
 
         // Only one of them drops, the way health would after taking a hit.
@@ -306,7 +325,8 @@ mod tests {
         let t = target();
         put(&t, 64, 100);
 
-        let mut search = Search::first(&t, ValueKind::I32, Filter::Exact(Scalar::I32(100))).unwrap();
+        let mut search =
+            Search::first(&t, ValueKind::I32, Filter::Exact(Scalar::I32(100))).unwrap();
         search.next(&t, Filter::Exact(Scalar::I32(999))).unwrap();
 
         assert!(search.is_empty());
@@ -316,7 +336,7 @@ mod tests {
     #[test]
     fn floats_are_found_despite_imprecision() {
         let t = target();
-        t.poke(BASE + 100, &99.999_996f32.to_ne_bytes());
+        t.poke(BASE + 100, &99.99999f32.to_ne_bytes());
 
         let search = Search::first(&t, ValueKind::F32, Filter::Exact(Scalar::F32(100.0))).unwrap();
         assert!(search.results(8).iter().any(|c| c.addr == BASE + 100));
