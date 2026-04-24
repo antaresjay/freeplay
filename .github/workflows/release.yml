@@ -1,0 +1,34 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build installer and command line tool
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: Freeplay ${{ github.ref_name }}
+          releaseDraft: true
+          releaseBody: |
+            Windows build. Unsigned, so SmartScreen will warn on first run:
+            click More info, then Run anyway. Windows Defender may also flag
+            it, because writing to another process's memory is exactly what
+            malware does. Source is here if you would rather build it yourself.
