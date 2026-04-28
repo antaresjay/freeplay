@@ -1,0 +1,147 @@
+# Tables
+
+One TOML file per game. Drop it in this folder and Freeplay picks it up on the
+next attach. No Rust, no rebuild, no release.
+
+If you work out where a game keeps its numbers, a pull request here helps
+everybody who plays it.
+
+## The game block
+
+```toml
+[game]
+name = "The Witcher 2: Assassins of Kings"
+exe  = "witcher2.exe"          # matched case insensitively
+author = "your name"           # optional
+notes = "tested on the enhanced edition"   # optional
+verified = ["3.5.0.1"]         # builds you actually checked, optional
+```
+
+## A cheat
+
+```toml
+[[cheat]]
+id = "infinite-vigor"          # unique within the file
+name = "Infinite Vigor"        # what the interface shows
+category = "player"            # player, resources, combat, movement, game, misc
+description = "Signs and dodging never run you dry"
+hint = "Load a save first"     # shown when the cheat cannot resolve yet
+type = "freeze"                # what to do
+value_type = "f32"
+value = 1000
+
+[cheat.locator]                # how to find the address
+find = "static"
+module = "witcher2.exe"
+offset = "0x1A2B3C"
+```
+
+## Finding the address
+
+Two ways, and you almost always want the second.
+
+**Static.** A fixed offset inside a module. Simple, and breaks the moment the
+game is patched.
+
+```toml
+[cheat.locator]
+find = "static"
+module = "witcher2.exe"
+offset = "0x1A2B3C"
+hops = ["+0x28", "+0x1F0"]     # optional pointer chain
+```
+
+**Pattern.** Search for the instruction bytes instead. Addresses move on every
+rebuild, the code around them usually does not, so this survives most updates.
+
+```toml
+[cheat.locator]
+find = "pattern"
+pattern = "48 8B 05 ?? ?? ?? ??"   # ?? is any byte
+scope = "code"                     # code, data or all
+module = "witcher2.exe"            # optional, restricts the search
+offset = 3                         # bytes into the match to start from
+hops = ["+0x28", "+0x1F0"]
+```
+
+Blank out anything that changes between builds, which mostly means offsets and
+relative jumps. A pattern that matches more than once is rejected rather than
+guessed at, so make it longer until it is unique.
+
+**Rip relative operands.** On 64 bit, `mov rax, [rip+disp32]` stores a distance
+from the end of the instruction rather than an address. Say where the
+displacement sits and how long the instruction is, and Freeplay does the rest:
+
+```toml
+[cheat.locator]
+find = "pattern"
+pattern = "48 8B 05 ?? ?? ?? ??"
+rip = { displacement_at = 3, instruction_length = 7 }
+```
+
+**Pointer chains.** `hops` is applied after each dereference, and the last one
+lands on the value. `["+0x28", "+0x1F0"]` means read the pointer, add 0x28, read
+that, add 0x1F0. Negative offsets are fine. This is what keeps a cheat working
+after you reload a save, because the object gets allocated somewhere new every
+time but the route to it does not.
+
+## What a cheat does
+
+**freeze** holds a value while the toggle is on.
+
+```toml
+type = "freeze"
+value_type = "f32"     # i8 u8 i16 u16 i32 u32 i64 u64 f32 f64
+value = 1000
+```
+
+**set** writes once and lets the game carry on. Right for money.
+
+```toml
+type = "set"
+value_type = "i32"
+value = 999999
+```
+
+**nop** replaces instructions with no-ops. Use this when the game rewrites the
+value every frame, like a mission timer, where freezing gives you a stuttering
+clock instead of a stopped one. Find the instruction that does the subtracting
+and remove it.
+
+```toml
+type = "nop"
+length = 5
+```
+
+`length` has to cover whole instructions. Half an instruction leaves the
+processor decoding the tail of one thing as the start of another, and the game
+crashes.
+
+**bytes** replaces instructions with specific ones.
+
+```toml
+type = "bytes"
+replacement = "31 C0 C3"   # xor eax, eax / ret
+```
+
+## States
+
+Every cheat is checked whenever the list refreshes, and lands in one of three
+states.
+
+| State | Means | What to do |
+| --- | --- | --- |
+| ready | Address resolved | Use it |
+| wait | Code found, pointer empty | Load into the game, it will light up |
+| broken | Signature not found | The game patched, the table needs updating |
+
+That split is the reason for the pattern and hop syntax above. A trainer that
+shows one error for both cases is why trainers feel unreliable.
+
+## Rules of thumb
+
+- Prefer patterns to static offsets. They survive patches.
+- Make patterns long enough to be unique, then wildcard the volatile bytes.
+- Fill in `verified` so people know what you actually tested against.
+- Write a `hint` for anything that only resolves during gameplay.
+- Test that turning a cheat off puts things back.
