@@ -4,6 +4,7 @@
 //! in its own place. None of them agree, so this reads all of them and returns
 //! one list.
 
+pub mod art;
 pub mod vdf;
 
 use std::path::{Path, PathBuf};
@@ -297,7 +298,9 @@ pub mod steam {
     use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
 
-    fn steam_root() -> Option<PathBuf> {
+    /// Where the client itself is installed, which is also where it caches
+    /// library art. Games can live on other drives, this cannot.
+    pub fn root() -> Option<PathBuf> {
         let key = RegKey::predef(HKEY_CURRENT_USER)
             .open_subkey(r"Software\Valve\Steam")
             .ok()?;
@@ -330,7 +333,7 @@ pub mod steam {
     }
 
     pub fn discover() -> Vec<InstalledGame> {
-        let Some(root) = steam_root() else {
+        let Some(root) = root() else {
             return Vec::new();
         };
 
