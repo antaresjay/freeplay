@@ -42,20 +42,39 @@ const PROTECTED_PROCESSES: &[&str] = &[
     "vanguard.exe",
 ];
 
-pub fn inspect_modules(modules: &[Module]) -> Option<&'static str> {
+const GENERIC: &str = "an anti-cheat";
+
+fn product_for(lowered: &str) -> Option<&'static str> {
     let mut hit = None;
-    for module in modules {
-        let name = module.name.to_ascii_lowercase();
-        for (needle, product) in PROTECTED_MODULES {
-            if name.contains(needle) {
-                // Keep looking so a specific product wins over the generic
-                // "anticheat" catch-all in the message.
-                if *product == "an anti-cheat" {
-                    hit.get_or_insert(*product);
-                } else {
-                    return Some(product);
-                }
+    for (needle, product) in PROTECTED_MODULES {
+        if lowered.contains(needle) {
+            // Keep looking so a specific product wins over the generic
+            // "anticheat" catch-all in the message.
+            if *product == GENERIC {
+                hit.get_or_insert(*product);
+            } else {
+                return Some(product);
             }
+        }
+    }
+    hit
+}
+
+pub fn inspect_modules(modules: &[Module]) -> Option<&'static str> {
+    inspect_names(modules.iter().map(|m| m.name.as_str()))
+}
+
+/// The same list applied to plain names, so the interface can mark a game as
+/// off limits from what is sitting in its install folder rather than waiting
+/// for somebody to try attaching. This is a hint only. The refusal that counts
+/// runs against modules the process has actually loaded.
+pub fn inspect_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Option<&'static str> {
+    let mut hit = None;
+    for name in names {
+        match product_for(&name.to_ascii_lowercase()) {
+            Some(GENERIC) => hit = Some(GENERIC),
+            Some(product) => return Some(product),
+            None => {}
         }
     }
     hit
@@ -120,6 +139,29 @@ mod tests {
             inspect_modules(&[module("gameanticheat64.dll")]),
             Some("an anti-cheat")
         );
+    }
+
+    #[test]
+    fn spots_an_anti_cheat_sitting_in_the_install_folder() {
+        let files = [
+            "Discovery.exe",
+            "EasyAntiCheat",
+            "Engine",
+            "steam_api64.dll",
+        ];
+        assert_eq!(inspect_names(files), Some("EasyAntiCheat"));
+    }
+
+    #[test]
+    fn an_ordinary_game_folder_is_left_alone() {
+        let files = [
+            "witcher2.exe",
+            "CookedPC",
+            "bin",
+            "UserContentTools",
+            "Release",
+        ];
+        assert_eq!(inspect_names(files), None);
     }
 
     #[test]
