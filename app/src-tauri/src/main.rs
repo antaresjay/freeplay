@@ -6,9 +6,12 @@
 //! freeplay-session, which is deliberate: the app should be replaceable
 //! without touching anything that knows how memory works.
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
 use freeplay_core::search::{Filter, Search};
 use freeplay_core::target::Target;
 use freeplay_core::value::ValueKind;
@@ -26,6 +29,11 @@ struct App {
     target: Mutex<Option<Arc<dyn Target>>>,
     session: Mutex<Option<Session>>,
     search: Mutex<Option<Search>>,
+    /// Encoded art, keyed by app id. Reading and encoding a 600x900 jpeg is
+    /// cheap but the library redraws every few seconds, so do it once.
+    art: Mutex<HashMap<String, ArtUrls>>,
+    /// Anti-cheat found in a game's folder, keyed by install directory.
+    guards: Mutex<HashMap<PathBuf, Option<String>>>,
 }
 
 #[derive(Serialize)]
@@ -34,8 +42,18 @@ struct GameRow {
     store: String,
     exe: Option<String>,
     dir: String,
+    app_id: Option<String>,
     running: bool,
     has_table: bool,
+    /// Name of the anti-cheat shipped alongside the game, if there is one.
+    guard: Option<String>,
+}
+
+#[derive(Serialize, Clone, Default)]
+struct ArtUrls {
+    cover: Option<String>,
+    hero: Option<String>,
+    logo: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -97,8 +115,44 @@ fn table_for(exe: &str) -> Option<Table> {
     load_tables().into_iter().find(|t| t.matches_process(exe))
 }
 
+/// Names sitting in a game's install folder, two levels down. Anti-cheats
+/// either drop their loader next to the executable or in a folder of their
+/// own, so that is deep enough and keeps this off the slow path.
+fn folder_names(dir: &Path, depth: usize, out: &mut Vec<String>) {
+    if depth == 0 || out.len() > 4000 {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        out.push(entry.file_name().to_string_lossy().to_string());
+        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            folder_names(&entry.path(), depth - 1, out);
+        }
+    }
+}
+
+fn guard_for(state: &tauri::State<'_, App>, dir: &Path) -> Option<String> {
+    if let Some(cached) = state.guards.lock().unwrap().get(dir) {
+        return cached.clone();
+    }
+
+    let mut names = Vec::new();
+    folder_names(dir, 2, &mut names);
+    let found =
+        freeplay_core::guard::inspect_names(names.iter().map(String::as_str)).map(str::to_string);
+
+    state
+        .guards
+        .lock()
+        .unwrap()
+        .insert(dir.to_path_buf(), found.clone());
+    found
+}
+
 #[tauri::command]
-fn list_games() -> Vec<GameRow> {
+fn list_games(state: tauri::State<'_, App>) -> Vec<GameRow> {
     let running: Vec<String> = processes()
         .unwrap_or_default()
         .into_iter()
@@ -112,6 +166,7 @@ fn list_games() -> Vec<GameRow> {
             let exe = game.main_exe();
             let lower = exe.as_deref().unwrap_or_default().to_lowercase();
             GameRow {
+                guard: guard_for(&state, &game.install_dir),
                 running: !lower.is_empty() && running.iter().any(|p| p == &lower),
                 has_table: exe
                     .as_deref()
@@ -119,10 +174,39 @@ fn list_games() -> Vec<GameRow> {
                 name: game.name,
                 store: game.store.label().to_string(),
                 dir: game.install_dir.display().to_string(),
+                app_id: game.app_id,
                 exe,
             }
         })
         .collect()
+}
+
+/// Inlined rather than served over a custom protocol so the content security
+/// policy can stay as tight as it is.
+fn data_url(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    let mime = match path.extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        _ => "image/jpeg",
+    };
+    Some(format!("data:{mime};base64,{}", BASE64.encode(bytes)))
+}
+
+#[tauri::command]
+fn game_art(state: tauri::State<'_, App>, app_id: String) -> ArtUrls {
+    if let Some(cached) = state.art.lock().unwrap().get(&app_id) {
+        return cached.clone();
+    }
+
+    let found = freeplay_library::art::steam(&app_id);
+    let urls = ArtUrls {
+        cover: found.cover.as_deref().and_then(data_url),
+        hero: found.hero.as_deref().and_then(data_url),
+        logo: found.logo.as_deref().and_then(data_url),
+    };
+
+    state.art.lock().unwrap().insert(app_id, urls.clone());
+    urls
 }
 
 #[tauri::command]
@@ -347,6 +431,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             list_games,
+            game_art,
             list_processes,
             attach,
             detach,
