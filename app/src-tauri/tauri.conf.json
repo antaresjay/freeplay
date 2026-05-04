@@ -10,13 +10,17 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "Freeplay",
-        "width": 1120,
-        "height": 740,
+        "width": 1180,
+        "height": 760,
         "minWidth": 900,
         "minHeight": 600,
+        "center": true,
         "resizable": true,
-        "theme": "Dark"
+        "decorations": false,
+        "theme": "Dark",
+        "backgroundColor": "#0a0b0e"
       }
     ],
     "security": {
