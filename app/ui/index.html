@@ -7,116 +7,200 @@
 </head>
 <body>
 
-<aside class="rail">
-  <div class="brand">
+<div class="titlebar" data-tauri-drag-region>
+  <div class="brand" data-tauri-drag-region>
     <span class="mark"></span>
     <span class="wordmark">Freeplay</span>
   </div>
-
-  <div class="rail-head">
-    <span>Library</span>
-    <button id="refresh" class="icon-btn" title="Rescan">&#8635;</button>
+  <div class="titlebar-fill" data-tauri-drag-region></div>
+  <div class="window-buttons">
+    <button id="win-min" class="win" title="Minimise"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+    <button id="win-max" class="win" title="Maximise"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg></button>
+    <button id="win-close" class="win danger" title="Close"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg></button>
   </div>
+</div>
 
-  <input id="filter" class="filter" type="search" placeholder="Filter games" autocomplete="off">
+<div class="shell">
 
-  <div id="library" class="library">
-    <div class="placeholder">Looking for games…</div>
-  </div>
+  <aside class="sidebar">
+    <nav class="nav">
+      <button class="nav-item active" data-view="library">
+        <svg viewBox="0 0 20 20"><rect x="2.5" y="3" width="6" height="14" rx="1.5"/><rect x="11.5" y="3" width="6" height="6" rx="1.5"/><rect x="11.5" y="11" width="6" height="6" rx="1.5"/></svg>
+        Library
+      </button>
+      <button class="nav-item" data-view="finder">
+        <svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
+        Find a value
+      </button>
+      <button class="nav-item" data-view="about">
+        <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><path d="M10 9v5M10 6.2v.1"/></svg>
+        About
+      </button>
+    </nav>
 
-  <div class="rail-foot">
-    <span id="library-count"></span>
-    <button id="show-processes" class="link-btn">Attach by process</button>
-  </div>
-</aside>
+    <div class="rail-head">
+      <span>My games</span>
+      <button id="refresh" class="icon-btn" title="Rescan">
+        <svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.7-4"/><path d="M12.2 1.2v3h-3"/></svg>
+      </button>
+    </div>
 
-<main>
-  <header class="topbar">
-    <div class="attached">
-      <span id="status-dot" class="dot"></span>
-      <div class="attached-text">
-        <strong id="attached-name">Nothing attached</strong>
-        <span id="attached-sub">Pick a running game on the left</span>
+    <div id="library-rail" class="rail-list">
+      <div class="placeholder">Looking for games</div>
+    </div>
+
+    <div class="rail-foot">
+      <span id="library-count"></span>
+      <button id="show-processes" class="link-btn">Attach by process</button>
+    </div>
+  </aside>
+
+  <main class="content">
+
+    <!-- library ------------------------------------------------------- -->
+    <section id="view-library" class="view">
+      <div id="spotlight" class="spotlight" hidden>
+        <div class="spotlight-art"><img id="spotlight-hero" alt=""></div>
+        <div class="spotlight-body">
+          <span class="eyebrow"><span class="pip live"></span> Running now</span>
+          <img id="spotlight-logo" class="spotlight-logo" alt="" hidden>
+          <h1 id="spotlight-name"></h1>
+          <p id="spotlight-sub"></p>
+          <button id="spotlight-attach" class="primary big">Attach</button>
+        </div>
       </div>
-    </div>
-    <button id="detach" class="ghost" hidden>Detach</button>
-  </header>
 
-  <nav class="tabs" hidden id="tabs">
-    <button class="tab active" data-tab="cheats">Cheats</button>
-    <button class="tab" data-tab="finder">Find a value</button>
-  </nav>
+      <div id="idle-banner" class="banner" hidden>
+        <span class="pip"></span>
+        <div>
+          <strong>Nothing running</strong>
+          <p>Launch a game and it turns up here ready to attach. Freeplay reads memory from a live process, so the game has to be open.</p>
+        </div>
+      </div>
 
-  <section id="view-empty" class="view empty-state">
-    <div class="empty-card">
-      <h1>Pick a game to get started</h1>
-      <p>
-        Freeplay attaches to single player games only. Anything running an
-        anti-cheat is refused before a handle is even used, because getting
-        banned from a game you paid for is not worth infinite arrows.
-      </p>
-      <ul class="checklist">
-        <li>Launch the game first, then attach</li>
-        <li>Run Freeplay as administrator if attaching fails</li>
-        <li>No table for your game? Use <b>Find a value</b> and make one</li>
-      </ul>
-    </div>
-  </section>
+      <div class="section-head">
+        <h2>My games</h2>
+        <input id="filter" class="filter" type="search" placeholder="Filter" autocomplete="off">
+      </div>
 
-  <section id="view-cheats" class="view" hidden>
-    <div id="cheat-groups"></div>
-    <div id="no-table" class="empty-card subtle" hidden>
-      <h2>No table for this game yet</h2>
-      <p>
-        Nobody has written down where this game keeps its numbers. Open
-        <b>Find a value</b>, search for something you can see on screen, and
-        you will have made one.
-      </p>
-    </div>
-  </section>
+      <div id="grid" class="grid"></div>
 
-  <section id="view-finder" class="view" hidden>
-    <div class="finder-bar">
-      <label>
-        Type
-        <select id="scan-type">
-          <option value="i32" selected>i32</option>
-          <option value="i64">i64</option>
-          <option value="f32">f32</option>
-          <option value="f64">f64</option>
-          <option value="u32">u32</option>
-          <option value="u16">u16</option>
-          <option value="u8">u8</option>
-        </select>
-      </label>
-      <label class="grow">
-        Value
-        <input id="scan-value" type="text" placeholder="100, or leave empty if you cannot see it">
-      </label>
-      <button id="scan-start" class="primary">First scan</button>
-      <button id="scan-reset" class="ghost">Reset</button>
-    </div>
+      <div id="library-empty" class="blank" hidden>
+        <h3>No games found</h3>
+        <p>Steam, Epic and GOG are checked. If yours is installed somewhere unusual, attach to it by process instead.</p>
+        <button class="ghost" onclick="document.getElementById('show-processes').click()">Attach by process</button>
+      </div>
+    </section>
 
-    <div class="finder-filters" id="finder-filters" hidden>
-      <span class="hint">Change the value in game, then narrow it down:</span>
-      <button data-filter="exact" class="chip">is now…</button>
-      <button data-filter="decreased" class="chip">went down</button>
-      <button data-filter="increased" class="chip">went up</button>
-      <button data-filter="changed" class="chip">changed</button>
-      <button data-filter="unchanged" class="chip">stayed the same</button>
-    </div>
+    <!-- attached game ------------------------------------------------- -->
+    <section id="view-game" class="view" hidden>
+      <div class="game-hero">
+        <div class="game-hero-art"><img id="game-hero-img" alt=""></div>
+        <div class="game-hero-body">
+          <img id="game-logo" class="game-logo" alt="" hidden>
+          <h1 id="game-name"></h1>
+          <div class="game-meta">
+            <span class="pill live"><span class="pip live"></span> Attached</span>
+            <span id="game-process" class="pill"></span>
+            <span id="game-ready" class="pill"></span>
+          </div>
+        </div>
+        <button id="detach" class="ghost">Detach</button>
+      </div>
 
-    <div class="scan-status" id="scan-status"></div>
+      <div id="cheat-groups"></div>
 
-    <div class="results" id="results"></div>
-  </section>
-</main>
+      <div id="no-table" class="blank" hidden>
+        <h3>No table for this game yet</h3>
+        <p>Nobody has written down where this game keeps its numbers. Search for something you can see on screen, narrow it down, and you will have made one.</p>
+        <button class="primary" data-goto="finder">Find a value</button>
+      </div>
+    </section>
+
+    <!-- finder --------------------------------------------------------- -->
+    <section id="view-finder" class="view" hidden>
+      <div class="section-head">
+        <h2>Find a value</h2>
+        <span id="finder-target" class="dim"></span>
+      </div>
+
+      <div id="finder-blocked" class="blank" hidden>
+        <h3>Attach to a game first</h3>
+        <p>Searching means reading the game's memory while it runs, so it has to be open and attached.</p>
+        <button class="ghost" data-goto="library">Back to library</button>
+      </div>
+
+      <div id="finder-panel">
+        <div class="finder-bar">
+          <label>
+            <span>Type</span>
+            <select id="scan-type">
+              <option value="i32" selected>i32</option>
+              <option value="i64">i64</option>
+              <option value="f32">f32</option>
+              <option value="f64">f64</option>
+              <option value="u32">u32</option>
+              <option value="u16">u16</option>
+              <option value="u8">u8</option>
+            </select>
+          </label>
+          <label class="grow">
+            <span>Value</span>
+            <input id="scan-value" type="text" placeholder="100, or leave empty if you cannot see it">
+          </label>
+          <button id="scan-start" class="primary">First scan</button>
+          <button id="scan-reset" class="ghost">Reset</button>
+        </div>
+
+        <div class="steps">
+          <span class="step"><b>1</b> Search for what the game shows you</span>
+          <span class="step"><b>2</b> Change it in game</span>
+          <span class="step"><b>3</b> Narrow it down until one address is left</span>
+        </div>
+
+        <div class="finder-filters" id="finder-filters" hidden>
+          <button data-filter="exact" class="chip">is now</button>
+          <button data-filter="decreased" class="chip">went down</button>
+          <button data-filter="increased" class="chip">went up</button>
+          <button data-filter="changed" class="chip">changed</button>
+          <button data-filter="unchanged" class="chip">stayed the same</button>
+        </div>
+
+        <div class="scan-status" id="scan-status"></div>
+        <div class="results" id="results"></div>
+      </div>
+    </section>
+
+    <!-- about ----------------------------------------------------------- -->
+    <section id="view-about" class="view" hidden>
+      <div class="prose">
+        <h2>Freeplay</h2>
+        <p class="lead">A game trainer for Windows that is free, open source, and does not want your email address.</p>
+
+        <p>I play single player games and I use trainers. Infinite money in a Witcher game, skipping a mission timer I have already failed six times. Nobody else is affected. It is my save file and my evening.</p>
+        <p>Every way of doing that was bad in a different way. The good one wants a subscription. The free ones are executables from sites buried in ads that tell you to turn off your antivirus. Cheat Engine can do anything, which is also the problem.</p>
+        <p>A program that attaches to your games and writes into their memory is a program you should be able to read before you trust it. That is why the source is open, and it is the whole point rather than a marketing line.</p>
+
+        <h3>Single player only</h3>
+        <p>Freeplay refuses to attach to anything running an anti-cheat, and the check runs before the process handle is used for anything. EasyAntiCheat, BattlEye, Vanguard, GameGuard, XIGNCODE, PunkBuster and Denuvo Anti-Cheat are all on the list. Cheating in multiplayer ruins the game for people who did nothing to deserve it, and it gets accounts banned.</p>
+
+        <h3>Cover art</h3>
+        <p>Read from the art Steam already cached on your disk. Freeplay makes no network requests at all.</p>
+
+        <div class="about-links">
+          <a class="ghost" href="https://github.com/antaresjay/freeplay" target="_blank" rel="noreferrer">Source on GitHub</a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
 
 <div id="sheet" class="sheet" hidden>
   <div class="sheet-card">
     <header>
       <h2>Attach by process</h2>
-      <button id="sheet-close" class="icon-btn">&times;</button>
+      <button id="sheet-close" class="icon-btn"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg></button>
     </header>
     <input id="process-filter" class="filter" type="search" placeholder="Filter processes">
     <div id="process-list" class="process-list"></div>

@@ -1,10 +1,17 @@
 const { invoke } = window.__TAURI__.core;
+const appWindow = window.__TAURI__.window.getCurrentWindow();
 const $ = (id) => document.getElementById(id);
 
 let games = [];
 let attached = null;
 let scanning = false;
 let cheatTimer = null;
+let view = "library";
+let drawn = "";
+
+/* art is read off disk and base64'd, so ask once and keep it */
+const art = new Map();
+const pending = new Set();
 
 function toast(message, bad = false) {
   const el = $("toast");
@@ -13,6 +20,63 @@ function toast(message, bad = false) {
   el.hidden = false;
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => (el.hidden = true), bad ? 6000 : 3000);
+}
+
+/* ---------- art ---------- */
+
+function artFor(game) {
+  return (game.app_id && art.get(game.app_id)) || null;
+}
+
+async function fetchArt(game) {
+  const id = game.app_id;
+  if (!id || art.has(id) || pending.has(id)) return false;
+  pending.add(id);
+  try {
+    art.set(id, await invoke("game_art", { appId: id }));
+    return true;
+  } catch {
+    art.set(id, {});
+    return false;
+  } finally {
+    pending.delete(id);
+  }
+}
+
+async function loadArt() {
+  const results = await Promise.all(games.map(fetchArt));
+  if (results.some(Boolean)) {
+    drawn = "";
+    draw();
+  }
+}
+
+function initials(name) {
+  const words = name.replace(/[^\w\s]/g, " ").split(/\s+/).filter(Boolean);
+  if (!words.length) return "?";
+  return (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2)).toUpperCase();
+}
+
+function hue(name) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return h;
+}
+
+function coverInto(box, game) {
+  const url = artFor(game)?.cover;
+  if (url) {
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = "";
+    box.appendChild(img);
+    return;
+  }
+  box.classList.add("blankart");
+  box.style.setProperty("--h", hue(game.name));
+  const span = document.createElement("span");
+  span.textContent = initials(game.name);
+  box.appendChild(span);
 }
 
 /* ---------- library ---------- */
@@ -24,56 +88,171 @@ async function loadGames() {
     games = [];
     toast(String(e), true);
   }
-  drawLibrary();
+  draw();
+  loadArt();
 }
 
-function drawLibrary() {
-  const needle = $("filter").value.trim().toLowerCase();
-  const shown = games.filter((g) => !needle || g.name.toLowerCase().includes(needle));
-  const list = $("library");
-  list.innerHTML = "";
+/* Playable and running first, anything with an anti-cheat last. */
+function ordered() {
+  const rank = (g) => (g.guard ? 2 : 0) - (g.running ? 1 : 0);
+  return [...games].sort(
+    (a, b) => rank(a) - rank(b) || b.has_table - a.has_table || a.name.localeCompare(b.name)
+  );
+}
 
-  if (!shown.length) {
-    list.innerHTML = `<div class="placeholder">${
-      games.length ? "Nothing matches that." : "No games found. Steam, Epic and GOG are checked."
-    }</div>`;
+/* Redrawing wipes hover and restarts image decoding, and the list is polled
+   every few seconds, so only rebuild when something actually moved. */
+function signature(list) {
+  return list
+    .map((g) => `${g.name}${g.running}${g.has_table}${g.guard}${art.has(g.app_id)}`)
+    .join("|") + `#${$("filter").value}#${attached ? attached.process : ""}`;
+}
+
+function draw() {
+  const list = ordered();
+  const stamp = signature(list);
+  if (stamp === drawn) return;
+  drawn = stamp;
+
+  drawRail(list);
+  drawSpotlight(list);
+  drawGrid(list);
+
+  const live = list.filter((g) => g.running).length;
+  $("library-count").textContent = `${list.length} games, ${live} running`;
+}
+
+function drawRail(list) {
+  const host = $("library-rail");
+  host.innerHTML = "";
+
+  if (!list.length) {
+    host.innerHTML = `<div class="placeholder">Nothing found yet</div>`;
+    return;
   }
 
-  // Running games first, then ones we have a table for.
-  shown.sort((a, b) => b.running - a.running || b.has_table - a.has_table || a.name.localeCompare(b.name));
-
-  for (const game of shown) {
+  for (const game of list) {
     const button = document.createElement("button");
-    button.className = "game" + (attached && attached.process === game.exe ? " active" : "");
-    button.innerHTML = `
-      <span class="title"></span>
-      <span class="pip ${game.running ? "live" : ""}"></span>
-      <span class="meta"></span>`;
-    button.querySelector(".title").textContent = game.name;
+    button.className = "rail-game" + (attached && attached.process === game.exe ? " active" : "");
 
-    const meta = button.querySelector(".meta");
-    meta.textContent = `${game.store} · ${game.exe || "no executable found"}`;
-    if (game.has_table) {
-      const tag = document.createElement("span");
-      tag.className = "tag";
-      tag.textContent = "table";
-      meta.appendChild(tag);
+    const thumb = document.createElement("span");
+    thumb.className = "thumb";
+    const url = artFor(game)?.cover;
+    if (url) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = "";
+      thumb.appendChild(img);
+    } else {
+      thumb.textContent = initials(game.name);
     }
 
-    button.addEventListener("click", () => {
-      if (!game.exe) return toast("Could not work out which file to attach to.", true);
-      if (!game.running) return toast(`${game.name} is not running. Launch it first.`, true);
-      doAttach(game.exe);
-    });
-    list.appendChild(button);
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = game.name;
+
+    const pip = document.createElement("span");
+    pip.className = "pip" + (game.running ? " live" : "");
+
+    button.append(thumb, name, pip);
+    button.addEventListener("click", () => pick(game));
+    host.appendChild(button);
+  }
+}
+
+function drawSpotlight(list) {
+  const running = list.find((g) => g.running && !g.guard);
+  const box = $("spotlight");
+  $("idle-banner").hidden = !!running || !!attached || !list.length;
+
+  if (!running || attached) {
+    box.hidden = true;
+    return;
   }
 
-  $("library-count").textContent = `${games.length} games, ${games.filter((g) => g.running).length} running`;
+  const images = artFor(running) || {};
+  const hero = $("spotlight-hero");
+  hero.src = images.hero || images.cover || "";
+  hero.hidden = !hero.src;
+
+  const logo = $("spotlight-logo");
+  logo.src = images.logo || "";
+  logo.hidden = !images.logo;
+
+  $("spotlight-name").textContent = running.name;
+  $("spotlight-sub").textContent = running.has_table
+    ? "There is a table for this one. Attach and the cheats are ready."
+    : "No table yet, but you can find values yourself once attached.";
+  $("spotlight-attach").onclick = () => pick(running);
+  box.hidden = false;
+}
+
+function drawGrid(list) {
+  const host = $("grid");
+  const needle = $("filter").value.trim().toLowerCase();
+  const shown = list.filter((g) => !needle || g.name.toLowerCase().includes(needle));
+
+  host.innerHTML = "";
+  $("library-empty").hidden = games.length > 0;
+
+  for (const game of shown) {
+    const card = document.createElement("button");
+    card.className = "card" + (game.guard ? " guarded" : game.running ? "" : " idle");
+
+    const box = document.createElement("div");
+    box.className = "art";
+    coverInto(box, game);
+
+    const badges = document.createElement("div");
+    badges.className = "badges";
+    if (game.guard) badges.appendChild(badge(game.guard, "guarded"));
+    else if (game.running) badges.appendChild(badge("Running", "live"));
+    if (game.has_table) badges.appendChild(badge("Table", "spare"));
+    box.appendChild(badges);
+
+    const overlay = document.createElement("div");
+    overlay.className = "card-overlay";
+    const label = document.createElement("b");
+    label.textContent = game.guard ? "Off limits" : game.running ? "Attach" : "Not running";
+    overlay.appendChild(label);
+    box.appendChild(overlay);
+
+    const title = document.createElement("span");
+    title.className = "card-title";
+    title.textContent = game.name;
+
+    const sub = document.createElement("span");
+    sub.className = "card-sub";
+    sub.textContent = `${game.store} · ${game.exe || "no executable found"}`;
+
+    card.append(box, title, sub);
+    card.addEventListener("click", () => pick(game));
+    host.appendChild(card);
+  }
+}
+
+function badge(text, extra) {
+  const span = document.createElement("span");
+  span.className = `badge ${extra}`;
+  span.textContent = text;
+  return span;
+}
+
+function pick(game) {
+  if (game.guard) {
+    return toast(
+      `${game.name} ships ${game.guard}. Freeplay is for single player games, and attaching would risk your account.`,
+      true
+    );
+  }
+  if (!game.exe) return toast("Could not work out which file to attach to.", true);
+  if (!game.running) return toast(`${game.name} is not running. Launch it first.`, true);
+  doAttach(game.exe, game);
 }
 
 /* ---------- attaching ---------- */
 
-async function doAttach(exe) {
+async function doAttach(exe, game) {
   try {
     attached = await invoke("attach", { exe });
   } catch (e) {
@@ -81,15 +260,23 @@ async function doAttach(exe) {
     return;
   }
 
-  $("status-dot").classList.add("on");
-  $("attached-name").textContent = attached.game;
-  $("attached-sub").textContent = `${attached.process} · pid ${attached.pid}`;
-  $("detach").hidden = false;
-  $("tabs").hidden = false;
-  $("view-empty").hidden = true;
+  const known = game || games.find((g) => g.exe === exe);
+  const images = (known && artFor(known)) || {};
 
-  showTab("cheats");
-  drawLibrary();
+  const hero = $("game-hero-img");
+  hero.src = images.hero || images.cover || "";
+  hero.hidden = !hero.src;
+
+  const logo = $("game-logo");
+  logo.src = images.logo || "";
+  logo.hidden = !images.logo;
+
+  $("game-name").textContent = known ? known.name : attached.game;
+  $("game-process").textContent = `${attached.process} · pid ${attached.pid}`;
+
+  showView("game");
+  drawn = "";
+  draw();
   await refreshCheats();
 
   // States change as you move between menus and gameplay, so keep checking.
@@ -102,15 +289,10 @@ async function doDetach() {
   await invoke("detach");
   attached = null;
   scanning = false;
-
-  $("status-dot").classList.remove("on");
-  $("attached-name").textContent = "Nothing attached";
-  $("attached-sub").textContent = "Pick a running game on the left";
-  $("detach").hidden = true;
-  $("tabs").hidden = true;
-  for (const id of ["view-cheats", "view-finder"]) $(id).hidden = true;
-  $("view-empty").hidden = false;
-  drawLibrary();
+  resetScan();
+  showView("library");
+  drawn = "";
+  draw();
 }
 
 /* ---------- cheats ---------- */
@@ -125,8 +307,12 @@ async function refreshCheats() {
   }
 
   $("no-table").hidden = rows.length > 0;
-  const host = $("cheat-groups");
+  const ready = rows.filter((r) => r.state === "ready").length;
+  $("game-ready").textContent = rows.length
+    ? `${ready} of ${rows.length} ready`
+    : "no table";
 
+  const host = $("cheat-groups");
   const byCategory = new Map();
   for (const row of rows) {
     if (!byCategory.has(row.category)) byCategory.set(row.category, []);
@@ -137,24 +323,43 @@ async function refreshCheats() {
   for (const [category, items] of byCategory) {
     const group = document.createElement("div");
     group.className = "group";
+
     const heading = document.createElement("h3");
     heading.textContent = category;
-    group.appendChild(heading);
 
-    for (const item of items) {
-      group.appendChild(cheatRow(item));
-    }
+    const grid = document.createElement("div");
+    grid.className = "cheats";
+    for (const item of items) grid.appendChild(cheatCard(item));
+
+    group.append(heading, grid);
     host.appendChild(group);
   }
 }
 
-function cheatRow(item) {
-  const row = document.createElement("div");
-  row.className = "cheat" + (item.state === "ready" ? "" : " off-limits");
+function cheatCard(item) {
+  const card = document.createElement("div");
+  card.className = "cheat" + (item.on ? " on" : "") + (item.state === "ready" ? "" : " off-limits");
+
+  const main = document.createElement("div");
+  main.className = "cheat-main";
 
   const name = document.createElement("div");
-  name.className = "name";
+  name.className = "cheat-name";
   name.textContent = item.name;
+
+  const why = document.createElement("div");
+  why.className = "cheat-why";
+  if (item.state === "broken") {
+    why.classList.add("dead");
+    why.textContent = item.reason || "not found in this build";
+  } else if (item.state === "wait") {
+    why.classList.add("wait");
+    why.textContent = item.hint || item.reason;
+  } else {
+    why.textContent = item.description;
+  }
+
+  main.append(name, why);
 
   const toggle = document.createElement("button");
   toggle.className = "switch" + (item.on ? " on" : "");
@@ -168,20 +373,8 @@ function cheatRow(item) {
     }
   });
 
-  const why = document.createElement("div");
-  why.className = "why";
-  if (item.state === "broken") {
-    why.classList.add("dead");
-    why.textContent = item.reason || "not found in this build";
-  } else if (item.state === "wait") {
-    why.classList.add("bad");
-    why.textContent = item.hint || item.reason;
-  } else {
-    why.textContent = item.description;
-  }
-
-  row.append(name, toggle, why);
-  return row;
+  card.append(main, toggle);
+  return card;
 }
 
 /* ---------- finder ---------- */
@@ -206,13 +399,21 @@ function drawResults(results) {
   for (const hit of results) {
     const row = document.createElement("div");
     row.className = "row";
-    row.innerHTML = `<span class="addr"></span><span class="val"></span>`;
-    row.querySelector(".addr").textContent = hit.address;
-    row.querySelector(".val").textContent = hit.value;
+
+    const addr = document.createElement("span");
+    addr.className = "addr";
+    addr.textContent = hit.address;
+
+    const val = document.createElement("span");
+    val.className = "val";
+    val.textContent = hit.value;
 
     const input = document.createElement("input");
+    input.type = "text";
     input.placeholder = "new value";
+
     const write = document.createElement("button");
+    write.className = "ghost";
     write.textContent = "Write";
     write.addEventListener("click", async () => {
       try {
@@ -227,11 +428,7 @@ function drawResults(results) {
       }
     });
 
-    const cell = document.createElement("span");
-    cell.style.display = "flex";
-    cell.style.gap = "6px";
-    cell.append(input, write);
-    row.appendChild(cell);
+    row.append(addr, val, input, write);
     host.appendChild(row);
   }
 }
@@ -239,7 +436,7 @@ function drawResults(results) {
 async function startScan() {
   if (!attached) return toast("Attach to a game first.", true);
   $("scan-start").disabled = true;
-  $("scan-status").textContent = "Scanning…";
+  $("scan-status").textContent = "Scanning";
   try {
     const report = await invoke("scan_start", {
       kind: $("scan-type").value,
@@ -264,7 +461,7 @@ async function narrow(filter) {
     if (!value) return toast("Type the value it shows now, then press it again.", true);
   }
 
-  $("scan-status").textContent = "Scanning…";
+  $("scan-status").textContent = "Scanning";
   try {
     setScanStatus(await invoke("scan_next", { filter, value }));
   } catch (e) {
@@ -286,14 +483,17 @@ async function openProcesses() {
   const list = await invoke("list_processes");
   const host = $("process-list");
 
-  const draw = () => {
+  const render = () => {
     const needle = $("process-filter").value.trim().toLowerCase();
     host.innerHTML = "";
     for (const p of list.filter((p) => !needle || p.name.toLowerCase().includes(needle))) {
       const button = document.createElement("button");
-      button.innerHTML = `<span></span><span class="pid"></span>`;
-      button.children[0].textContent = p.name;
-      button.children[1].textContent = p.pid;
+      const name = document.createElement("span");
+      name.textContent = p.name;
+      const pid = document.createElement("span");
+      pid.className = "pid";
+      pid.textContent = p.pid;
+      button.append(name, pid);
       button.addEventListener("click", () => {
         $("sheet").hidden = true;
         doAttach(p.name);
@@ -302,30 +502,54 @@ async function openProcesses() {
     }
   };
 
-  $("process-filter").oninput = draw;
-  draw();
+  $("process-filter").oninput = render;
+  render();
   $("sheet").hidden = false;
   $("process-filter").focus();
 }
 
-/* ---------- tabs and wiring ---------- */
+/* ---------- views ---------- */
 
-function showTab(name) {
-  for (const tab of document.querySelectorAll(".tab")) {
-    tab.classList.toggle("active", tab.dataset.tab === name);
+function showView(name) {
+  // The game page only exists while something is attached.
+  if (name === "game" && !attached) name = "library";
+  view = name;
+
+  for (const id of ["library", "game", "finder", "about"]) {
+    $(`view-${id}`).hidden = id !== name;
   }
-  $("view-cheats").hidden = name !== "cheats";
-  $("view-finder").hidden = name !== "finder";
+  for (const item of document.querySelectorAll(".nav-item")) {
+    const target = item.dataset.view;
+    item.classList.toggle("active", target === name || (name === "game" && target === "library"));
+  }
+
+  if (name === "finder") {
+    $("finder-blocked").hidden = !!attached;
+    $("finder-panel").hidden = !attached;
+    $("finder-target").textContent = attached ? `in ${attached.process}` : "";
+  }
 }
 
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => showTab(tab.dataset.tab));
+/* ---------- wiring ---------- */
+
+document.querySelectorAll(".nav-item").forEach((item) => {
+  item.addEventListener("click", () => {
+    const target = item.dataset.view;
+    showView(target === "library" && attached ? "game" : target);
+  });
+});
+document.querySelectorAll("[data-goto]").forEach((button) => {
+  button.addEventListener("click", () => showView(button.dataset.goto));
 });
 document.querySelectorAll(".chip").forEach((chip) => {
   chip.addEventListener("click", () => narrow(chip.dataset.filter));
 });
 
-$("filter").addEventListener("input", drawLibrary);
+$("win-min").addEventListener("click", () => appWindow.minimize());
+$("win-max").addEventListener("click", () => appWindow.toggleMaximize());
+$("win-close").addEventListener("click", () => appWindow.close());
+
+$("filter").addEventListener("input", draw);
 $("refresh").addEventListener("click", loadGames);
 $("detach").addEventListener("click", doDetach);
 $("scan-start").addEventListener("click", startScan);
@@ -337,6 +561,9 @@ $("sheet").addEventListener("click", (e) => {
 });
 $("scan-value").addEventListener("keydown", (e) => {
   if (e.key === "Enter") (scanning ? narrow("exact") : startScan());
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") $("sheet").hidden = true;
 });
 
 loadGames();
