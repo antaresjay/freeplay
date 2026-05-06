@@ -75,6 +75,7 @@ function coverInto(box, game) {
   box.classList.add("blankart");
   box.style.setProperty("--h", hue(game.name));
   const span = document.createElement("span");
+  span.className = "initials";
   span.textContent = initials(game.name);
   box.appendChild(span);
 }
@@ -205,7 +206,7 @@ function drawGrid(list) {
 
     const badges = document.createElement("div");
     badges.className = "badges";
-    if (game.guard) badges.appendChild(badge(game.guard, "guarded"));
+    if (game.guard) badges.appendChild(badge("Anti-cheat", "guarded"));
     else if (game.running) badges.appendChild(badge("Running", "live"));
     if (game.has_table) badges.appendChild(badge("Table", "spare"));
     box.appendChild(badges);
@@ -266,6 +267,7 @@ async function doAttach(exe, game) {
   const hero = $("game-hero-img");
   hero.src = images.hero || images.cover || "";
   hero.hidden = !hero.src;
+  document.querySelector(".game-hero").classList.toggle("no-art", !hero.src);
 
   const logo = $("game-logo");
   logo.src = images.logo || "";
