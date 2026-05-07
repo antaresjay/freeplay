@@ -39,6 +39,10 @@ reason the source is here.
 ## What it does
 
 - Finds games installed through Steam, Epic and GOG, and shows which are running
+- Shows your library with real cover art, read from what Steam already cached on
+  your own disk. Freeplay makes no network requests at all
+- Marks games that ship an anti-cheat before you click them, rather than letting
+  you find out at the point of refusal
 - Attaches to a game and lists the cheats available for it
 - Only offers cheats that work right now. Anything that cannot resolve is greyed
   out with the reason, instead of being a toggle that silently does nothing
