@@ -10,14 +10,12 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
 use freeplay_core::search::{Filter, Search};
 use freeplay_core::target::Target;
 use freeplay_core::value::ValueKind;
 use freeplay_core::windows_target::{processes, WindowsTarget};
 use freeplay_core::Error as CoreError;
-use freeplay_library::discover;
+use freeplay_library::{discover, InstalledGame};
 use freeplay_session::Session;
 use freeplay_table::resolve::State as CheatState;
 use freeplay_table::Table;
@@ -29,11 +27,14 @@ struct App {
     target: Mutex<Option<Arc<dyn Target>>>,
     session: Mutex<Option<Session>>,
     search: Mutex<Option<Search>>,
-    /// Encoded art, keyed by app id. Reading and encoding a 600x900 jpeg is
-    /// cheap but the library redraws every few seconds, so do it once.
+    /// Which art a game actually has, keyed by app id. The bytes go over the
+    /// art protocol, this is only the three existence checks.
     art: Mutex<HashMap<String, ArtUrls>>,
     /// Anti-cheat found in a game's folder, keyed by install directory.
     guards: Mutex<HashMap<PathBuf, Option<String>>>,
+    /// Installed games. Finding them means walking every install directory,
+    /// which takes seconds, so it happens once and then only when asked.
+    library: Mutex<Option<Vec<InstalledGame>>>,
 }
 
 #[derive(Serialize)]
@@ -151,8 +152,25 @@ fn guard_for(state: &tauri::State<'_, App>, dir: &Path) -> Option<String> {
     found
 }
 
+/// Walking every install directory takes seconds, and nothing about an
+/// installed game changes while the app is open. Scan once, then only when the
+/// refresh button is pressed.
+fn library(state: &tauri::State<'_, App>, refresh: bool) -> Vec<InstalledGame> {
+    if !refresh {
+        if let Some(cached) = state.library.lock().unwrap().as_ref() {
+            return cached.clone();
+        }
+    }
+
+    let found = discover();
+    *state.library.lock().unwrap() = Some(found.clone());
+    found
+}
+
+/// Async so the scan lands on a worker thread. A synchronous command runs on
+/// the main thread, which means the window stops answering while it works.
 #[tauri::command]
-fn list_games(state: tauri::State<'_, App>) -> Vec<GameRow> {
+async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<GameRow>, ()> {
     let running: Vec<String> = processes()
         .unwrap_or_default()
         .into_iter()
@@ -160,7 +178,7 @@ fn list_games(state: tauri::State<'_, App>) -> Vec<GameRow> {
         .collect();
     let tables = load_tables();
 
-    discover()
+    Ok(library(&state, refresh)
         .into_iter()
         .map(|game| {
             let exe = game.main_exe();
@@ -178,18 +196,19 @@ fn list_games(state: tauri::State<'_, App>) -> Vec<GameRow> {
                 exe,
             }
         })
-        .collect()
+        .collect())
 }
 
-/// Inlined rather than served over a custom protocol so the content security
-/// policy can stay as tight as it is.
-fn data_url(path: &Path) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
-    let mime = match path.extension().and_then(|e| e.to_str()) {
-        Some("png") => "image/png",
-        _ => "image/jpeg",
-    };
-    Some(format!("data:{mime};base64,{}", BASE64.encode(bytes)))
+/// Box art used to go over as base64 in the command reply. That put megabytes
+/// of string through the bridge and made the webview decode the same picture
+/// again on every redraw. It is served as bytes now, so it gets cached and
+/// decoded once like any other image.
+fn art_url(app_id: &str, kind: &str) -> String {
+    if cfg!(windows) {
+        format!("http://art.localhost/{app_id}/{kind}")
+    } else {
+        format!("art://localhost/{app_id}/{kind}")
+    }
 }
 
 #[tauri::command]
@@ -199,14 +218,57 @@ fn game_art(state: tauri::State<'_, App>, app_id: String) -> ArtUrls {
     }
 
     let found = freeplay_library::art::steam(&app_id);
+    let url = |present: bool, kind: &str| present.then(|| art_url(&app_id, kind));
     let urls = ArtUrls {
-        cover: found.cover.as_deref().and_then(data_url),
-        hero: found.hero.as_deref().and_then(data_url),
-        logo: found.logo.as_deref().and_then(data_url),
+        cover: url(found.cover.is_some(), "cover"),
+        hero: url(found.hero.is_some(), "hero"),
+        logo: url(found.logo.is_some(), "logo"),
     };
 
     state.art.lock().unwrap().insert(app_id, urls.clone());
     urls
+}
+
+/// Serves the files Steam already cached. Path is `/<appid>/<kind>`.
+fn serve_art(path: &str) -> tauri::http::Response<Vec<u8>> {
+    let deny = || {
+        tauri::http::Response::builder()
+            .status(404)
+            .body(Vec::new())
+            .unwrap()
+    };
+
+    let mut parts = path.trim_matches('/').split('/');
+    let (Some(app_id), Some(kind)) = (parts.next(), parts.next()) else {
+        return deny();
+    };
+    // The app id goes into a path, so it has to actually be one.
+    if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
+        return deny();
+    }
+
+    let found = freeplay_library::art::steam(app_id);
+    let file = match kind {
+        "cover" => found.cover,
+        "hero" => found.hero,
+        "logo" => found.logo,
+        _ => None,
+    };
+
+    let Some(file) = file else { return deny() };
+    let Ok(bytes) = std::fs::read(&file) else {
+        return deny();
+    };
+    let mime = match file.extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        _ => "image/jpeg",
+    };
+
+    tauri::http::Response::builder()
+        .header("Content-Type", mime)
+        .header("Cache-Control", "max-age=86400")
+        .body(bytes)
+        .unwrap()
 }
 
 #[tauri::command]
@@ -425,6 +487,10 @@ fn main() {
 
     tauri::Builder::default()
         .manage(App::default())
+        .register_asynchronous_uri_scheme_protocol("art", |_ctx, request, responder| {
+            let path = request.uri().path().to_string();
+            std::thread::spawn(move || responder.respond(serve_art(&path)));
+        })
         .setup(|app| {
             let _ = app.get_webview_window("main");
             Ok(())
