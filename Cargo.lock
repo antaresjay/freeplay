@@ -932,7 +932,6 @@ dependencies = [
 name = "freeplay-app"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
  "freeplay-core",
  "freeplay-library",
  "freeplay-session",
@@ -973,6 +972,7 @@ dependencies = [
 name = "freeplay-library"
 version = "0.1.0"
 dependencies = [
+ "rayon",
  "serde",
  "serde_json",
  "thiserror 2.0.19",
