@@ -7,6 +7,7 @@
 pub mod art;
 pub mod vdf;
 
+use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,6 +137,11 @@ const SKIP_DIRS: &[&str] = &[
 /// Depth has to be generous because engines bury the real binary a long way
 /// down. Mass Effect Legendary Edition keeps it at Game/ME1/Binaries/Win64,
 /// which is five levels in. Skipping the asset folders keeps that affordable.
+///
+/// Subdirectories are walked in parallel. Mass Effect alone is thirty six
+/// thousand files and doing that one at a time is most of the wait before the
+/// library appears. Rayon's flat_map keeps the order, so the ranking below
+/// still gets the same list every run.
 fn find_executables(dir: &Path, depth: usize) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let mut subdirs = Vec::new();
@@ -165,9 +171,11 @@ fn find_executables(dir: &Path, depth: usize) -> Vec<PathBuf> {
         }
     }
 
-    for sub in subdirs {
-        found.extend(find_executables(&sub, depth - 1));
-    }
+    found.par_extend(
+        subdirs
+            .into_par_iter()
+            .flat_map_iter(|sub| find_executables(&sub, depth - 1)),
+    );
     found
 }
 
