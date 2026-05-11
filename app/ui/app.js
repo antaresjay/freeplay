@@ -82,9 +82,11 @@ function coverInto(box, game) {
 
 /* ---------- library ---------- */
 
-async function loadGames() {
+/* Without refresh this is a cached list plus a process snapshot, which is
+   cheap enough to poll. With it, every install directory gets walked again. */
+async function loadGames(refresh = false) {
   try {
-    games = await invoke("list_games");
+    games = await invoke("list_games", { refresh });
   } catch (e) {
     games = [];
     toast(String(e), true);
@@ -300,7 +302,9 @@ async function doDetach() {
 /* ---------- cheats ---------- */
 
 async function refreshCheats() {
-  if (!attached) return;
+  // Resolving a locator can mean scanning the game's memory. Not worth doing
+  // for a page nobody is looking at.
+  if (!attached || $("view-game").hidden) return;
   let rows = [];
   try {
     rows = await invoke("cheats");
@@ -552,7 +556,7 @@ $("win-max").addEventListener("click", () => appWindow.toggleMaximize());
 $("win-close").addEventListener("click", () => appWindow.close());
 
 $("filter").addEventListener("input", draw);
-$("refresh").addEventListener("click", loadGames);
+$("refresh").addEventListener("click", () => loadGames(true));
 $("detach").addEventListener("click", doDetach);
 $("scan-start").addEventListener("click", startScan);
 $("scan-reset").addEventListener("click", resetScan);
