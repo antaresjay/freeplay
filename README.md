@@ -67,15 +67,19 @@ to somebody because a tool let them.
 ```
 git clone https://github.com/antaresjay/freeplay
 cd freeplay
-cargo run -p freeplay-app
+cargo run --release -p freeplay-app
 ```
+
+Build it in release. Finding your games means walking every install directory,
+and scanning a running game means reading gigabytes of its memory. Both are
+several times slower in a debug build.
 
 There is also a command line tool, which is the quickest way to try the engine:
 
 ```
-cargo run --bin freeplay -- games
-cargo run --bin freeplay -- ps witcher
-cargo run --bin freeplay -- scan --process witcher2.exe --type i32 --value 100
+cargo run --release --bin freeplay -- games
+cargo run --release --bin freeplay -- ps witcher
+cargo run --release --bin freeplay -- scan --process witcher2.exe --type i32 --value 100
 ```
 
 `scan` is interactive. Search for what you can see on screen, change it in game,
