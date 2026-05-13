@@ -5,6 +5,7 @@
 //! one list.
 
 pub mod art;
+pub mod play;
 pub mod vdf;
 
 use rayon::prelude::*;
