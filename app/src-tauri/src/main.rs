@@ -15,11 +15,14 @@ use freeplay_core::target::Target;
 use freeplay_core::value::ValueKind;
 use freeplay_core::windows_target::{processes, WindowsTarget};
 use freeplay_core::Error as CoreError;
-use freeplay_library::{discover, InstalledGame};
+use freeplay_library::{discover, InstalledGame, Store};
 use freeplay_session::Session;
 use freeplay_table::resolve::State as CheatState;
 use freeplay_table::Table;
 use serde::Serialize;
+
+mod settings;
+use settings::Settings;
 use tauri::Manager;
 
 #[derive(Default)]
@@ -35,10 +38,14 @@ struct App {
     /// Installed games. Finding them means walking every install directory,
     /// which takes seconds, so it happens once and then only when asked.
     library: Mutex<Option<Vec<InstalledGame>>>,
+    settings: Mutex<Settings>,
 }
 
 #[derive(Serialize)]
 struct GameRow {
+    /// Stable across launches, which is what pinning and favourites are keyed
+    /// on. An app id where there is one, the install path otherwise.
+    key: String,
     name: String,
     store: String,
     exe: Option<String>,
@@ -48,6 +55,19 @@ struct GameRow {
     has_table: bool,
     /// Name of the anti-cheat shipped alongside the game, if there is one.
     guard: Option<String>,
+    /// Minutes played and when, straight out of Steam's own record.
+    minutes: Option<u32>,
+    last_played: Option<u64>,
+    pinned: bool,
+    favourite: bool,
+}
+
+fn key_for(game: &InstalledGame) -> String {
+    let store = game.store.label().to_lowercase();
+    match &game.app_id {
+        Some(id) => format!("{store}:{id}"),
+        None => format!("{store}:{}", game.install_dir.display()),
+    }
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -177,18 +197,36 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
         .map(|p| p.name.to_lowercase())
         .collect();
     let tables = load_tables();
+    let played = freeplay_library::play::steam();
+    let (pinned, favourites) = {
+        let settings = state.settings.lock().unwrap();
+        (settings.pinned.clone(), settings.favourites.clone())
+    };
 
     Ok(library(&state, refresh)
         .into_iter()
         .map(|game| {
             let exe = game.main_exe();
             let lower = exe.as_deref().unwrap_or_default().to_lowercase();
+            let key = key_for(&game);
+            let play = game
+                .app_id
+                .as_deref()
+                .and_then(|id| played.get(id))
+                .copied()
+                .unwrap_or_default();
+
             GameRow {
                 guard: guard_for(&state, &game.install_dir),
                 running: !lower.is_empty() && running.iter().any(|p| p == &lower),
                 has_table: exe
                     .as_deref()
                     .is_some_and(|e| tables.iter().any(|t| t.matches_process(e))),
+                minutes: play.minutes,
+                last_played: play.last_played,
+                pinned: pinned.contains(&key),
+                favourite: favourites.contains(&key),
+                key,
                 name: game.name,
                 store: game.store.label().to_string(),
                 dir: game.install_dir.display().to_string(),
@@ -197,6 +235,66 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
             }
         })
         .collect())
+}
+
+#[tauri::command]
+fn settings(state: tauri::State<'_, App>) -> Settings {
+    state.settings.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn save_settings(state: tauri::State<'_, App>, next: Settings) -> Result<Settings, String> {
+    let mut next = next;
+    next.tidy();
+    settings::save(&next)?;
+    *state.settings.lock().unwrap() = next.clone();
+    Ok(next)
+}
+
+/// Starts the game the way its store expects. Going through Steam rather than
+/// the executable matters: plenty of games will not run without the client
+/// having set them up first.
+#[tauri::command]
+async fn launch_game(state: tauri::State<'_, App>, key: String) -> Result<(), String> {
+    let game = library(&state, false)
+        .into_iter()
+        .find(|g| key_for(g) == key)
+        .ok_or("that game is not in the library any more")?;
+
+    if let (Store::Steam, Some(app_id)) = (game.store, game.app_id.as_deref()) {
+        // This ends up on a command line, so it has to be what it claims.
+        if !app_id.is_empty() && app_id.bytes().all(|b| b.is_ascii_digit()) {
+            return open_url(&format!("steam://rungameid/{app_id}"));
+        }
+    }
+
+    let exe = game
+        .executables
+        .first()
+        .ok_or("no executable to start for this one")?;
+    std::process::Command::new(exe)
+        .current_dir(exe.parent().unwrap_or(&game.install_dir))
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not start it: {e}"))
+}
+
+#[cfg(windows)]
+fn open_url(url: &str) -> Result<(), String> {
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not hand that to steam: {e}"))
+}
+
+#[cfg(not(windows))]
+fn open_url(url: &str) -> Result<(), String> {
+    std::process::Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// Box art used to go over as base64 in the command reply. That put megabytes
@@ -486,7 +584,10 @@ fn main() {
         .init();
 
     tauri::Builder::default()
-        .manage(App::default())
+        .manage(App {
+            settings: Mutex::new(settings::load()),
+            ..Default::default()
+        })
         .register_asynchronous_uri_scheme_protocol("art", |_ctx, request, responder| {
             let path = request.uri().path().to_string();
             std::thread::spawn(move || responder.respond(serve_art(&path)));
@@ -498,6 +599,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             list_games,
             game_art,
+            settings,
+            save_settings,
+            launch_game,
             list_processes,
             attach,
             detach,
