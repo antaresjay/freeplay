@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="system" data-accent="amber">
 <head>
 <meta charset="utf-8">
 <title>Freeplay</title>
@@ -32,6 +32,10 @@
         <svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
         Find a value
       </button>
+      <button class="nav-item" data-view="settings">
+        <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1L4.7 4.7"/></svg>
+        Settings
+      </button>
       <button class="nav-item" data-view="about">
         <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><path d="M10 9v5M10 6.2v.1"/></svg>
         About
@@ -40,7 +44,7 @@
 
     <div class="rail-head">
       <span>My games</span>
-      <button id="refresh" class="icon-btn" title="Rescan">
+      <button id="refresh" class="icon-btn" title="Rescan for games">
         <svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.7-4"/><path d="M12.2 1.2v3h-3"/></svg>
       </button>
     </div>
@@ -59,17 +63,6 @@
 
     <!-- library ------------------------------------------------------- -->
     <section id="view-library" class="view">
-      <div id="spotlight" class="spotlight" hidden>
-        <div class="spotlight-art"><img id="spotlight-hero" alt=""></div>
-        <div class="spotlight-body">
-          <span class="eyebrow"><span class="pip live"></span> Running now</span>
-          <img id="spotlight-logo" class="spotlight-logo" alt="" hidden>
-          <h1 id="spotlight-name"></h1>
-          <p id="spotlight-sub"></p>
-          <button id="spotlight-attach" class="primary big">Attach</button>
-        </div>
-      </div>
-
       <div id="idle-banner" class="banner" hidden>
         <span class="pip"></span>
         <div>
@@ -83,29 +76,54 @@
         <input id="filter" class="filter" type="search" placeholder="Filter" autocomplete="off">
       </div>
 
+      <div id="pinned-wrap" hidden>
+        <h3 class="shelf">Pinned</h3>
+        <div id="pinned-grid" class="grid"></div>
+        <h3 class="shelf">Everything else</h3>
+      </div>
+
       <div id="grid" class="grid"></div>
 
       <div id="library-empty" class="blank" hidden>
         <h3>No games found</h3>
         <p>Steam, Epic and GOG are checked. If yours is installed somewhere unusual, attach to it by process instead.</p>
-        <button class="ghost" onclick="document.getElementById('show-processes').click()">Attach by process</button>
+        <button id="empty-processes" class="ghost">Attach by process</button>
       </div>
     </section>
 
-    <!-- attached game ------------------------------------------------- -->
+    <!-- one game ------------------------------------------------------ -->
     <section id="view-game" class="view" hidden>
+      <button id="back" class="back">
+        <svg viewBox="0 0 16 16"><path d="M9.5 3.5L5 8l4.5 4.5"/></svg>
+        Library
+      </button>
+
       <div class="game-hero">
         <div class="game-hero-art"><img id="game-hero-img" alt=""></div>
+        <div class="game-cover"><img id="game-cover-img" alt=""><span id="game-cover-initials" class="initials"></span></div>
         <div class="game-hero-body">
           <img id="game-logo" class="game-logo" alt="" hidden>
           <h1 id="game-name"></h1>
-          <div class="game-meta">
-            <span class="pill live"><span class="pip live"></span> Attached</span>
-            <span id="game-process" class="pill"></span>
-            <span id="game-ready" class="pill"></span>
+          <div id="game-facts" class="game-facts"></div>
+          <div class="game-actions">
+            <button id="game-play" class="primary">Play</button>
+            <button id="game-attach" class="ghost">Attach</button>
+            <button id="game-fav" class="icon-toggle" title="Favourite">
+              <svg viewBox="0 0 20 20"><path d="M10 2.8l2.3 4.6 5.1.7-3.7 3.6.9 5.1L10 14.4l-4.6 2.4.9-5.1L2.6 8.1l5.1-.7z"/></svg>
+            </button>
+            <button id="game-pin" class="icon-toggle" title="Pin to the top">
+              <svg viewBox="0 0 20 20"><path d="M12.5 2.5l5 5-2.2.6-3.3 3.3-.4 3.4-5.4-5.4 3.4-.4 3.3-3.3z"/><path d="M6.2 13.8l-3.4 3.4"/></svg>
+            </button>
           </div>
         </div>
-        <button id="detach" class="ghost">Detach</button>
+      </div>
+
+      <div id="attach-note" class="banner" hidden>
+        <span class="pip"></span>
+        <div>
+          <strong id="attach-note-title"></strong>
+          <p id="attach-note-body"></p>
+        </div>
       </div>
 
       <div id="cheat-groups"></div>
@@ -171,22 +189,60 @@
       </div>
     </section>
 
+    <!-- settings ------------------------------------------------------- -->
+    <section id="view-settings" class="view" hidden>
+      <div class="section-head"><h2>Settings</h2></div>
+
+      <div class="setting">
+        <div class="setting-label">
+          <strong>Theme</strong>
+          <span>System follows whatever Windows is set to.</span>
+        </div>
+        <div class="segmented" id="theme-pick">
+          <button data-theme="system">System</button>
+          <button data-theme="light">Light</button>
+          <button data-theme="dark">Dark</button>
+        </div>
+      </div>
+
+      <div class="setting">
+        <div class="setting-label">
+          <strong>Accent</strong>
+          <span>Used for anything that is on or ready.</span>
+        </div>
+        <div class="swatches" id="accent-pick">
+          <button data-accent="amber" style="--swatch:#f0a52a" title="Amber"></button>
+          <button data-accent="violet" style="--swatch:#a78bfa" title="Violet"></button>
+          <button data-accent="cyan" style="--swatch:#38bdf8" title="Cyan"></button>
+          <button data-accent="rose" style="--swatch:#fb7185" title="Rose"></button>
+          <button data-accent="lime" style="--swatch:#a3e635" title="Lime"></button>
+        </div>
+      </div>
+
+      <div class="setting">
+        <div class="setting-label">
+          <strong>Pinned games</strong>
+          <span id="pinned-count"></span>
+        </div>
+        <button id="clear-pins" class="ghost">Clear</button>
+      </div>
+
+      <div class="setting">
+        <div class="setting-label">
+          <strong>Settings file</strong>
+          <span id="settings-path" class="mono"></span>
+        </div>
+      </div>
+    </section>
+
     <!-- about ----------------------------------------------------------- -->
     <section id="view-about" class="view" hidden>
       <div class="prose">
         <h2>Freeplay</h2>
-        <p class="lead">A game trainer for Windows that is free, open source, and does not want your email address.</p>
-
-        <p>I play single player games and I use trainers. Infinite money in a Witcher game, skipping a mission timer I have already failed six times. Nobody else is affected. It is my save file and my evening.</p>
-        <p>Every way of doing that was bad in a different way. The good one wants a subscription. The free ones are executables from sites buried in ads that tell you to turn off your antivirus. Cheat Engine can do anything, which is also the problem.</p>
-        <p>A program that attaches to your games and writes into their memory is a program you should be able to read before you trust it. That is why the source is open, and it is the whole point rather than a marketing line.</p>
-
-        <h3>Single player only</h3>
-        <p>Freeplay refuses to attach to anything running an anti-cheat, and the check runs before the process handle is used for anything. EasyAntiCheat, BattlEye, Vanguard, GameGuard, XIGNCODE, PunkBuster and Denuvo Anti-Cheat are all on the list. Cheating in multiplayer ruins the game for people who did nothing to deserve it, and it gets accounts banned.</p>
-
-        <h3>Cover art</h3>
-        <p>Read from the art Steam already cached on your disk. Freeplay makes no network requests at all.</p>
-
+        <p class="lead">A game trainer for Windows. Free, open source, no account.</p>
+        <p>Find your installed games, attach to one, and turn on cheats. If nobody has written a table for it yet, search its memory and make one.</p>
+        <p>Refuses to attach to anything running an anti-cheat, so it is single player only.</p>
+        <p class="dim" id="about-version"></p>
         <div class="about-links">
           <a class="ghost" href="https://github.com/antaresjay/freeplay" target="_blank" rel="noreferrer">Source on GitHub</a>
         </div>

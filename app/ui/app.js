@@ -6,10 +6,11 @@ let games = [];
 let attached = null;
 let scanning = false;
 let cheatTimer = null;
-let view = "library";
+let open = null; // key of the game whose page is showing
 let drawn = "";
+let config = { theme: "system", accent: "amber", pinned: [], favourites: [] };
 
-/* art is read off disk and base64'd, so ask once and keep it */
+/* art is read off disk and served over its own protocol, so ask once */
 const art = new Map();
 const pending = new Set();
 
@@ -22,11 +23,44 @@ function toast(message, bad = false) {
   toast.timer = setTimeout(() => (el.hidden = true), bad ? 6000 : 3000);
 }
 
+const gameFor = (key) => games.find((g) => g.key === key);
+
+/* ---------- settings ---------- */
+
+function applyTheme() {
+  document.documentElement.dataset.theme = config.theme;
+  document.documentElement.dataset.accent = config.accent;
+
+  for (const button of document.querySelectorAll("#theme-pick button")) {
+    button.classList.toggle("on", button.dataset.theme === config.theme);
+  }
+  for (const button of document.querySelectorAll("#accent-pick button")) {
+    button.classList.toggle("on", button.dataset.accent === config.accent);
+  }
+  $("pinned-count").textContent = config.pinned.length
+    ? `${config.pinned.length} pinned`
+    : "Nothing pinned yet";
+}
+
+async function saveConfig(changes) {
+  const next = { ...config, ...changes };
+  try {
+    config = await invoke("save_settings", { next });
+  } catch (e) {
+    return toast(String(e), true);
+  }
+  applyTheme();
+  drawn = "";
+  draw();
+}
+
+function toggleIn(list, key) {
+  return list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
+}
+
 /* ---------- art ---------- */
 
-function artFor(game) {
-  return (game.app_id && art.get(game.app_id)) || null;
-}
+const artFor = (game) => (game && game.app_id && art.get(game.app_id)) || null;
 
 async function fetchArt(game) {
   const id = game.app_id;
@@ -48,6 +82,7 @@ async function loadArt() {
   if (results.some(Boolean)) {
     drawn = "";
     draw();
+    if (open) drawGamePage();
   }
 }
 
@@ -80,10 +115,26 @@ function coverInto(box, game) {
   box.appendChild(span);
 }
 
+/* ---------- formatting ---------- */
+
+function playedFor(minutes) {
+  if (!minutes) return null;
+  if (minutes < 60) return `${minutes} min`;
+  return `${(minutes / 60).toFixed(1)} hrs`;
+}
+
+function lastPlayed(seconds) {
+  if (!seconds) return null;
+  const then = new Date(seconds * 1000);
+  const days = Math.floor((Date.now() - then) / 86400000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 30) return `${days} days ago`;
+  return then.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
 /* ---------- library ---------- */
 
-/* Without refresh this is a cached list plus a process snapshot, which is
-   cheap enough to poll. With it, every install directory gets walked again. */
 async function loadGames(refresh = false) {
   try {
     games = await invoke("list_games", { refresh });
@@ -92,13 +143,14 @@ async function loadGames(refresh = false) {
     toast(String(e), true);
   }
   draw();
+  if (open) drawGamePage();
   loadArt();
 }
 
-/* Playable and running first, anything with an anti-cheat last. */
-function ordered() {
+/* Running first, then anything with a table, anti-cheat last. */
+function ordered(list) {
   const rank = (g) => (g.guard ? 2 : 0) - (g.running ? 1 : 0);
-  return [...games].sort(
+  return [...list].sort(
     (a, b) => rank(a) - rank(b) || b.has_table - a.has_table || a.name.localeCompare(b.name)
   );
 }
@@ -106,23 +158,25 @@ function ordered() {
 /* Redrawing wipes hover and restarts image decoding, and the list is polled
    every few seconds, so only rebuild when something actually moved. */
 function signature(list) {
-  return list
-    .map((g) => `${g.name}${g.running}${g.has_table}${g.guard}${art.has(g.app_id)}`)
-    .join("|") + `#${$("filter").value}#${attached ? attached.process : ""}`;
+  return (
+    list
+      .map((g) => `${g.key}${g.running}${g.has_table}${g.pinned}${art.has(g.app_id)}`)
+      .join("|") + `#${$("filter").value}#${attached ? attached.process : ""}`
+  );
 }
 
 function draw() {
-  const list = ordered();
+  const list = ordered(games);
   const stamp = signature(list);
   if (stamp === drawn) return;
   drawn = stamp;
 
   drawRail(list);
-  drawSpotlight(list);
-  drawGrid(list);
+  drawGrids(list);
 
   const live = list.filter((g) => g.running).length;
   $("library-count").textContent = `${list.length} games, ${live} running`;
+  $("idle-banner").hidden = live > 0 || !list.length;
 }
 
 function drawRail(list) {
@@ -136,7 +190,7 @@ function drawRail(list) {
 
   for (const game of list) {
     const button = document.createElement("button");
-    button.className = "rail-game" + (attached && attached.process === game.exe ? " active" : "");
+    button.className = "rail-game" + (open === game.key ? " active" : "");
 
     const thumb = document.createElement("span");
     thumb.className = "thumb";
@@ -158,80 +212,63 @@ function drawRail(list) {
     pip.className = "pip" + (game.running ? " live" : "");
 
     button.append(thumb, name, pip);
-    button.addEventListener("click", () => pick(game));
+    button.addEventListener("click", () => showGame(game.key));
     host.appendChild(button);
   }
 }
 
-function drawSpotlight(list) {
-  const running = list.find((g) => g.running && !g.guard);
-  const box = $("spotlight");
-  $("idle-banner").hidden = !!running || !!attached || !list.length;
-
-  if (!running || attached) {
-    box.hidden = true;
-    return;
-  }
-
-  const images = artFor(running) || {};
-  const hero = $("spotlight-hero");
-  hero.src = images.hero || images.cover || "";
-  hero.hidden = !hero.src;
-
-  const logo = $("spotlight-logo");
-  logo.src = images.logo || "";
-  logo.hidden = !images.logo;
-
-  $("spotlight-name").textContent = running.name;
-  $("spotlight-sub").textContent = running.has_table
-    ? "There is a table for this one. Attach and the cheats are ready."
-    : "No table yet, but you can find values yourself once attached.";
-  $("spotlight-attach").onclick = () => pick(running);
-  box.hidden = false;
-}
-
-function drawGrid(list) {
-  const host = $("grid");
+function drawGrids(list) {
   const needle = $("filter").value.trim().toLowerCase();
   const shown = list.filter((g) => !needle || g.name.toLowerCase().includes(needle));
 
-  host.innerHTML = "";
+  const pinned = shown.filter((g) => g.pinned);
+  const rest = shown.filter((g) => !g.pinned);
+
+  $("pinned-wrap").hidden = !pinned.length;
+  fill($("pinned-grid"), pinned);
+  fill($("grid"), rest);
   $("library-empty").hidden = games.length > 0;
+}
 
-  for (const game of shown) {
-    const card = document.createElement("button");
-    card.className = "card" + (game.guard ? " guarded" : game.running ? "" : " idle");
+function fill(host, list) {
+  host.innerHTML = "";
+  for (const game of list) host.appendChild(card(game));
+}
 
-    const box = document.createElement("div");
-    box.className = "art";
-    coverInto(box, game);
+function card(game) {
+  const button = document.createElement("button");
+  button.className = "card" + (game.guard ? " guarded" : game.running ? "" : " idle");
 
-    const badges = document.createElement("div");
-    badges.className = "badges";
-    if (game.guard) badges.appendChild(badge("Anti-cheat", "guarded"));
-    else if (game.running) badges.appendChild(badge("Running", "live"));
-    if (game.has_table) badges.appendChild(badge("Table", "spare"));
-    box.appendChild(badges);
+  const box = document.createElement("div");
+  box.className = "art";
+  coverInto(box, game);
 
-    const overlay = document.createElement("div");
-    overlay.className = "card-overlay";
-    const label = document.createElement("b");
-    label.textContent = game.guard ? "Off limits" : game.running ? "Attach" : "Not running";
-    overlay.appendChild(label);
-    box.appendChild(overlay);
+  const badges = document.createElement("div");
+  badges.className = "badges";
+  if (game.guard) badges.appendChild(badge("Anti-cheat", "guarded"));
+  else if (game.running) badges.appendChild(badge("Running", "live"));
+  if (game.has_table) badges.appendChild(badge("Table", "spare"));
+  box.appendChild(badges);
 
-    const title = document.createElement("span");
-    title.className = "card-title";
-    title.textContent = game.name;
+  const overlay = document.createElement("div");
+  overlay.className = "card-overlay";
+  const label = document.createElement("b");
+  label.textContent = game.guard ? "Off limits" : game.running ? "Attach" : "Open";
+  overlay.appendChild(label);
+  box.appendChild(overlay);
 
-    const sub = document.createElement("span");
-    sub.className = "card-sub";
-    sub.textContent = `${game.store} · ${game.exe || "no executable found"}`;
+  const title = document.createElement("span");
+  title.className = "card-title";
+  title.textContent = game.name;
 
-    card.append(box, title, sub);
-    card.addEventListener("click", () => pick(game));
-    host.appendChild(card);
-  }
+  const sub = document.createElement("span");
+  sub.className = "card-sub";
+  const played = playedFor(game.minutes);
+  sub.textContent = played ? `${game.store} · ${played}` : game.store;
+
+  button.append(box, title, sub);
+  button.addEventListener("click", () => showGame(game.key));
+  return button;
 }
 
 function badge(text, extra) {
@@ -241,21 +278,99 @@ function badge(text, extra) {
   return span;
 }
 
-function pick(game) {
-  if (game.guard) {
-    return toast(
-      `${game.name} ships ${game.guard}. Freeplay is for single player games, and attaching would risk your account.`,
-      true
-    );
+/* ---------- one game ---------- */
+
+function showGame(key) {
+  open = key;
+  drawGamePage();
+  showView("game");
+  drawn = "";
+  draw();
+}
+
+function fact(label, value, live = false) {
+  const box = document.createElement("div");
+  box.className = "fact" + (live ? " live" : "");
+  const b = document.createElement("b");
+  b.textContent = value;
+  const span = document.createElement("span");
+  span.textContent = label;
+  box.append(b, span);
+  return box;
+}
+
+function drawGamePage() {
+  const game = gameFor(open);
+  if (!game) return;
+  const images = artFor(game) || {};
+
+  const hero = $("game-hero-img");
+  hero.src = images.hero || "";
+  hero.hidden = !hero.src;
+  document.querySelector(".game-hero").classList.toggle("no-art", !hero.src);
+
+  const cover = $("game-cover-img");
+  cover.src = images.cover || "";
+  cover.hidden = !images.cover;
+  const blank = $("game-cover-initials");
+  blank.hidden = !!images.cover;
+  blank.textContent = initials(game.name);
+  $("game-cover").classList.toggle("blankart", !images.cover);
+  $("game-cover").style.setProperty("--h", hue(game.name));
+
+  const logo = $("game-logo");
+  logo.src = images.logo || "";
+  logo.hidden = !images.logo;
+  $("game-name").textContent = game.name;
+
+  const facts = $("game-facts");
+  facts.innerHTML = "";
+  facts.appendChild(fact("Store", game.store));
+  const played = playedFor(game.minutes);
+  if (played) facts.appendChild(fact("Play time", played));
+  const seen = lastPlayed(game.last_played);
+  if (seen) facts.appendChild(fact("Last played", seen));
+  if (attached && attached.process === game.exe) {
+    facts.appendChild(fact("Status", `Attached, pid ${attached.pid}`, true));
+  } else if (game.running) {
+    facts.appendChild(fact("Status", "Running", true));
   }
-  if (!game.exe) return toast("Could not work out which file to attach to.", true);
-  if (!game.running) return toast(`${game.name} is not running. Launch it first.`, true);
-  doAttach(game.exe, game);
+
+  $("game-fav").classList.toggle("on", game.favourite);
+  $("game-pin").classList.toggle("on", game.pinned);
+
+  const isAttached = attached && attached.process === game.exe;
+  const attach = $("game-attach");
+  attach.textContent = isAttached ? "Detach" : "Attach";
+  attach.disabled = !!game.guard || (!game.running && !isAttached);
+  $("game-play").disabled = !!game.guard;
+
+  const note = $("attach-note");
+  if (game.guard) {
+    note.hidden = false;
+    $("attach-note-title").textContent = "Off limits";
+    $("attach-note-body").textContent = `${game.name} ships ${game.guard}. Freeplay is for single player games, and attaching would risk your account.`;
+  } else if (!game.running) {
+    note.hidden = false;
+    $("attach-note-title").textContent = "Not running";
+    $("attach-note-body").textContent = "Press Play to start it, then attach. Freeplay reads memory from a live process.";
+  } else if (!isAttached) {
+    note.hidden = false;
+    $("attach-note-title").textContent = "Running, not attached";
+    $("attach-note-body").textContent = "Attach to see what this game offers.";
+  } else {
+    note.hidden = true;
+  }
+
+  if (!isAttached) {
+    $("cheat-groups").innerHTML = "";
+    $("no-table").hidden = true;
+  }
 }
 
 /* ---------- attaching ---------- */
 
-async function doAttach(exe, game) {
+async function doAttach(exe) {
   try {
     attached = await invoke("attach", { exe });
   } catch (e) {
@@ -263,22 +378,13 @@ async function doAttach(exe, game) {
     return;
   }
 
-  const known = game || games.find((g) => g.exe === exe);
-  const images = (known && artFor(known)) || {};
+  const known = games.find((g) => g.exe === exe);
+  if (known) open = known.key;
 
-  const hero = $("game-hero-img");
-  hero.src = images.hero || images.cover || "";
-  hero.hidden = !hero.src;
-  document.querySelector(".game-hero").classList.toggle("no-art", !hero.src);
-
-  const logo = $("game-logo");
-  logo.src = images.logo || "";
-  logo.hidden = !images.logo;
-
-  $("game-name").textContent = known ? known.name : attached.game;
-  $("game-process").textContent = `${attached.process} · pid ${attached.pid}`;
-
-  showView("game");
+  if (open) {
+    drawGamePage();
+    showView("game");
+  }
   drawn = "";
   draw();
   await refreshCheats();
@@ -294,7 +400,7 @@ async function doDetach() {
   attached = null;
   scanning = false;
   resetScan();
-  showView("library");
+  if (open) drawGamePage();
   drawn = "";
   draw();
 }
@@ -305,6 +411,7 @@ async function refreshCheats() {
   // Resolving a locator can mean scanning the game's memory. Not worth doing
   // for a page nobody is looking at.
   if (!attached || $("view-game").hidden) return;
+
   let rows = [];
   try {
     rows = await invoke("cheats");
@@ -313,10 +420,6 @@ async function refreshCheats() {
   }
 
   $("no-table").hidden = rows.length > 0;
-  const ready = rows.filter((r) => r.state === "ready").length;
-  $("game-ready").textContent = rows.length
-    ? `${ready} of ${rows.length} ready`
-    : "no table";
 
   const host = $("cheat-groups");
   const byCategory = new Map();
@@ -517,11 +620,9 @@ async function openProcesses() {
 /* ---------- views ---------- */
 
 function showView(name) {
-  // The game page only exists while something is attached.
-  if (name === "game" && !attached) name = "library";
-  view = name;
+  if (name === "game" && !open) name = "library";
 
-  for (const id of ["library", "game", "finder", "about"]) {
+  for (const id of ["library", "game", "finder", "settings", "about"]) {
     $(`view-${id}`).hidden = id !== name;
   }
   for (const item of document.querySelectorAll(".nav-item")) {
@@ -534,14 +635,17 @@ function showView(name) {
     $("finder-panel").hidden = !attached;
     $("finder-target").textContent = attached ? `in ${attached.process}` : "";
   }
+  if (name === "game") refreshCheats();
 }
 
 /* ---------- wiring ---------- */
 
 document.querySelectorAll(".nav-item").forEach((item) => {
   item.addEventListener("click", () => {
-    const target = item.dataset.view;
-    showView(target === "library" && attached ? "game" : target);
+    if (item.dataset.view === "library") open = null;
+    showView(item.dataset.view);
+    drawn = "";
+    draw();
   });
 });
 document.querySelectorAll("[data-goto]").forEach((button) => {
@@ -550,6 +654,46 @@ document.querySelectorAll("[data-goto]").forEach((button) => {
 document.querySelectorAll(".chip").forEach((chip) => {
   chip.addEventListener("click", () => narrow(chip.dataset.filter));
 });
+document.querySelectorAll("#theme-pick button").forEach((button) => {
+  button.addEventListener("click", () => saveConfig({ theme: button.dataset.theme }));
+});
+document.querySelectorAll("#accent-pick button").forEach((button) => {
+  button.addEventListener("click", () => saveConfig({ accent: button.dataset.accent }));
+});
+
+$("back").addEventListener("click", () => {
+  open = null;
+  showView("library");
+  drawn = "";
+  draw();
+});
+
+$("game-play").addEventListener("click", async () => {
+  const game = gameFor(open);
+  if (!game) return;
+  try {
+    await invoke("launch_game", { key: game.key });
+    toast(`Starting ${game.name}`);
+  } catch (e) {
+    toast(String(e), true);
+  }
+});
+
+$("game-attach").addEventListener("click", () => {
+  const game = gameFor(open);
+  if (!game) return;
+  if (attached && attached.process === game.exe) doDetach();
+  else if (game.exe) doAttach(game.exe);
+  else toast("Could not work out which file to attach to.", true);
+});
+
+$("game-fav").addEventListener("click", () => {
+  if (open) saveConfig({ favourites: toggleIn(config.favourites, open) });
+});
+$("game-pin").addEventListener("click", () => {
+  if (open) saveConfig({ pinned: toggleIn(config.pinned, open) });
+});
+$("clear-pins").addEventListener("click", () => saveConfig({ pinned: [] }));
 
 $("win-min").addEventListener("click", () => appWindow.minimize());
 $("win-max").addEventListener("click", () => appWindow.toggleMaximize());
@@ -557,10 +701,10 @@ $("win-close").addEventListener("click", () => appWindow.close());
 
 $("filter").addEventListener("input", draw);
 $("refresh").addEventListener("click", () => loadGames(true));
-$("detach").addEventListener("click", doDetach);
 $("scan-start").addEventListener("click", startScan);
 $("scan-reset").addEventListener("click", resetScan);
 $("show-processes").addEventListener("click", openProcesses);
+$("empty-processes").addEventListener("click", openProcesses);
 $("sheet-close").addEventListener("click", () => ($("sheet").hidden = true));
 $("sheet").addEventListener("click", (e) => {
   if (e.target === $("sheet")) $("sheet").hidden = true;
@@ -572,5 +716,16 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") $("sheet").hidden = true;
 });
 
-loadGames();
-setInterval(loadGames, 5000);
+async function start() {
+  try {
+    config = await invoke("settings");
+  } catch {
+    // defaults are already in place
+  }
+  applyTheme();
+  $("settings-path").textContent = "%APPDATA%\\freeplay\\settings.json";
+  await loadGames();
+  setInterval(loadGames, 5000);
+}
+
+start();
