@@ -39,10 +39,14 @@ reason the source is here.
 ## What it does
 
 - Finds games installed through Steam, Epic and GOG, and shows which are running
-- Shows your library with real cover art, read from what Steam already cached on
-  your own disk. Freeplay makes no network requests at all
+- Shows your library with real cover art, play time and when you last played,
+  all read from what Steam already cached on your own disk. Freeplay makes no
+  network requests at all
+- A page per game: art, play time, launch it, pin it to the top, favourite it
 - Marks games that ship an anti-cheat before you click them, rather than letting
   you find out at the point of refusal
+- Light and dark, follows Windows by default, and five accents if you dislike
+  the one I picked
 - Attaches to a game and lists the cheats available for it
 - Only offers cheats that work right now. Anything that cannot resolve is greyed
   out with the reason, instead of being a toggle that silently does nothing
@@ -101,6 +105,16 @@ another process usually requires it.
 format. Somebody has to sit with a debugger and work out where a game keeps its
 numbers, and that has to be redone when the game patches. The value finder is
 there so you can do that yourself in a few minutes rather than an afternoon.
+
+## What it does not do
+
+No genre, and no "installed on" beyond the store name. Steam only keeps genre
+in `appinfo.vdf`, which is a binary format, and everything else would mean
+calling the store API. Freeplay does not talk to the network and I would rather
+leave a field out than break that for a line of text.
+
+Settings live in `%APPDATA%\freeplay\settings.json`. Theme, accent, pins and
+favourites, and nothing else.
 
 ## Tables
 
