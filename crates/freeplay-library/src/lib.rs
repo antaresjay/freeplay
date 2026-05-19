@@ -5,6 +5,7 @@
 //! one list.
 
 pub mod art;
+pub mod launch;
 pub mod play;
 pub mod vdf;
 
@@ -273,7 +274,7 @@ pub fn discover() -> Vec<InstalledGame> {
         games.extend(gog::discover());
     }
 
-    games.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    games.sort_by_key(|a| a.name.to_lowercase());
     games.dedup_by(|a, b| a.install_dir == b.install_dir);
     games
 }

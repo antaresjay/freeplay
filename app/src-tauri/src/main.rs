@@ -15,7 +15,7 @@ use freeplay_core::target::Target;
 use freeplay_core::value::ValueKind;
 use freeplay_core::windows_target::{processes, WindowsTarget};
 use freeplay_core::Error as CoreError;
-use freeplay_library::{discover, InstalledGame, Store};
+use freeplay_library::{discover, InstalledGame};
 use freeplay_session::Session;
 use freeplay_table::resolve::State as CheatState;
 use freeplay_table::Table;
@@ -251,9 +251,6 @@ fn save_settings(state: tauri::State<'_, App>, next: Settings) -> Result<Setting
     Ok(next)
 }
 
-/// Starts the game the way its store expects. Going through Steam rather than
-/// the executable matters: plenty of games will not run without the client
-/// having set them up first.
 #[tauri::command]
 async fn launch_game(state: tauri::State<'_, App>, key: String) -> Result<(), String> {
     let game = library(&state, false)
@@ -261,40 +258,7 @@ async fn launch_game(state: tauri::State<'_, App>, key: String) -> Result<(), St
         .find(|g| key_for(g) == key)
         .ok_or("that game is not in the library any more")?;
 
-    if let (Store::Steam, Some(app_id)) = (game.store, game.app_id.as_deref()) {
-        // This ends up on a command line, so it has to be what it claims.
-        if !app_id.is_empty() && app_id.bytes().all(|b| b.is_ascii_digit()) {
-            return open_url(&format!("steam://rungameid/{app_id}"));
-        }
-    }
-
-    let exe = game
-        .executables
-        .first()
-        .ok_or("no executable to start for this one")?;
-    std::process::Command::new(exe)
-        .current_dir(exe.parent().unwrap_or(&game.install_dir))
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("could not start it: {e}"))
-}
-
-#[cfg(windows)]
-fn open_url(url: &str) -> Result<(), String> {
-    std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("could not hand that to steam: {e}"))
-}
-
-#[cfg(not(windows))]
-fn open_url(url: &str) -> Result<(), String> {
-    std::process::Command::new("xdg-open")
-        .arg(url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    freeplay_library::launch::start(&game).map(|_| ())
 }
 
 /// Box art used to go over as base64 in the command reply. That put megabytes
@@ -379,7 +343,7 @@ fn list_processes() -> Vec<ProcessRow> {
             name: p.name,
         })
         .collect();
-    all.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    all.sort_by_key(|a| a.name.to_lowercase());
     all
 }
 

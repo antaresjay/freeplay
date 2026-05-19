@@ -35,6 +35,13 @@ enum Command {
         #[arg(long, help = "show every candidate executable, best guess first")]
         all: bool,
     },
+    /// Start a game the way its store expects.
+    Play {
+        #[arg(help = "part of the game's name")]
+        name: String,
+        #[arg(long, help = "say what it would do without doing it")]
+        dry_run: bool,
+    },
     /// Running processes.
     Ps {
         #[arg(help = "only show names containing this")]
@@ -96,6 +103,7 @@ fn main() {
 fn run(command: Command) -> Result<(), String> {
     match command {
         Command::Games { all } => games(all),
+        Command::Play { name, dry_run } => play(&name, dry_run),
         Command::Ps { filter } => list_processes(filter.as_deref()),
         Command::Cheats { table, process } => cheats(&table, process.as_deref()),
         Command::On {
@@ -175,13 +183,47 @@ fn games(all: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn play(name: &str, dry_run: bool) -> Result<(), String> {
+    let needle = name.to_lowercase();
+    let found = discover();
+    let game = found
+        .iter()
+        .find(|g| g.name.to_lowercase().contains(&needle))
+        .ok_or_else(|| format!("no installed game matches {name:?}"))?;
+
+    let plan = freeplay_library::launch::plan(game)
+        .ok_or_else(|| format!("nothing to start for {}", game.name))?;
+
+    let what = match &plan {
+        freeplay_library::launch::Launch::Url(url) => url.clone(),
+        freeplay_library::launch::Launch::Exe(exe) => exe.display().to_string(),
+    };
+
+    if dry_run {
+        println!(
+            "{}
+  would run {what}",
+            game.name
+        );
+        return Ok(());
+    }
+
+    freeplay_library::launch::start(game)?;
+    println!(
+        "{}
+  started via {what}",
+        game.name
+    );
+    Ok(())
+}
+
 fn list_processes(filter: Option<&str>) -> Result<(), String> {
     let mut all = processes().map_err(|e| e.to_string())?;
     if let Some(needle) = filter {
         let needle = needle.to_lowercase();
         all.retain(|p| p.name.to_lowercase().contains(&needle));
     }
-    all.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    all.sort_by_key(|a| a.name.to_lowercase());
 
     for process in &all {
         println!("{:>8}  {}", process.pid, process.name);
