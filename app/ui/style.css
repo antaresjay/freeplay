@@ -164,20 +164,10 @@ svg {
 }
 
 .mark {
-  width: 17px;
-  height: 17px;
-  border-radius: 5px;
-  background: var(--accent);
-  position: relative;
-}
-.mark::after {
-  content: "";
-  position: absolute;
-  left: 6px;
-  top: 4.5px;
-  border-left: 6px solid var(--accent-ink);
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
+  width: 21px;
+  height: 21px;
+  object-fit: contain;
+  flex: none;
 }
 
 .wordmark { font-size: 13px; font-weight: 650; letter-spacing: 0.2px; }
