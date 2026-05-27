@@ -253,7 +253,9 @@ function card(game) {
   const overlay = document.createElement("div");
   overlay.className = "card-overlay";
   const label = document.createElement("b");
-  label.textContent = game.guard ? "Off limits" : game.running ? "Attach" : "Open";
+  // Clicking always opens the game's page. Saying "Attach" here promised
+  // something the click does not do.
+  label.textContent = game.guard ? "Off limits" : "Open";
   overlay.appendChild(label);
   box.appendChild(overlay);
 
