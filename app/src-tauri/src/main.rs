@@ -22,6 +22,7 @@ use freeplay_table::Table;
 use serde::Serialize;
 
 mod settings;
+mod ui_contract;
 use settings::Settings;
 use tauri::Manager;
 
@@ -250,6 +251,46 @@ fn save_settings(state: tauri::State<'_, App>, next: Settings) -> Result<Setting
     *state.settings.lock().unwrap() = next.clone();
     Ok(next)
 }
+
+/// A window gets asked for two icons: a small one for its own title bar and a
+/// big one for the taskbar and alt-tab. Tauri only ever sets the small one, so
+/// windows had nothing to answer the big request with and stretched the small
+/// one instead, which is why the taskbar looked soft. Build both at the size
+/// windows is actually asking for, which also picks up display scaling.
+#[cfg(windows)]
+fn set_window_icons(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateIconFromResourceEx, GetSystemMetrics, SendMessageW, ICON_BIG, ICON_SMALL,
+        LR_DEFAULTCOLOR, SM_CXICON, SM_CXSMICON, WM_SETICON,
+    };
+
+    const PNG: &[u8] = include_bytes!("../icons/256x256.png");
+    // Says the buffer is a 3.0 icon resource, which is what lets it be a png.
+    const ICON_RESOURCE_V3: u32 = 0x0003_0000;
+
+    let Ok(hwnd) = window.hwnd() else { return };
+
+    for (which, metric) in [(ICON_BIG, SM_CXICON), (ICON_SMALL, SM_CXSMICON)] {
+        let size = unsafe { GetSystemMetrics(metric) };
+        let icon = unsafe {
+            CreateIconFromResourceEx(PNG, true, ICON_RESOURCE_V3, size, size, LR_DEFAULTCOLOR)
+        };
+        if let Ok(icon) = icon {
+            unsafe {
+                SendMessageW(
+                    hwnd,
+                    WM_SETICON,
+                    Some(WPARAM(which as usize)),
+                    Some(LPARAM(icon.0 as isize)),
+                );
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn set_window_icons(_window: &tauri::WebviewWindow) {}
 
 #[tauri::command]
 async fn launch_game(state: tauri::State<'_, App>, key: String) -> Result<(), String> {
@@ -557,7 +598,9 @@ fn main() {
             std::thread::spawn(move || responder.respond(serve_art(&path)));
         })
         .setup(|app| {
-            let _ = app.get_webview_window("main");
+            if let Some(window) = app.get_webview_window("main") {
+                set_window_icons(&window);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
