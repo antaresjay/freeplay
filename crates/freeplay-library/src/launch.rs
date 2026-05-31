@@ -50,15 +50,32 @@ pub fn start(game: &InstalledGame) -> Result<Launch, String> {
 /// `cmd /C start` used to do this, which meant a console window flashing up
 /// and no way to tell a failure from a success. ShellExecute is the call the
 /// shell actually uses and it says what went wrong.
+///
+/// It runs on a thread of its own that initialises COM as a single threaded
+/// apartment first. ShellExecute goes through the shell, the shell wants an
+/// STA, and the thread this gets called on is whatever the caller happened to
+/// be using: in the desktop app that is a tokio worker with no COM at all,
+/// where the same call that works from the command line does nothing.
 #[cfg(windows)]
 fn open(url: &str) -> Result<(), String> {
+    let url = url.to_string();
+    std::thread::spawn(move || open_here(&url))
+        .join()
+        .map_err(|_| "the thread that starts games panicked".to_string())?
+}
+
+#[cfg(windows)]
+fn open_here(url: &str) -> Result<(), String> {
     use windows::core::{HSTRING, PCWSTR};
+    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
     use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
+    // Already initialised is fine, it just means somebody got here first.
+    let com = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+
     let verb = HSTRING::from("open");
     let target = HSTRING::from(url);
-
     let result = unsafe {
         ShellExecuteW(
             None,
@@ -69,9 +86,13 @@ fn open(url: &str) -> Result<(), String> {
             SW_SHOWNORMAL,
         )
     };
+    let code = result.0 as usize;
+
+    if com.is_ok() {
+        unsafe { CoUninitialize() };
+    }
 
     // Anything at or below 32 is an error code rather than a handle.
-    let code = result.0 as usize;
     match code {
         c if c > 32 => Ok(()),
         2 | 3 => Err("Steam does not look installed, nothing handles steam:// urls".into()),
@@ -89,6 +110,11 @@ fn open(url: &str) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())
+}
+
+/// Hand a file to whatever normally opens it.
+pub fn show(path: &std::path::Path) -> Result<(), String> {
+    open(&path.display().to_string())
 }
 
 #[cfg(test)]
