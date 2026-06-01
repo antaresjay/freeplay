@@ -21,6 +21,7 @@ use freeplay_table::resolve::State as CheatState;
 use freeplay_table::Table;
 use serde::Serialize;
 
+mod log;
 mod settings;
 mod ui_contract;
 use settings::Settings;
@@ -243,6 +244,45 @@ fn settings(state: tauri::State<'_, App>) -> Settings {
     state.settings.lock().unwrap().clone()
 }
 
+/// Everything worth pasting into an issue, gathered in one go so nobody has to
+/// be talked through finding a log file.
+#[tauri::command]
+fn diagnostics(state: tauri::State<'_, App>) -> String {
+    let attached = match state.target.lock().unwrap().as_ref() {
+        Some(target) => format!("attached to {} (pid {})\n", target.name(), target.pid()),
+        None => "not attached\n".to_string(),
+    };
+    let tables = load_tables();
+    let listed = tables
+        .iter()
+        .map(|t| {
+            format!(
+                "  {} ({}), {} cheats",
+                t.game.name,
+                t.game.exe,
+                t.cheats.len()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let extra = format!(
+        "{attached}tables dir: {}\ntables loaded: {}\n{listed}\n",
+        tables_dir().display(),
+        tables.len()
+    );
+    log::report(&extra)
+}
+
+#[tauri::command]
+fn open_log() -> Result<(), String> {
+    let file = log::path();
+    if !file.is_file() {
+        return Err("there is no log file yet".into());
+    }
+    freeplay_library::launch::show(&file)
+}
+
 #[tauri::command]
 fn save_settings(state: tauri::State<'_, App>, next: Settings) -> Result<Settings, String> {
     let mut next = next;
@@ -297,9 +337,21 @@ async fn launch_game(state: tauri::State<'_, App>, key: String) -> Result<(), St
     let game = library(&state, false)
         .into_iter()
         .find(|g| key_for(g) == key)
-        .ok_or("that game is not in the library any more")?;
+        .ok_or_else(|| {
+            tracing::warn!("launch asked for {key}, which is not in the library");
+            "that game is not in the library any more".to_string()
+        })?;
 
-    freeplay_library::launch::start(&game).map(|_| ())
+    match freeplay_library::launch::start(&game) {
+        Ok(what) => {
+            tracing::info!("started {} via {what:?}", game.name);
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!("could not start {}: {e}", game.name);
+            Err(e)
+        }
+    }
 }
 
 /// Box art used to go over as base64 in the command reply. That put megabytes
@@ -584,9 +636,8 @@ fn write_value(
 }
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+    // A windowed build has no console, so this went nowhere.
+    log::start(std::env::var("FREEPLAY_VERBOSE").is_ok());
 
     tauri::Builder::default()
         .manage(App {
@@ -608,6 +659,8 @@ fn main() {
             game_art,
             settings,
             save_settings,
+            diagnostics,
+            open_log,
             launch_game,
             list_processes,
             attach,

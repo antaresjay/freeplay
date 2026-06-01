@@ -697,6 +697,23 @@ $("game-pin").addEventListener("click", () => {
 });
 $("clear-pins").addEventListener("click", () => saveConfig({ pinned: [] }));
 
+$("copy-report").addEventListener("click", async () => {
+  try {
+    const text = await invoke("diagnostics");
+    await navigator.clipboard.writeText(text);
+    toast("Report copied, paste it into the issue");
+  } catch (e) {
+    toast(String(e), true);
+  }
+});
+$("open-log").addEventListener("click", async () => {
+  try {
+    await invoke("open_log");
+  } catch (e) {
+    toast(String(e), true);
+  }
+});
+
 $("win-min").addEventListener("click", () => appWindow.minimize());
 $("win-max").addEventListener("click", () => appWindow.toggleMaximize());
 $("win-close").addEventListener("click", () => appWindow.close());
