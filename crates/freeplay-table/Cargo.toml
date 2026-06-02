@@ -12,6 +12,7 @@ rust-version.workspace = true
 freeplay-core = { path = "../freeplay-core" }
 serde = { version = "1", features = ["derive"] }
 thiserror.workspace = true
+quick-xml = "0.37"
 toml = "0.9"
 tracing.workspace = true
 
