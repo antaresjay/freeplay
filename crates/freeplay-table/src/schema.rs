@@ -77,7 +77,7 @@ pub enum Locator {
     /// A fixed offset inside a module. Survives ASLR, breaks on a game patch.
     Static {
         module: String,
-        #[serde(deserialize_with = "hex_or_int")]
+        #[serde(deserialize_with = "hex_or_int", serialize_with = "as_hex")]
         offset: usize,
         #[serde(default)]
         hops: Vec<Hop>,
@@ -163,6 +163,12 @@ fn parse_hop(text: &str) -> Result<isize, String> {
     }
     .map_err(|_| format!("bad offset {text:?}"))?;
     Ok(sign * magnitude)
+}
+
+/// Written back as hex. A table is meant to be read and edited by hand, and
+/// nobody recognises a module offset in decimal.
+fn as_hex<S: serde::Serializer>(value: &usize, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&format!("{value:#x}"))
 }
 
 fn hex_or_int<'de, D: serde::Deserializer<'de>>(d: D) -> Result<usize, D::Error> {

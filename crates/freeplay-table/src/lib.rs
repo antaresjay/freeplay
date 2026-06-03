@@ -4,6 +4,7 @@
 //! game, which is what lets somebody add support for one without touching
 //! Rust or waiting for a release.
 
+pub mod cheatengine;
 pub mod resolve;
 pub mod schema;
 
@@ -51,8 +52,45 @@ impl Table {
         Ok(table)
     }
 
+    /// A Cheat Engine table, converted on the way in. The exe and the game
+    /// name come from the file name, since a `.CT` does not reliably say
+    /// which game it belongs to.
+    pub fn load_ct(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let path = path.as_ref();
+        let xml = std::fs::read_to_string(path).map_err(|source| Error::Read {
+            path: path.into(),
+            source,
+        })?;
+
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        // "witcher2.exe.CT" names the process outright, otherwise assume the
+        // stem is the process name.
+        let exe = if stem.to_lowercase().ends_with(".exe") {
+            stem.clone()
+        } else {
+            format!("{stem}.exe")
+        };
+        let title = stem
+            .trim_end_matches(".exe")
+            .trim_end_matches(".EXE")
+            .to_string();
+
+        let imported = cheatengine::import(&xml, &exe, &title).map_err(Error::Invalid)?;
+        for skip in &imported.skipped {
+            tracing::info!("{}: skipped {:?}, {}", path.display(), skip.name, skip.why);
+        }
+        tracing::info!("{}: {}", path.display(), imported.summary());
+
+        imported.table.validate().map_err(Error::Invalid)?;
+        Ok(imported.table)
+    }
+
     /// Every table in a directory, skipping anything that will not parse so one
-    /// bad file does not hide the rest.
+    /// bad file does not hide the rest. Cheat Engine tables are read too, so
+    /// dropping a `.CT` in the folder is all it takes.
     pub fn load_dir(dir: impl AsRef<Path>) -> Vec<Self> {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return Vec::new();
@@ -61,12 +99,19 @@ impl Table {
         entries
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|e| e == "toml"))
-            .filter_map(|path| match Table::load(&path) {
-                Ok(table) => Some(table),
-                Err(e) => {
-                    tracing::warn!("skipping table: {e}");
-                    None
+            .filter_map(|path| {
+                let extension = path.extension()?.to_string_lossy().to_lowercase();
+                let loaded = match extension.as_str() {
+                    "toml" => Table::load(&path),
+                    "ct" => Table::load_ct(&path),
+                    _ => return None,
+                };
+                match loaded {
+                    Ok(table) => Some(table),
+                    Err(e) => {
+                        tracing::warn!("skipping table: {e}");
+                        None
+                    }
                 }
             })
             .collect()
