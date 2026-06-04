@@ -5,7 +5,7 @@
 //! finding an address is a conversation, not a single command.
 
 use std::io::{self, BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
@@ -41,6 +41,15 @@ enum Command {
         name: String,
         #[arg(long, help = "say what it would do without doing it")]
         dry_run: bool,
+    },
+    /// Convert a Cheat Engine table into a Freeplay one.
+    Import {
+        #[arg(help = "path to a .CT file")]
+        file: PathBuf,
+        #[arg(long, help = "process to attach to, defaults to the file name")]
+        exe: Option<String>,
+        #[arg(long, help = "write the toml here instead of printing it")]
+        out: Option<PathBuf>,
     },
     /// Running processes.
     Ps {
@@ -104,6 +113,7 @@ fn run(command: Command) -> Result<(), String> {
     match command {
         Command::Games { all } => games(all),
         Command::Play { name, dry_run } => play(&name, dry_run),
+        Command::Import { file, exe, out } => import(&file, exe.as_deref(), out.as_deref()),
         Command::Ps { filter } => list_processes(filter.as_deref()),
         Command::Cheats { table, process } => cheats(&table, process.as_deref()),
         Command::On {
@@ -214,6 +224,47 @@ fn play(name: &str, dry_run: bool) -> Result<(), String> {
   started via {what}",
         game.name
     );
+    Ok(())
+}
+
+fn import(file: &PathBuf, exe: Option<&str>, out: Option<&Path>) -> Result<(), String> {
+    let xml = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let stem = file
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let exe = exe.map(str::to_string).unwrap_or_else(|| {
+        if stem.to_lowercase().ends_with(".exe") {
+            stem.clone()
+        } else {
+            format!("{stem}.exe")
+        }
+    });
+
+    let title = stem.trim_end_matches(".exe").trim_end_matches(".EXE");
+    let imported = freeplay_table::cheatengine::import(&xml, &exe, title)?;
+
+    for skip in &imported.skipped {
+        eprintln!("  skipped {:<34} {}", truncate(&skip.name, 34), skip.why);
+    }
+    eprintln!(
+        "
+{}",
+        imported.summary()
+    );
+
+    if imported.table.cheats.is_empty() {
+        return Err("nothing in that file could be imported".into());
+    }
+
+    let toml = toml::to_string_pretty(&imported.table).map_err(|e| e.to_string())?;
+    match out {
+        Some(path) => {
+            std::fs::write(path, toml).map_err(|e| format!("{}: {e}", path.display()))?;
+            eprintln!("wrote {}", path.display());
+        }
+        None => println!("{toml}"),
+    }
     Ok(())
 }
 
