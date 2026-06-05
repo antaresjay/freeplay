@@ -6,6 +6,37 @@ next attach. No Rust, no rebuild, no release.
 If you work out where a game keeps its numbers, a pull request here helps
 everybody who plays it.
 
+## Cheat Engine tables
+
+Freeplay reads `.CT` files out of this folder too, so if somebody has already
+published one for your game you can drop it straight in. Name it after the
+process, `witcher2.exe.CT`, so Freeplay knows what to attach to.
+
+To see what you are getting before you trust it:
+
+```
+cargo run --release --bin freeplay -- import witcher2.exe.CT
+```
+
+It prints the table it would build and, on stderr, every entry it could not
+take and why. Two things never come across:
+
+- **Auto Assembler scripts.** Those are assembly with code caves and
+  allocations, and running them means injecting code into the game. Freeplay
+  does not do that, so script entries are listed as skipped rather than
+  silently dropped.
+- **Bare addresses.** An entry whose address is a plain number like
+  `1A2B3C4D5E` is wherever that value happened to live on somebody else's
+  machine on the day they scanned. Only addresses anchored to a module,
+  `game.exe+1A2B3C`, mean anything anywhere else.
+
+Cheat Engine lists pointer offsets last hop first, the way its pointer editor
+shows them. Freeplay reverses them on import, so the chain in the converted
+table reads in the order it is actually walked.
+
+Everything that does come across is a `freeze` with a guessed value, because a
+`.CT` says what and where but never how much. Change the numbers.
+
 ## The game block
 
 ```toml

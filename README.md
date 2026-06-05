@@ -106,6 +106,16 @@ format. Somebody has to sit with a debugger and work out where a game keeps its
 numbers, and that has to be redone when the game patches. The value finder is
 there so you can do that yourself in a few minutes rather than an afternoon.
 
+I am not going to pretend otherwise by shipping a pile of tables I have never
+run. A toggle that silently does nothing is worse than no toggle.
+
+**Cheat Engine tables work.** Drop a `.CT` in `tables/` named after the process
+and Freeplay converts it on load: addresses, pointer chains, types, groups. The
+community has already written these for thousands of games, so that is the
+quickest route to a game Freeplay has never heard of. Auto Assembler scripts do
+not come across, because running them means injecting code, and Freeplay does
+not do that. See [tables/README.md](tables/README.md).
+
 ## What it does not do
 
 No genre, and no "installed on" beyond the store name. Steam only keeps genre
