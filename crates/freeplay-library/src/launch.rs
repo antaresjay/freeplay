@@ -117,6 +117,14 @@ pub fn show(path: &std::path::Path) -> Result<(), String> {
     open(&path.display().to_string())
 }
 
+/// Hand a url to the browser. Nothing here fetches anything, the shell does.
+pub fn show_url(url: &str) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("only https links are opened".into());
+    }
+    open(url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

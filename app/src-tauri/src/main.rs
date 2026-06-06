@@ -40,6 +40,9 @@ struct App {
     /// Installed games. Finding them means walking every install directory,
     /// which takes seconds, so it happens once and then only when asked.
     library: Mutex<Option<Vec<InstalledGame>>>,
+    /// Parsed tables. The library list polls every few seconds and a .CT is
+    /// xml, so reparsing them on every poll is real work for no reason.
+    tables: Mutex<Option<Vec<Table>>>,
     settings: Mutex<Settings>,
 }
 
@@ -134,6 +137,19 @@ fn load_tables() -> Vec<Table> {
     Table::load_dir(tables_dir())
 }
 
+fn tables(state: &tauri::State<'_, App>) -> Vec<Table> {
+    if let Some(held) = state.tables.lock().unwrap().as_ref() {
+        return held.clone();
+    }
+    let found = load_tables();
+    *state.tables.lock().unwrap() = Some(found.clone());
+    found
+}
+
+fn forget_tables(state: &tauri::State<'_, App>) {
+    *state.tables.lock().unwrap() = None;
+}
+
 fn table_for(exe: &str) -> Option<Table> {
     load_tables().into_iter().find(|t| t.matches_process(exe))
 }
@@ -193,12 +209,15 @@ fn library(state: &tauri::State<'_, App>, refresh: bool) -> Vec<InstalledGame> {
 /// the main thread, which means the window stops answering while it works.
 #[tauri::command]
 async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<GameRow>, ()> {
+    if refresh {
+        forget_tables(&state);
+    }
     let running: Vec<String> = processes()
         .unwrap_or_default()
         .into_iter()
         .map(|p| p.name.to_lowercase())
         .collect();
-    let tables = load_tables();
+    let tables = tables(&state);
     let played = freeplay_library::play::steam();
     let (pinned, favourites) = {
         let settings = state.settings.lock().unwrap();
@@ -252,7 +271,7 @@ fn diagnostics(state: tauri::State<'_, App>) -> String {
         Some(target) => format!("attached to {} (pid {})\n", target.name(), target.pid()),
         None => "not attached\n".to_string(),
     };
-    let tables = load_tables();
+    let tables = tables(&state);
     let listed = tables
         .iter()
         .map(|t| {
@@ -272,6 +291,90 @@ fn diagnostics(state: tauri::State<'_, App>) -> String {
         tables.len()
     );
     log::report(&extra)
+}
+
+/// Convert a Cheat Engine table and keep it. Dropping the file on the window
+/// is the whole flow: nobody should have to find a folder.
+#[tauri::command]
+fn import_table(
+    state: tauri::State<'_, App>,
+    path: String,
+    exe: Option<String>,
+) -> Result<String, String> {
+    let source = PathBuf::from(&path);
+    let extension = source
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if extension != "ct" {
+        return Err(format!("{path} is not a .CT file"));
+    }
+
+    let xml = std::fs::read_to_string(&source).map_err(|e| format!("could not read it: {e}"))?;
+    let stem = source
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Whatever we are attached to beats guessing from the file name.
+    let exe = exe.unwrap_or_else(|| {
+        if stem.to_lowercase().ends_with(".exe") {
+            stem.clone()
+        } else {
+            format!("{stem}.exe")
+        }
+    });
+    let title = stem.trim_end_matches(".exe").trim_end_matches(".EXE");
+
+    let imported = freeplay_table::cheatengine::import(&xml, &exe, title)?;
+    if imported.table.cheats.is_empty() {
+        let why = imported
+            .skipped
+            .first()
+            .map(|s| {
+                format!(
+                    " Every entry was skipped, the first because it is {}.",
+                    s.why
+                )
+            })
+            .unwrap_or_default();
+        return Err(format!("Nothing in that table could be imported.{why}"));
+    }
+
+    let dir = tables_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not make {}: {e}", dir.display()))?;
+    let destination = dir.join(format!("{}.toml", exe.trim_end_matches(".exe")));
+
+    let text = toml::to_string_pretty(&imported.table).map_err(|e| e.to_string())?;
+    std::fs::write(&destination, text)
+        .map_err(|e| format!("could not write {}: {e}", destination.display()))?;
+
+    for skip in &imported.skipped {
+        tracing::info!("import skipped {:?}: {}", skip.name, skip.why);
+    }
+    tracing::info!("imported {} into {}", path, destination.display());
+    forget_tables(&state);
+
+    Ok(format!(
+        "{} for {exe}. {}",
+        imported.summary(),
+        destination.display()
+    ))
+}
+
+/// Opens a community search for this game in the browser. Freeplay itself
+/// makes no request, it hands a url to the shell the same way it hands over a
+/// steam:// link. The tables belong to the people who wrote them, so this
+/// points at them rather than shipping copies.
+#[tauri::command]
+fn find_table(name: String) -> Result<(), String> {
+    let query: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '+' })
+        .collect();
+    freeplay_library::launch::show_url(&format!(
+        "https://fearlessrevolution.com/search.php?keywords={query}&fid[]=4"
+    ))
 }
 
 #[tauri::command]
@@ -661,6 +764,8 @@ fn main() {
             save_settings,
             diagnostics,
             open_log,
+            import_table,
+            find_table,
             launch_game,
             list_processes,
             attach,
