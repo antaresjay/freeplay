@@ -957,3 +957,22 @@ input::placeholder { color: var(--faint); }
   animation: rise 0.2s var(--ease);
 }
 .toast.bad { border-color: var(--bad); }
+
+.blank-actions { display: flex; gap: 10px; justify-content: center; }
+
+/* Dropping a .CT anywhere on the window imports it. */
+.dropping::after {
+  content: "Drop the .CT file to import it";
+  position: fixed;
+  inset: 14px;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--r-lg);
+  background: rgba(var(--overlay), 0.72);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  pointer-events: none;
+}

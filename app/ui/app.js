@@ -706,6 +706,42 @@ $("copy-report").addEventListener("click", async () => {
     toast(String(e), true);
   }
 });
+async function importTable(path) {
+  const game = gameFor(open);
+  try {
+    const note = await invoke("import_table", { path, exe: game ? game.exe : null });
+    toast(note);
+    await loadGames(false);
+    await refreshCheats();
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+function searchForTable() {
+  const game = gameFor(open);
+  if (!game) return;
+  invoke("find_table", { name: game.name }).catch((e) => toast(String(e), true));
+}
+
+$("game-find-table").addEventListener("click", searchForTable);
+$("no-table-find").addEventListener("click", searchForTable);
+
+/* Dropping a .CT anywhere on the window imports it. Tauri reports the drop
+   itself, the webview never sees the file. */
+if (window.__TAURI__.event) {
+  const { listen } = window.__TAURI__.event;
+  listen("tauri://drag-enter", () => document.body.classList.add("dropping"));
+  listen("tauri://drag-leave", () => document.body.classList.remove("dropping"));
+  listen("tauri://drag-drop", (e) => {
+    document.body.classList.remove("dropping");
+    const paths = (e.payload && e.payload.paths) || [];
+    const table = paths.find((p) => p.toLowerCase().endsWith(".ct"));
+    if (!table) return toast("Drop a Cheat Engine .CT file", true);
+    importTable(table);
+  });
+}
+
 $("open-log").addEventListener("click", async () => {
   try {
     await invoke("open_log");
