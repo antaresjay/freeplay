@@ -941,6 +941,7 @@ dependencies = [
  "freeplay-core",
  "freeplay-library",
  "freeplay-session",
+ "freeplay-sync",
  "freeplay-table",
  "serde",
  "serde_json",
@@ -998,6 +999,18 @@ dependencies = [
  "freeplay-table",
  "thiserror 2.0.19",
  "tracing",
+]
+
+[[package]]
+name = "freeplay-sync"
+version = "0.1.0"
+dependencies = [
+ "freeplay-table",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tracing",
+ "windows",
 ]
 
 [[package]]
