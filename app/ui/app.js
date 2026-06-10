@@ -40,6 +40,22 @@ function applyTheme() {
   $("pinned-count").textContent = config.pinned.length
     ? `${config.pinned.length} pinned`
     : "Nothing pinned yet";
+  $("auto-update").classList.toggle("on", config.auto_update !== false);
+}
+
+async function checkForTables(manual) {
+  const label = $("tables-state");
+  label.textContent = "Checking";
+  try {
+    const note = await invoke("update_tables");
+    label.textContent = note;
+    if (manual) toast(note);
+    await loadGames(false);
+    await refreshCheats();
+  } catch (e) {
+    label.textContent = String(e);
+    if (manual) toast(String(e), true);
+  }
 }
 
 async function saveConfig(changes) {
@@ -696,6 +712,10 @@ $("game-pin").addEventListener("click", () => {
   if (open) saveConfig({ pinned: toggleIn(config.pinned, open) });
 });
 $("clear-pins").addEventListener("click", () => saveConfig({ pinned: [] }));
+$("auto-update").addEventListener("click", () =>
+  saveConfig({ auto_update: config.auto_update === false })
+);
+$("update-now").addEventListener("click", () => checkForTables(true));
 
 $("copy-report").addEventListener("click", async () => {
   try {
@@ -731,6 +751,12 @@ $("no-table-find").addEventListener("click", searchForTable);
    itself, the webview never sees the file. */
 if (window.__TAURI__.event) {
   const { listen } = window.__TAURI__.event;
+  listen("tables-updated", async (e) => {
+    toast(String(e.payload));
+    $("tables-state").textContent = String(e.payload);
+    await loadGames(false);
+    await refreshCheats();
+  });
   listen("tauri://drag-enter", () => document.body.classList.add("dropping"));
   listen("tauri://drag-leave", () => document.body.classList.remove("dropping"));
   listen("tauri://drag-drop", (e) => {

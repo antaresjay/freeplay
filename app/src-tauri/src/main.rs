@@ -25,7 +25,7 @@ mod log;
 mod settings;
 mod ui_contract;
 use settings::Settings;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[derive(Default)]
 struct App {
@@ -133,8 +133,21 @@ fn tables_dir() -> PathBuf {
     PathBuf::from("tables")
 }
 
+/// Downloaded tables, which is where anything published ends up.
+fn synced_dir() -> PathBuf {
+    freeplay_sync::cache_dir(&settings::path())
+}
+
+/// Both folders: what shipped next to the executable, and what has been
+/// fetched since. A downloaded table wins, because it is the newer one.
 fn load_tables() -> Vec<Table> {
-    Table::load_dir(tables_dir())
+    let mut tables = Table::load_dir(synced_dir());
+    for table in Table::load_dir(tables_dir()) {
+        if !tables.iter().any(|t| t.matches_process(&table.game.exe)) {
+            tables.push(table);
+        }
+    }
+    tables
 }
 
 fn tables(state: &tauri::State<'_, App>) -> Vec<Table> {
@@ -375,6 +388,16 @@ fn find_table(name: String) -> Result<(), String> {
     freeplay_library::launch::show_url(&format!(
         "https://fearlessrevolution.com/search.php?keywords={query}&fid[]=4"
     ))
+}
+
+/// Fetch published tables. Also runs once at start unless it is turned off.
+#[tauri::command]
+async fn update_tables(state: tauri::State<'_, App>) -> Result<String, String> {
+    let report = freeplay_sync::update(&synced_dir())?;
+    if report.changed() {
+        forget_tables(&state);
+    }
+    Ok(report.summary())
 }
 
 #[tauri::command]
@@ -755,6 +778,20 @@ fn main() {
             if let Some(window) = app.get_webview_window("main") {
                 set_window_icons(&window);
             }
+
+            // On a thread of its own: a slow or blocked network must never be
+            // something you wait for before the window appears.
+            if app.state::<App>().settings.lock().unwrap().auto_update {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || match freeplay_sync::update(&synced_dir()) {
+                    Ok(report) if report.changed() => {
+                        *handle.state::<App>().tables.lock().unwrap() = None;
+                        let _ = handle.emit("tables-updated", report.summary());
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!("could not fetch tables: {e}"),
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -766,6 +803,7 @@ fn main() {
             open_log,
             import_table,
             find_table,
+            update_tables,
             launch_game,
             list_processes,
             attach,

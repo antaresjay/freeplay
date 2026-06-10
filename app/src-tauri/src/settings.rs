@@ -17,6 +17,14 @@ pub struct Settings {
     /// Game keys, in the order they were pinned.
     pub pinned: Vec<String>,
     pub favourites: Vec<String>,
+    /// Fetch published tables on start. Off means Freeplay never touches the
+    /// network at all and runs on whatever is already on disk.
+    #[serde(default = "yes")]
+    pub auto_update: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -26,6 +34,7 @@ impl Default for Settings {
             accent: "amber".into(),
             pinned: Vec::new(),
             favourites: Vec::new(),
+            auto_update: true,
         }
     }
 }
