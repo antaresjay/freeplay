@@ -40,8 +40,9 @@ reason the source is here.
 
 - Finds games installed through Steam, Epic and GOG, and shows which are running
 - Shows your library with real cover art, play time and when you last played,
-  all read from what Steam already cached on your own disk. Freeplay makes no
-  network requests at all
+  all read from what Steam already cached on your own disk
+- Downloads new cheat tables by itself, so a game somebody adds today works for
+  everybody tomorrow without anyone hunting for a file
 - A page per game: art, play time, launch it, pin it to the top, favourite it
 - Marks games that ship an anti-cheat before you click them, rather than letting
   you find out at the point of refusal
@@ -116,15 +117,29 @@ quickest route to a game Freeplay has never heard of. Auto Assembler scripts do
 not come across, because running them means injecting code, and Freeplay does
 not do that. See [tables/README.md](tables/README.md).
 
+## What it sends
+
+Nothing about you. There is no account, no identifier, no telemetry, and no
+crash reporting.
+
+The one thing Freeplay does over the network is fetch cheat tables: a GET of
+`tables/index.json` from this repository, then a GET of any table file that is
+new or has changed. That is it, one host, read only, over https, using the
+certificate store Windows already has. Turn it off in settings and Freeplay
+never opens a socket, and runs on whatever is on your disk.
+
+I built it without any network at first and it was the wrong call. It meant
+every new game was somebody manually finding a file and putting it in a folder,
+which is not a trainer, it is homework.
+
 ## What it does not do
 
 No genre, and no "installed on" beyond the store name. Steam only keeps genre
-in `appinfo.vdf`, which is a binary format, and everything else would mean
-calling the store API. Freeplay does not talk to the network and I would rather
-leave a field out than break that for a line of text.
+in `appinfo.vdf`, which is a binary format, and reading it properly is more
+work than a line of text is worth.
 
-Settings live in `%APPDATA%\freeplay\settings.json`. Theme, accent, pins and
-favourites, and nothing else.
+Settings live in `%APPDATA%\freeplay\settings.json`. Downloaded tables live
+next to it in `%APPDATA%\freeplay\tables\`.
 
 ## Tables
 

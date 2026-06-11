@@ -1,5 +1,16 @@
 # Tables
 
+These are the tables Freeplay ships and updates. Add yours to `index.json` in
+the same pull request and every copy of Freeplay picks it up on next launch,
+with no release and nothing for anybody to download by hand.
+
+```json
+{"exe": "witcher2.exe", "game": "The Witcher 2", "file": "witcher2.toml", "revision": 1, "cheats": 6}
+```
+
+Bump `revision` whenever you change the file, otherwise nobody who already has
+it will fetch it again.
+
 One TOML file per game. Drop it in this folder and Freeplay picks it up on the
 next attach. No Rust, no rebuild, no release.
 
