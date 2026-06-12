@@ -51,7 +51,7 @@ pub enum Error {
     #[error("pointer chain broke at hop {hop}, address {addr:#x}")]
     BrokenChain { hop: usize, addr: usize },
 
-    #[error("target is 32-bit, freeplay only drives 64-bit processes")]
+    #[error("target is 64-bit and this build of freeplay is 32-bit, so it cannot reach all of the game's memory")]
     ArchMismatch,
 
     #[error(transparent)]

@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use crate::error::{Error, Result};
 use crate::region::{Protection, Region};
-use crate::target::{Module, Target};
+use crate::target::{Arch, Module, Target};
 
 pub struct MockTarget {
     pub base: usize,
@@ -13,6 +13,7 @@ pub struct MockTarget {
     modules: Vec<Module>,
     protection: Protection,
     mapped: bool,
+    arch: Arch,
 }
 
 impl MockTarget {
@@ -28,11 +29,25 @@ impl MockTarget {
                 guard: false,
             },
             mapped: false,
+            arch: Arch::X64,
         }
     }
 
     pub fn zeroed(base: usize, len: usize) -> Self {
         Self::new(base, vec![0u8; len])
+    }
+
+    /// Pretend to be a 32-bit game, so pointer chains can be tested at the
+    /// width they are actually walked at.
+    pub fn x86(mut self) -> Self {
+        self.arch = Arch::X86;
+        self
+    }
+
+    /// Write a pointer the way the target would store one, which is four bytes
+    /// on a 32-bit process and eight on a 64-bit one.
+    pub fn poke_pointer(&self, addr: usize, value: usize) {
+        self.poke(addr, &value.to_ne_bytes()[..self.arch.pointer_width()]);
     }
 
     pub fn with_module(mut self, name: &str, base: usize, size: usize) -> Self {
@@ -72,6 +87,10 @@ impl Target for MockTarget {
 
     fn name(&self) -> &str {
         "mock.exe"
+    }
+
+    fn arch(&self) -> Arch {
+        self.arch
     }
 
     fn modules(&self) -> Result<Vec<Module>> {

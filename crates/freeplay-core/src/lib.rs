@@ -26,7 +26,7 @@ pub use error::{Error, Result};
 pub use pattern::Pattern;
 pub use region::{Protection, Region};
 pub use scanner::Scope;
-pub use target::{Module, Target};
+pub use target::{Arch, Module, Target};
 pub use value::{Scalar, ValueKind};
 
 #[cfg(windows)]

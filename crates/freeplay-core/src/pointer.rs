@@ -96,10 +96,10 @@ fn read_hop(target: &dyn Target, addr: usize, hop: usize) -> Result<usize> {
     let next = target
         .read_pointer(addr)
         .map_err(|_| Error::BrokenChain { hop, addr })?;
-    // User space on 64-bit Windows stops well below this. Anything larger is a
-    // float or a string being misread as a pointer, so stop rather than
-    // chasing it into nothing.
-    if next == 0 || next > 0x7FFF_FFFF_FFFF {
+    // Anything past the top of user space is a float or a string being misread
+    // as a pointer, so stop rather than chasing it into nothing. Where the top
+    // is depends on how wide the target's pointers are.
+    if next == 0 || next > target.arch().ceiling() {
         return Err(Error::BrokenChain { hop, addr });
     }
     Ok(next)
@@ -203,6 +203,36 @@ mod tests {
 
         let path = PointerPath::module("game.exe", 0x100, vec![0x8, 0x4]);
         assert!(matches!(path.resolve(&t), Err(Error::BrokenChain { .. })));
+    }
+
+    /// Plenty of games worth cheating in are 32-bit. The same chain has to
+    /// walk, it just walks four bytes at a time.
+    #[test]
+    fn resolves_a_chain_in_a_32_bit_game() {
+        let t = MockTarget::zeroed(BASE, 0x2000)
+            .with_module("game.exe", BASE, 0x2000)
+            .x86();
+        t.poke_pointer(BASE + 0x100, BASE + 0x500);
+        t.poke_pointer(BASE + 0x520, BASE + 0x900);
+        t.poke(BASE + 0x908, &4242i32.to_ne_bytes());
+
+        let path = PointerPath::module("game.exe", 0x100, vec![0x20, 0x8]);
+        assert_eq!(path.resolve(&t).unwrap(), BASE + 0x908);
+    }
+
+    /// The bug this guards against: reading eight bytes where the game only
+    /// wrote four swallows the next field along, and the chain lands on an
+    /// address nothing lives at.
+    #[test]
+    fn a_32_bit_pointer_ignores_whatever_follows_it() {
+        let t = MockTarget::zeroed(BASE, 0x1000)
+            .with_module("game.exe", BASE, 0x1000)
+            .x86();
+        t.poke_pointer(BASE + 0x40, BASE + 0x200);
+        t.poke(BASE + 0x44, &0x7FFF_FFFFu32.to_ne_bytes());
+
+        let path = PointerPath::module("game.exe", 0x40, vec![0x10]);
+        assert_eq!(path.resolve(&t).unwrap(), BASE + 0x210);
     }
 
     #[test]

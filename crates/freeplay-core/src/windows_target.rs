@@ -22,7 +22,7 @@ use windows::Win32::System::Threading::{
 use crate::error::{Error, Result};
 use crate::guard;
 use crate::region::{Protection, Region};
-use crate::target::{Module, Target};
+use crate::target::{Arch, Module, Target};
 
 const STILL_RUNNING: u32 = 259;
 
@@ -36,6 +36,7 @@ pub struct WindowsTarget {
     handle: HANDLE,
     pid: u32,
     name: String,
+    arch: Arch,
 }
 
 // The handle is only ever passed to ReadProcessMemory, WriteProcessMemory and
@@ -131,7 +132,12 @@ impl WindowsTarget {
             source: os_error(e),
         })?;
 
-        let target = Self { handle, pid, name };
+        let mut target = Self {
+            handle,
+            pid,
+            name,
+            arch: Arch::X64,
+        };
 
         // Refuse before the handle is used for anything else.
         let modules = target.modules()?;
@@ -142,13 +148,25 @@ impl WindowsTarget {
             });
         }
 
-        if target.is_wow64()? {
-            return Err(Error::ArchMismatch);
-        }
-
+        target.arch = target.detect_arch()?;
         Ok(target)
     }
 
+    /// A 64-bit build reads either width, so the only combination that cannot
+    /// work is a 32-bit Freeplay against a 64-bit game: half of that game's
+    /// address space is not reachable through a 32-bit pointer.
+    fn detect_arch(&self) -> Result<Arch> {
+        if self.is_wow64()? {
+            return Ok(Arch::X86);
+        }
+        if cfg!(target_pointer_width = "32") {
+            return Err(Error::ArchMismatch);
+        }
+        Ok(Arch::X64)
+    }
+
+    /// True when the target is a 32-bit process running under the WOW64 layer.
+    /// On a 64-bit version of Windows every 32-bit game answers yes.
     fn is_wow64(&self) -> Result<bool> {
         let mut wow64 = windows::core::BOOL(0);
         unsafe { IsWow64Process(self.handle, &mut wow64) }.map_err(|e| Error::Io(os_error(e)))?;
@@ -204,6 +222,10 @@ impl Target for WindowsTarget {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn arch(&self) -> Arch {
+        self.arch
     }
 
     fn modules(&self) -> Result<Vec<Module>> {
