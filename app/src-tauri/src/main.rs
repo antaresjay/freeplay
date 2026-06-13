@@ -21,6 +21,7 @@ use freeplay_table::resolve::State as CheatState;
 use freeplay_table::Table;
 use serde::Serialize;
 
+mod community;
 mod log;
 mod settings;
 mod ui_contract;
@@ -94,6 +95,27 @@ struct Attached {
     pid: u32,
     game: String,
     table: bool,
+    /// "32-bit" or "64-bit". Worth showing, because it decides whether a
+    /// community table written for the other build will resolve at all.
+    arch: String,
+}
+
+#[derive(Serialize)]
+struct TablePreview {
+    game: String,
+    author: String,
+    notes: String,
+    verified: Vec<String>,
+    cheats: Vec<PreviewCheat>,
+}
+
+#[derive(Serialize)]
+struct PreviewCheat {
+    name: String,
+    category: String,
+    description: String,
+    /// Freeze, set once, patch. What the toggle will actually do.
+    does: String,
 }
 
 #[derive(Serialize)]
@@ -341,17 +363,15 @@ fn import_table(
 
     let imported = freeplay_table::cheatengine::import(&xml, &exe, title)?;
     if imported.table.cheats.is_empty() {
-        let why = imported
-            .skipped
-            .first()
-            .map(|s| {
-                format!(
-                    " Every entry was skipped, the first because it is {}.",
-                    s.why
-                )
-            })
-            .unwrap_or_default();
-        return Err(format!("Nothing in that table could be imported.{why}"));
+        for skip in &imported.skipped {
+            tracing::info!("import skipped {:?}: {}", skip.name, skip.why);
+        }
+        let n = imported.skipped.len();
+        return Err(format!(
+            "None of the {n} entries in that table can work without injecting code into the game, \
+             which Freeplay does not do: {}. The full list is in the log.",
+            imported.breakdown()
+        ));
     }
 
     let dir = tables_dir();
@@ -375,19 +395,52 @@ fn import_table(
     ))
 }
 
+/// What a game's table offers, without attaching to anything.
+///
+/// The detail page used to be blank until a game was running, which is the
+/// wrong way round: whether a table exists and what is in it is exactly what
+/// you want to know before deciding to start the game.
+#[tauri::command]
+async fn table_preview(
+    state: tauri::State<'_, App>,
+    exe: String,
+) -> Result<Option<TablePreview>, ()> {
+    let found = tables(&state).into_iter().find(|t| t.matches_process(&exe));
+    Ok(found.map(|table| TablePreview {
+        game: table.game.name,
+        author: table.game.author,
+        notes: table.game.notes,
+        verified: table.game.verified,
+        cheats: table
+            .cheats
+            .into_iter()
+            .map(|cheat| PreviewCheat {
+                name: cheat.name,
+                category: cheat.category.label().to_string(),
+                description: cheat.description,
+                does: cheat.action.label().to_string(),
+            })
+            .collect(),
+    }))
+}
+
+/// Opens the game's install folder.
+#[tauri::command]
+fn open_folder(dir: String) -> Result<(), String> {
+    let path = PathBuf::from(dir);
+    if !path.is_dir() {
+        return Err("that folder is not there any more".into());
+    }
+    freeplay_library::launch::show(&path)
+}
+
 /// Opens a community search for this game in the browser. Freeplay itself
 /// makes no request, it hands a url to the shell the same way it hands over a
 /// steam:// link. The tables belong to the people who wrote them, so this
 /// points at them rather than shipping copies.
 #[tauri::command]
 fn find_table(name: String) -> Result<(), String> {
-    let query: String = name
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '+' })
-        .collect();
-    freeplay_library::launch::show_url(&format!(
-        "https://fearlessrevolution.com/search.php?keywords={query}&fid[]=4"
-    ))
+    freeplay_library::launch::show_url(&community::search_url(&name))
 }
 
 /// Fetch published tables. Also runs once at start unless it is turned off.
@@ -586,6 +639,7 @@ fn attach(state: tauri::State<'_, App>, exe: String) -> Result<Attached, String>
 
     let target = WindowsTarget::attach_by_name(&exe).map_err(friendly)?;
     let pid = target.pid();
+    let arch = target.arch().label().to_string();
     let shared: Arc<dyn Target> = Arc::new(target);
 
     let table = table_for(&exe);
@@ -608,6 +662,7 @@ fn attach(state: tauri::State<'_, App>, exe: String) -> Result<Attached, String>
         pid,
         game: name,
         table: has_table,
+        arch,
     })
 }
 
@@ -803,6 +858,8 @@ fn main() {
             open_log,
             import_table,
             find_table,
+            table_preview,
+            open_folder,
             update_tables,
             launch_game,
             list_processes,
