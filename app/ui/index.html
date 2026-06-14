@@ -112,11 +112,19 @@
               <svg viewBox="0 0 20 20"><path d="M10 2.8l2.3 4.6 5.1.7-3.7 3.6.9 5.1L10 14.4l-4.6 2.4.9-5.1L2.6 8.1l5.1-.7z"/></svg>
             </button>
             <button id="game-find-table" class="ghost" title="Search the community for a Cheat Engine table">Find a table</button>
+            <button id="game-folder" class="ghost" title="Open the install folder">Folder</button>
             <button id="game-pin" class="icon-toggle" title="Pin to the top">
               <svg viewBox="0 0 20 20"><path d="M12.5 2.5l5 5-2.2.6-3.3 3.3-.4 3.4-5.4-5.4 3.4-.4 3.3-3.3z"/><path d="M6.2 13.8l-3.4 3.4"/></svg>
             </button>
           </div>
         </div>
+      </div>
+
+      <div id="game-detail" class="detail">
+        <div class="detail-row"><span>Executable</span><b id="detail-exe"></b></div>
+        <div class="detail-row"><span>Installed in</span><b id="detail-dir" class="path"></b></div>
+        <div class="detail-row" id="detail-id-row"><span>App id</span><b id="detail-id"></b></div>
+        <div class="detail-row" id="detail-guard-row"><span>Anti-cheat</span><b id="detail-guard"></b></div>
       </div>
 
       <div id="attach-note" class="banner" hidden>
@@ -125,6 +133,19 @@
           <strong id="attach-note-title"></strong>
           <p id="attach-note-body"></p>
         </div>
+      </div>
+
+      <div id="table-card" class="table-card" hidden>
+        <div class="table-head">
+          <div>
+            <h3 id="table-title"></h3>
+            <p id="table-by" class="dim"></p>
+          </div>
+          <span id="table-count" class="tag"></span>
+        </div>
+        <p id="table-notes" class="table-notes" hidden></p>
+        <div id="table-preview" class="preview"></div>
+        <p id="table-locked" class="dim locked"></p>
       </div>
 
       <div id="cheat-groups"></div>

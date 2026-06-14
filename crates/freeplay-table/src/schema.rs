@@ -207,6 +207,19 @@ pub enum Action {
     Bytes { replacement: String },
 }
 
+impl Action {
+    /// What this does, in two words, for a list somebody is reading before
+    /// they have attached to anything.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Action::Freeze { .. } => "Freeze",
+            Action::Set { .. } => "Set once",
+            Action::Nop { .. } => "Patch out",
+            Action::Bytes { .. } => "Patch",
+        }
+    }
+}
+
 /// Wrapper so a value type can be written as `"f32"` in TOML.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeName(pub ValueKind);

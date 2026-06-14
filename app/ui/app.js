@@ -350,9 +350,21 @@ function drawGamePage() {
   if (seen) facts.appendChild(fact("Last played", seen));
   if (attached && attached.process === game.exe) {
     facts.appendChild(fact("Status", `Attached, pid ${attached.pid}`, true));
+    if (attached.arch) facts.appendChild(fact("Build", attached.arch));
   } else if (game.running) {
     facts.appendChild(fact("Status", "Running", true));
   }
+
+  $("detail-exe").textContent = game.exe || "not found";
+  $("detail-dir").textContent = game.dir;
+  $("detail-dir").title = game.dir;
+  $("detail-id-row").hidden = !game.app_id;
+  $("detail-id").textContent = game.app_id || "";
+  $("detail-guard-row").hidden = !game.guard;
+  $("detail-guard").textContent = game.guard || "";
+  $("game-folder").disabled = !game.dir;
+
+  drawTableCard(game);
 
   $("game-fav").classList.toggle("on", game.favourite);
   $("game-pin").classList.toggle("on", game.pinned);
@@ -384,6 +396,93 @@ function drawGamePage() {
     $("cheat-groups").innerHTML = "";
     $("no-table").hidden = true;
   }
+}
+
+/* What the table holds, drawn before anything is attached. Reading it is the
+   point: you want to know whether a game is worth starting. */
+async function drawTableCard(game) {
+  const card = $("table-card");
+  const isAttached = attached && attached.process === game.exe;
+
+  // Once attached the live list below says all of this, with working toggles.
+  if (isAttached || !game.exe) {
+    card.hidden = true;
+    return;
+  }
+
+  let table = null;
+  try {
+    table = await invoke("table_preview", { exe: game.exe });
+  } catch {
+    card.hidden = true;
+    return;
+  }
+
+  // The page may have moved on while that was in flight.
+  if (open !== game.key) return;
+
+  if (!table) {
+    card.hidden = true;
+    $("no-table").hidden = false;
+    return;
+  }
+
+  $("no-table").hidden = true;
+  card.hidden = false;
+  $("table-title").textContent = table.game;
+
+  const by = [];
+  if (table.author) by.push(`by ${table.author}`);
+  if (table.verified.length) by.push(`checked against ${table.verified.join(", ")}`);
+  $("table-by").textContent = by.join(", ");
+  $("table-by").hidden = !by.length;
+
+  $("table-notes").textContent = table.notes;
+  $("table-notes").hidden = !table.notes;
+
+  const n = table.cheats.length;
+  $("table-count").textContent = `${n} ${n === 1 ? "cheat" : "cheats"}`;
+
+  const host = $("table-preview");
+  host.innerHTML = "";
+  const byCategory = new Map();
+  for (const cheat of table.cheats) {
+    if (!byCategory.has(cheat.category)) byCategory.set(cheat.category, []);
+    byCategory.get(cheat.category).push(cheat);
+  }
+
+  for (const [category, items] of byCategory) {
+    const group = document.createElement("div");
+    group.className = "preview-group";
+
+    const heading = document.createElement("h4");
+    heading.textContent = category;
+    group.appendChild(heading);
+
+    for (const item of items) {
+      const row = document.createElement("div");
+      row.className = "preview-row";
+
+      const name = document.createElement("span");
+      name.className = "preview-name";
+      name.textContent = item.name;
+
+      const does = document.createElement("span");
+      does.className = "preview-does";
+      does.textContent = item.does;
+
+      row.append(name, does);
+      if (item.description) row.title = item.description;
+      group.appendChild(row);
+    }
+    host.appendChild(group);
+  }
+
+  $("table-locked").textContent = game.guard
+    ? "Off limits while this game ships an anti-cheat."
+    : game.running
+      ? "Attach to switch these on."
+      : "Press Play, then attach to switch these on.";
 }
 
 /* ---------- attaching ---------- */
@@ -746,6 +845,12 @@ function searchForTable() {
 
 $("game-find-table").addEventListener("click", searchForTable);
 $("no-table-find").addEventListener("click", searchForTable);
+
+$("game-folder").addEventListener("click", () => {
+  const game = gameFor(open);
+  if (!game) return;
+  invoke("open_folder", { dir: game.dir }).catch((e) => toast(String(e), true));
+});
 
 /* Dropping a .CT anywhere on the window imports it. Tauri reports the drop
    itself, the webview never sees the file. */

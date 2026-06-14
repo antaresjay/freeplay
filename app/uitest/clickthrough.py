@@ -39,6 +39,16 @@ const GAMES = [
    guard:"easyanticheat", minutes:73451, last_played:1786142235, pinned:false, favourite:false}
 ];
 
+const TABLE = {
+  game: "The Witcher 2", author: "somebody", notes: "tested on the enhanced edition",
+  verified: ["3.5.0.1"],
+  cheats: [
+    {name:"Infinite Vitality", category:"Player", description:"never die", does:"Freeze"},
+    {name:"Infinite Vigor", category:"Player", description:"signs never run out", does:"Freeze"},
+    {name:"Orens", category:"Resources", description:"money", does:"Set once"}
+  ]
+};
+
 window.__calls = [];
 window.__TAURI__ = {
   core: {
@@ -52,7 +62,11 @@ window.__TAURI__ = {
         case "game_art": return {cover:null, hero:null, logo:null};
         case "cheats": return [];
         case "list_processes": return [{pid:1234, name:"witcher2.exe"}];
-        case "attach": return {process:"witcher2.exe", pid:1234, game:"The Witcher 2", table:false};
+        case "attach":
+          return {process:"witcher2.exe", pid:1234, game:"The Witcher 2",
+                  table:false, arch:"32-bit"};
+        case "table_preview":
+          return TABLE;
         default: return null;
       }
     }
@@ -88,6 +102,23 @@ PROBE = r"""
     const facts = document.querySelectorAll("#game-facts .fact").length;
     note(facts >= 2, "game page shows facts (" + facts + ")");
     note(!!document.getElementById("game-play"), "game page has a play button");
+
+    note(!!document.getElementById("detail-exe").textContent,
+         "detail rows name the executable");
+    note(document.getElementById("detail-dir").textContent.length > 0,
+         "detail rows show the install folder");
+
+    // The whole point of the card: what the table holds, before attaching.
+    note(visible("table-card"), "table card shows without attaching");
+    const rows = document.querySelectorAll("#table-preview .preview-row").length;
+    note(rows === 3, "table card lists every cheat (" + rows + ")");
+    const groups = document.querySelectorAll("#table-preview .preview-group").length;
+    note(groups === 2, "table card groups them by category (" + groups + ")");
+    note(document.getElementById("table-count").textContent === "3 cheats",
+         "table card counts the cheats");
+    note(document.getElementById("table-locked").textContent.length > 0,
+         "table card says why the toggles are not there yet");
+    note(!visible("no-table"), "no-table notice stays hidden when there is a table");
 
     document.getElementById("game-play").click();
     await settle(300);

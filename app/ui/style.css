@@ -660,6 +660,114 @@ input::placeholder { color: var(--faint); }
 
 /* ---------- cheats ---------- */
 
+/* ---------- detail rows ---------- */
+
+.detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 2px 26px;
+  padding: 14px 0 22px;
+  border-bottom: 1px solid var(--line-soft);
+  margin-bottom: 22px;
+}
+.detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 3px 0;
+}
+.detail-row span {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.detail-row b {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--dim);
+  min-width: 0;
+}
+/* Install paths are long and the interesting end is the last folder. */
+.detail-row b.path {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+/* ---------- what a table holds, before attaching ---------- */
+
+.table-card {
+  padding: 18px 20px 20px;
+  margin-bottom: 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--panel);
+}
+.table-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.table-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.table-head p { margin: 3px 0 0; }
+.tag {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 650;
+}
+.table-notes {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--dim);
+  max-width: 70ch;
+}
+
+.preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px 26px;
+}
+.preview-group h4 {
+  margin: 0 0 6px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.preview-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.preview-row:last-child { border-bottom: none; }
+.preview-name { font-size: 12.5px; color: var(--dim); }
+.preview-does {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.locked { margin: 16px 0 0; }
+
 .group { margin-bottom: 26px; }
 .group h3 {
   margin: 0 0 11px;
