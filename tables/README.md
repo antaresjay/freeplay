@@ -45,6 +45,10 @@ Cheat Engine lists pointer offsets last hop first, the way its pointer editor
 shows them. Freeplay reverses them on import, so the chain in the converted
 table reads in the order it is actually walked.
 
+Tables for 32-bit games work the same way. Freeplay reads the process's pointer
+width off the process itself, so a chain written for a 32-bit build is walked
+four bytes at a time without anything in the table saying so.
+
 Everything that does come across is a `freeze` with a guessed value, because a
 `.CT` says what and where but never how much. Change the numbers.
 

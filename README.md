@@ -1,40 +1,55 @@
 # Freeplay
 
-A game trainer for Windows that is free, open source, and does not want your
-email address.
+Freeplay is an open source Windows game modification framework written in Rust.
+It discovers installed games, attaches to single player processes, scans memory,
+resolves pointer chains and applies configurable runtime modifications, through
+either a native desktop application or a command line tool.
+
+Modifications are declarative. A game is described by a TOML table saying where
+its values live and what to do with them, so adding a game needs no Rust and no
+release. Freeplay never injects or executes code inside a game, which is a
+deliberate boundary rather than a missing feature.
+
+It is free, it does not want your email address, and it refuses to attach to
+anything running an anti-cheat.
 
 Named after the arcade cabinet setting that gives you unlimited credits without
 feeding coins into the slot.
 
-## Why I built this
+## Architecture
 
-I play a lot of single player games and I use trainers. Infinite money in a
-Witcher game, skipping a mission timer I have already failed six times, giving
-myself the gear I cannot be bothered to grind for. Nobody else is affected. It
-is my save file and my evening.
+```
+              app (Tauri desktop)          freeplay-cli
+                       └─────────┬──────────────┘
+      ┌────────────────┬─────────┴─────┬─────────────────┐
+      │                │               │                 │
+freeplay-sync   freeplay-session   freeplay-library   freeplay-table
+      │                │                                 │
+      └────────────────┴────────┬────────────────────────┘
+                                │
+                          freeplay-core
+                                │
+                         windows_target.rs
+```
 
-Every way of doing that is bad in a different way.
+Every Windows API call lives in one file behind a trait, so nothing above
+`freeplay-core` knows it is running on Windows. Reading another process on Linux
+is `process_vm_readv`, so Steam Deck support later is a new module rather than a
+rewrite.
 
-WeMod works well and looks good, but it is closed source, it wants an account,
-and the parts you actually want sit behind a subscription. Paying monthly to
-give myself infinite arrows in a game I already bought feels ridiculous.
+`freeplay-library` sits apart on purpose. Finding installed games reads store
+metadata off your own disk and never touches a process, so it has no reason to
+depend on the memory engine and does not.
 
-The free trainers are single exe files from sites buried in ads, uploaded by
-someone you have never heard of, and the instructions tell you to disable your
-antivirus and run them as administrator so they can write into another
-program's memory. I am not doing that.
-
-Cheat Engine is open source and can do anything, which is also the problem. It
-is a tool for people who already know what a pointer chain is. Most people just
-want to tick a box that says infinite health.
-
-So there is a gap. Something as easy as WeMod, as open as Cheat Engine, free,
-and not asking you to log in.
-
-Freeplay is open source specifically because of what it does. A program that
-attaches to your games and writes into their memory is a program you should be
-able to read before you trust it. That is not a marketing line, it is the whole
-reason the source is here.
+| Crate | What it does |
+| --- | --- |
+| `freeplay-core` | Process access, scanning, pointer chains, patching |
+| `freeplay-table` | Table format, `.CT` import, turning a locator into an address |
+| `freeplay-session` | An attached game with cheats held on |
+| `freeplay-library` | Finding installed games |
+| `freeplay-sync` | Fetching published tables |
+| `freeplay-cli` | Command line driver |
+| `app` | Tauri desktop application |
 
 ## What it does
 
@@ -48,7 +63,10 @@ reason the source is here.
   you find out at the point of refusal
 - Light and dark, follows Windows by default, and five accents if you dislike
   the one I picked
-- Attaches to a game and lists the cheats available for it
+- Attaches to a game and lists the cheats available for it, 32-bit or 64-bit,
+  since plenty of the games worth cheating in are still 32-bit
+- Shows what a game's table holds before you attach, so you can see whether it
+  is worth starting
 - Only offers cheats that work right now. Anything that cannot resolve is greyed
   out with the reason, instead of being a toggle that silently does nothing
 - Finds values yourself: search for 100, take damage, search again, keep going
@@ -66,6 +84,25 @@ others are all refused before the process handle is used for anything.
 Two reasons. Cheating in multiplayer ruins the game for people who did nothing
 to deserve it. And it gets accounts banned, which is a miserable thing to happen
 to somebody because a tool let them.
+
+## Why I built this
+
+I mostly use trainers on a second playthrough. I like finishing a game properly
+first, then on the way back through I would rather skip the grind I have already
+done, or get past the one section that beat me six times.
+
+The existing options are all decent, they just did not fit what I wanted. WeMod
+is polished, but it wants an account and the useful parts are behind a
+subscription. The free trainers are single exe files from sites I do not know,
+and I am wary of giving one of those permission to write into another program's
+memory. Cheat Engine does all of this and far more, but it assumes you already
+know what a pointer chain is.
+
+So I wanted something in between: as easy as WeMod, as open as Cheat Engine, no
+login.
+
+Being open source matters more than usual here. A program that attaches to your
+games and writes into their memory is one you should be able to read first.
 
 ## Running it
 
@@ -113,9 +150,15 @@ run. A toggle that silently does nothing is worse than no toggle.
 **Cheat Engine tables work.** Drop a `.CT` in `tables/` named after the process
 and Freeplay converts it on load: addresses, pointer chains, types, groups. The
 community has already written these for thousands of games, so that is the
-quickest route to a game Freeplay has never heard of. Auto Assembler scripts do
-not come across, because running them means injecting code, and Freeplay does
-not do that. See [tables/README.md](tables/README.md).
+quickest route to a game Freeplay has never heard of.
+
+Auto Assembler scripts do not come across. Those are assembly with code caves
+and allocations, and running one means injecting and executing code inside the
+game. Freeplay applies declarative memory modifications only, and deliberately
+does not execute injected scripts or arbitrary code. That is the line the whole
+design sits on: every write Freeplay makes is described in a file you can read,
+so script entries are reported as skipped rather than quietly dropped. See
+[tables/README.md](tables/README.md).
 
 ## What it sends
 
@@ -169,20 +212,7 @@ hops = ["+0x28", "+0x1F0"]
 See [tables/README.md](tables/README.md) for the full format, including code
 patching and rip-relative operands.
 
-## Layout
-
-| Crate | What it does |
-| --- | --- |
-| `freeplay-core` | Process access, scanning, pointer chains, patching |
-| `freeplay-table` | Table format and turning a locator into an address |
-| `freeplay-session` | An attached game with cheats held on |
-| `freeplay-library` | Finding installed games |
-| `freeplay-cli` | Command line driver |
-| `app` | Tauri desktop application |
-
-Every Windows API call lives in one file, `freeplay-core/src/windows_target.rs`,
-behind a trait. Reading another process on Linux is `process_vm_readv`, so
-Steam Deck support later is a new module rather than a rewrite.
+## Tests
 
 ```
 cargo test

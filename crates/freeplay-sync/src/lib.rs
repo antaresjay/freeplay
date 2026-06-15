@@ -247,15 +247,17 @@ mod tests {
         }
     }
 
-    fn temp() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("freeplay-sync-{}", std::process::id()));
+    /// One directory per test. These run in parallel in the same process, so a
+    /// shared path means one test wiping another's downloads mid run.
+    fn temp(test: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("freeplay-sync-{}-{test}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
     }
 
     #[test]
     fn downloads_a_table_it_does_not_have() {
-        let dir = temp();
+        let dir = temp("downloads_a_table_it_does_not_have");
         let fetch = server(vec![("index.json", INDEX), ("witcher2.toml", TABLE)]);
         let report = update_from(CATALOG, &dir, &fetch).unwrap();
 
@@ -265,7 +267,7 @@ mod tests {
 
     #[test]
     fn does_not_download_the_same_revision_twice() {
-        let dir = temp();
+        let dir = temp("does_not_download_the_same_revision_twice");
         let fetch = server(vec![("index.json", INDEX), ("witcher2.toml", TABLE)]);
         update_from(CATALOG, &dir, &fetch).unwrap();
 
@@ -276,7 +278,7 @@ mod tests {
 
     #[test]
     fn a_bumped_revision_is_fetched_again() {
-        let dir = temp();
+        let dir = temp("a_bumped_revision_is_fetched_again");
         let fetch = server(vec![("index.json", INDEX), ("witcher2.toml", TABLE)]);
         update_from(CATALOG, &dir, &fetch).unwrap();
 
@@ -291,7 +293,7 @@ mod tests {
     /// must never reach the folder the app loads from.
     #[test]
     fn a_broken_table_is_never_written() {
-        let dir = temp();
+        let dir = temp("a_broken_table_is_never_written");
         let fetch = server(vec![
             ("index.json", INDEX),
             ("witcher2.toml", "not toml {{{"),
@@ -307,7 +309,7 @@ mod tests {
     /// climb out of the folder.
     #[test]
     fn a_file_name_cannot_be_a_path() {
-        let dir = temp();
+        let dir = temp("a_file_name_cannot_be_a_path");
         let evil = r#"{"version":1,"tables":[
             {"exe":"a.exe","game":"Evil","file":"../../settings.json","revision":1}
         ]}"#;
@@ -321,7 +323,7 @@ mod tests {
 
     #[test]
     fn an_index_from_the_future_says_so_rather_than_guessing() {
-        let dir = temp();
+        let dir = temp("an_index_from_the_future_says_so_rather_than_guessing");
         let future = r#"{"version":9,"tables":[]}"#;
         let future: &'static str = Box::leak(future.to_string().into_boxed_str());
         let fetch = server(vec![("index.json", future)]);
@@ -332,7 +334,7 @@ mod tests {
 
     #[test]
     fn one_bad_table_does_not_stop_the_others() {
-        let dir = temp();
+        let dir = temp("one_bad_table_does_not_stop_the_others");
         let two = r#"{"version":1,"tables":[
             {"exe":"a.exe","game":"Broken","file":"broken.toml","revision":1},
             {"exe":"witcher2.exe","game":"The Witcher 2","file":"witcher2.toml","revision":1}

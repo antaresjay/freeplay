@@ -22,6 +22,7 @@ use crate::schema::{Action, Category, Cheat, Game, Hop, Locator, Number, Table, 
 pub struct Skipped {
     pub name: String,
     pub why: String,
+    pub blocker: Blocker,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +39,70 @@ impl Imported {
             self.skipped.len()
         )
     }
+
+    /// Why nothing came across, counted by reason.
+    ///
+    /// Naming the first skipped entry and stopping is useless on a table where
+    /// every entry failed for one of two reasons, which is the usual shape:
+    /// the scripts do the work and the values hang off what the scripts found.
+    pub fn breakdown(&self) -> String {
+        let mut scripts = 0usize;
+        let mut symbols: Vec<&str> = Vec::new();
+        let mut other = 0usize;
+
+        for skip in &self.skipped {
+            match &skip.blocker {
+                Blocker::Script => scripts += 1,
+                Blocker::Symbol(name) => {
+                    if !symbols.contains(&name.as_str()) {
+                        symbols.push(name);
+                    }
+                }
+                Blocker::Other => other += 1,
+            }
+        }
+
+        let anchored = self
+            .skipped
+            .iter()
+            .filter(|s| matches!(s.blocker, Blocker::Symbol(_)))
+            .count();
+
+        let mut parts = Vec::new();
+        if scripts > 0 {
+            parts.push(format!(
+                "{scripts} {} assembly that has to run inside the game",
+                if scripts == 1 { "is" } else { "are" }
+            ));
+        }
+        if anchored > 0 {
+            symbols.sort_unstable();
+            parts.push(format!(
+                "{anchored} hang off {}, {}",
+                symbols.join(" and "),
+                if symbols.len() == 1 {
+                    "a name one of those scripts writes down while it runs"
+                } else {
+                    "names those scripts write down while they run"
+                }
+            ));
+        }
+        if other > 0 {
+            parts.push(format!("{other} could not be read"));
+        }
+        parts.join(", ")
+    }
+}
+
+/// Why an entry could not come across, kept separate from the wording so the
+/// reasons can be counted rather than only printed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Blocker {
+    /// Auto Assembler. Needs an assembler and code injection.
+    Script,
+    /// Anchored to a name a script registers at runtime.
+    Symbol(String),
+    Other,
 }
 
 /// One `<CheatEntry>`, with its children if it is a group.
@@ -175,30 +240,41 @@ fn convert(
     skipped: &mut Vec<Skipped>,
     used: &mut HashSet<String>,
 ) {
-    // A node with children is a heading. Its name is the best category hint
-    // the file has, so carry it down.
-    if !entry.children.is_empty() {
-        let heading = entry.description.clone();
-        for child in &entry.children {
-            convert(child, Some(&heading), out, skipped, used);
-        }
-        return;
-    }
-
     let name = if entry.description.is_empty() {
         "unnamed".to_string()
     } else {
         entry.description.clone()
     };
 
-    if entry.script
+    let is_script = entry.script
         || entry
             .variable_type
-            .eq_ignore_ascii_case("Auto Assembler Script")
-    {
+            .eq_ignore_ascii_case("Auto Assembler Script");
+
+    // A node with children is a heading. Its name is the best category hint
+    // the file has, so carry it down. It can be a script as well as a heading,
+    // which is the usual shape: the script finds the player and everything
+    // underneath it reads fields off what it found. Report the script in that
+    // case rather than treating the entry as nothing but a label.
+    if !entry.children.is_empty() {
+        if is_script {
+            skipped.push(Skipped {
+                name: name.clone(),
+                why: "an auto assembler script, which needs code injection".into(),
+                blocker: Blocker::Script,
+            });
+        }
+        for child in &entry.children {
+            convert(child, Some(&name), out, skipped, used);
+        }
+        return;
+    }
+
+    if is_script {
         skipped.push(Skipped {
             name,
             why: "an auto assembler script, which needs code injection".into(),
+            blocker: Blocker::Script,
         });
         return;
     }
@@ -210,22 +286,32 @@ fn convert(
                 "value type {:?} does not map onto anything",
                 entry.variable_type
             ),
+            blocker: Blocker::Other,
         });
         return;
     };
 
     let Some((module, offset)) = split_address(&entry.address) else {
-        skipped.push(Skipped {
-            name,
-            why: if entry.address.is_empty() {
-                "no address".into()
-            } else {
+        let (why, blocker) = if entry.address.is_empty() {
+            ("no address".to_string(), Blocker::Other)
+        } else if let Some(symbol) = symbol_in(&entry.address) {
+            (
+                format!(
+                    "anchored to {symbol}, which is not an address in the game but a name one of \
+                     the scripts writes down while it runs"
+                ),
+                Blocker::Symbol(symbol),
+            )
+        } else {
+            (
                 format!(
                     "address {:?} is not anchored to a module, so it means nothing on another machine",
                     entry.address
-                )
-            },
-        });
+                ),
+                Blocker::Other,
+            )
+        };
+        skipped.push(Skipped { name, why, blocker });
         return;
     };
 
@@ -254,6 +340,27 @@ fn convert(
             value: freeze_value(kind),
         },
     });
+}
+
+/// A name an Auto Assembler script registered, rather than an address.
+///
+/// This is how nearly every table worth having is built. The script scans for
+/// an instruction, hooks it, and writes whatever register held the player into
+/// a slot it allocated. Every value entry then hangs off that slot's name. The
+/// name is meaningless until the script has run inside the game, so there is
+/// nothing for Freeplay to point at, and saying "that is not a module" about
+/// it explains nothing.
+fn symbol_in(address: &str) -> Option<String> {
+    let head = address.trim().split(['+', '-']).next()?.trim();
+
+    // A module is a file name and a bare number is an address. Neither is this.
+    if head.is_empty() || head.contains('.') || head.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    if head.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return Some(head.to_string());
+    }
+    None
 }
 
 /// Cheat Engine writes `game.exe+1A2B3C`, sometimes quoted, sometimes with the
