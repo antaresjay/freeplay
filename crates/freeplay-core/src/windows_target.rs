@@ -11,8 +11,9 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     MODULEENTRY32W, PROCESSENTRY32W, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Memory::{
-    VirtualProtectEx, VirtualQueryEx, MEMORY_BASIC_INFORMATION, MEM_COMMIT, MEM_IMAGE, MEM_MAPPED,
-    PAGE_EXECUTE_READWRITE, PAGE_PROTECTION_FLAGS,
+    VirtualAllocEx, VirtualFreeEx, VirtualProtectEx, VirtualQueryEx, MEMORY_BASIC_INFORMATION,
+    MEM_COMMIT, MEM_FREE, MEM_IMAGE, MEM_MAPPED, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE_READWRITE,
+    PAGE_PROTECTION_FLAGS,
 };
 use windows::Win32::System::Threading::{
     GetExitCodeProcess, IsWow64Process, OpenProcess, PROCESS_QUERY_INFORMATION,
@@ -399,5 +400,85 @@ impl Target for WindowsTarget {
     fn alive(&self) -> bool {
         let mut code = 0u32;
         unsafe { GetExitCodeProcess(self.handle, &mut code) }.is_ok() && code == STILL_RUNNING
+    }
+
+    fn allocate(&self, size: usize, near: Option<usize>) -> Result<usize> {
+        if let Some(anchor) = near {
+            if let Some(addr) = self.allocate_near(size, anchor) {
+                return Ok(addr);
+            }
+            if self.arch == Arch::X64 {
+                return Err(Error::NoRoomNearby { anchor });
+            }
+        }
+
+        let addr = unsafe {
+            VirtualAllocEx(
+                self.handle,
+                None,
+                size,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_EXECUTE_READWRITE,
+            )
+        };
+        if addr.is_null() {
+            return Err(Error::Io(io::Error::last_os_error()));
+        }
+        Ok(addr as usize)
+    }
+
+    fn release(&self, addr: usize) -> Result<()> {
+        unsafe { VirtualFreeEx(self.handle, addr as *mut c_void, 0, MEM_RELEASE) }
+            .map_err(|e| Error::Io(os_error(e)))
+    }
+}
+
+impl WindowsTarget {
+    fn allocate_near(&self, size: usize, anchor: usize) -> Option<usize> {
+        const GRANULARITY: usize = 0x10000;
+        const REACH: usize = 0x7000_0000;
+
+        let mut offset = GRANULARITY;
+        while offset < REACH {
+            for candidate in [anchor.checked_sub(offset), anchor.checked_add(offset)]
+                .into_iter()
+                .flatten()
+            {
+                let base = candidate & !(GRANULARITY - 1);
+                if base == 0 {
+                    continue;
+                }
+                if !self.is_free(base) {
+                    continue;
+                }
+                let addr = unsafe {
+                    VirtualAllocEx(
+                        self.handle,
+                        Some(base as *const c_void),
+                        size,
+                        MEM_COMMIT | MEM_RESERVE,
+                        PAGE_EXECUTE_READWRITE,
+                    )
+                };
+                if !addr.is_null() {
+                    return Some(addr as usize);
+                }
+            }
+            offset += GRANULARITY;
+        }
+        None
+    }
+
+    fn is_free(&self, addr: usize) -> bool {
+        let mut info = MEMORY_BASIC_INFORMATION::default();
+        let written = unsafe {
+            VirtualQueryEx(
+                self.handle,
+                Some(addr as *const c_void),
+                &mut info,
+                size_of::<MEMORY_BASIC_INFORMATION>(),
+            )
+        };
+        written != 0 && info.State == MEM_FREE
     }
 }

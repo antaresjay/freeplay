@@ -14,6 +14,7 @@ pub struct MockTarget {
     protection: Protection,
     mapped: bool,
     arch: Arch,
+    allocations: Mutex<Vec<(usize, usize)>>,
 }
 
 impl MockTarget {
@@ -30,6 +31,7 @@ impl MockTarget {
             },
             mapped: false,
             arch: Arch::X64,
+            allocations: Mutex::new(Vec::new()),
         }
     }
 
@@ -73,6 +75,10 @@ impl MockTarget {
 
     pub fn poke_usize(&self, addr: usize, value: usize) {
         self.poke(addr, &value.to_ne_bytes());
+    }
+
+    pub fn live_allocations(&self) -> usize {
+        self.allocations.lock().unwrap().len()
     }
 
     pub fn snapshot(&self) -> Vec<u8> {
@@ -139,6 +145,20 @@ impl Target for MockTarget {
     }
 
     fn restore_protection(&self, _addr: usize, _len: usize, _previous: u32) -> Result<()> {
+        Ok(())
+    }
+
+    fn allocate(&self, size: usize, _near: Option<usize>) -> Result<usize> {
+        let mut memory = self.memory.lock().unwrap();
+        let addr = self.base + memory.len();
+        let grown = memory.len() + size;
+        memory.resize(grown, 0);
+        self.allocations.lock().unwrap().push((addr, size));
+        Ok(addr)
+    }
+
+    fn release(&self, addr: usize) -> Result<()> {
+        self.allocations.lock().unwrap().retain(|(a, _)| *a != addr);
         Ok(())
     }
 

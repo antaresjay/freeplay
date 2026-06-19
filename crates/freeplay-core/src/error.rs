@@ -54,6 +54,12 @@ pub enum Error {
     #[error("target is 64-bit and this build of freeplay is 32-bit, so it cannot reach all of the game's memory")]
     ArchMismatch,
 
+    #[error("this target does not support {0}")]
+    Unsupported(&'static str),
+
+    #[error("no free memory within reach of {anchor:#x} to put a code cave in")]
+    NoRoomNearby { anchor: usize },
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

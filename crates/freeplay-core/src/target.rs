@@ -83,6 +83,18 @@ pub trait Target: Send + Sync {
     fn make_writable(&self, addr: usize, len: usize) -> Result<u32>;
     fn restore_protection(&self, addr: usize, len: usize, previous: u32) -> Result<()>;
 
+    /// Reserve executable memory inside the target.
+    ///
+    /// `near` matters on 64-bit: a five byte jump reaches two gigabytes, so a
+    /// cave further away than that cannot be hooked without a longer detour.
+    fn allocate(&self, _size: usize, _near: Option<usize>) -> Result<usize> {
+        Err(Error::Unsupported("allocating inside the target"))
+    }
+
+    fn release(&self, _addr: usize) -> Result<()> {
+        Err(Error::Unsupported("releasing memory inside the target"))
+    }
+
     fn alive(&self) -> bool;
 
     fn read_bytes(&self, addr: usize, len: usize) -> Result<Vec<u8>> {

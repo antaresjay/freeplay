@@ -935,6 +935,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "freeplay-aa"
+version = "0.1.0"
+dependencies = [
+ "freeplay-asm",
+ "freeplay-core",
+ "thiserror 2.0.19",
+ "tracing",
+]
+
+[[package]]
 name = "freeplay-app"
 version = "0.1.0"
 dependencies = [
@@ -951,6 +961,13 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "windows",
+]
+
+[[package]]
+name = "freeplay-asm"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.19",
 ]
 
 [[package]]
