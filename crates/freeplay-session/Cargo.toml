@@ -10,6 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 freeplay-core = { path = "../freeplay-core" }
+freeplay-aa = { path = "../freeplay-aa" }
 freeplay-table = { path = "../freeplay-table" }
 thiserror.workspace = true
 tracing.workspace = true

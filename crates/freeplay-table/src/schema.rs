@@ -1,5 +1,3 @@
-//! What a table file looks like on disk.
-
 use freeplay_core::value::{Scalar, ValueKind};
 use serde::{Deserialize, Serialize};
 
@@ -13,12 +11,9 @@ pub struct Table {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Game {
     pub name: String,
-    /// Executable to attach to, matched case insensitively.
     pub exe: String,
     #[serde(default)]
     pub notes: String,
-    /// Game builds this table was actually checked against. A mismatch is a
-    /// warning rather than a refusal, since signatures often survive a patch.
     #[serde(default)]
     pub verified: Vec<String>,
     #[serde(default)]
@@ -57,11 +52,10 @@ pub struct Cheat {
     pub category: Category,
     #[serde(default)]
     pub description: String,
-    /// Shown in the interface before the toggle is flipped. Use it for things
-    /// like "only works once you are in a mission".
     #[serde(default)]
     pub hint: String,
-    pub locator: Locator,
+    #[serde(default)]
+    pub locator: Option<Locator>,
     #[serde(flatten)]
     pub action: Action,
 }
@@ -70,11 +64,9 @@ fn default_category() -> Category {
     Category::Misc
 }
 
-/// How to find the address.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "find", rename_all = "lowercase")]
 pub enum Locator {
-    /// A fixed offset inside a module. Survives ASLR, breaks on a game patch.
     Static {
         module: String,
         #[serde(deserialize_with = "hex_or_int", serialize_with = "as_hex")]
@@ -82,20 +74,21 @@ pub enum Locator {
         #[serde(default)]
         hops: Vec<Hop>,
     },
-    /// Search for instruction bytes. Survives most patches.
     Pattern {
         pattern: String,
         #[serde(default)]
         scope: Scope,
         #[serde(default)]
         module: Option<String>,
-        /// Bytes into the match where the interesting part starts.
         #[serde(default)]
         offset: i64,
-        /// For `mov rax, [rip+disp32]` style operands, where the address is
-        /// relative to the end of the instruction rather than absolute.
         #[serde(default)]
         rip: Option<Rip>,
+        #[serde(default)]
+        hops: Vec<Hop>,
+    },
+    Symbol {
+        symbol: String,
         #[serde(default)]
         hops: Vec<Hop>,
     },
@@ -112,13 +105,10 @@ pub enum Scope {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct Rip {
-    /// Offset from the match to the 4 byte displacement.
     pub displacement_at: usize,
-    /// Total instruction length, since rip points at the next instruction.
     pub instruction_length: usize,
 }
 
-/// One step of a pointer chain. Accepts `"+0x18"`, `"-0x8"` or a plain number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hop(pub isize);
 
@@ -165,8 +155,6 @@ fn parse_hop(text: &str) -> Result<isize, String> {
     Ok(sign * magnitude)
 }
 
-/// Written back as hex. A table is meant to be read and edited by hand, and
-/// nobody recognises a module offset in decimal.
 fn as_hex<S: serde::Serializer>(value: &usize, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(&format!("{value:#x}"))
 }
@@ -185,42 +173,46 @@ fn hex_or_int<'de, D: serde::Deserializer<'de>>(d: D) -> Result<usize, D::Error>
     }
 }
 
-/// What to do once the address is known.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Action {
-    /// Hold a value in place while the cheat is on.
     Freeze {
         #[serde(rename = "value_type")]
         kind: TypeName,
         value: Number,
     },
-    /// Write once and let the game carry on.
     Set {
         #[serde(rename = "value_type")]
         kind: TypeName,
         value: Number,
     },
-    /// Replace instructions with no-ops.
-    Nop { length: usize },
-    /// Replace instructions with specific bytes.
-    Bytes { replacement: String },
+    Nop {
+        length: usize,
+    },
+    Bytes {
+        replacement: String,
+    },
+    Script {
+        source: String,
+    },
 }
 
 impl Action {
-    /// What this does, in two words, for a list somebody is reading before
-    /// they have attached to anything.
     pub fn label(&self) -> &'static str {
         match self {
             Action::Freeze { .. } => "Freeze",
             Action::Set { .. } => "Set once",
             Action::Nop { .. } => "Patch out",
             Action::Bytes { .. } => "Patch",
+            Action::Script { .. } => "Script",
         }
+    }
+
+    pub fn is_script(&self) -> bool {
+        matches!(self, Action::Script { .. })
     }
 }
 
-/// Wrapper so a value type can be written as `"f32"` in TOML.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeName(pub ValueKind);
 
@@ -240,7 +232,6 @@ impl Serialize for TypeName {
     }
 }
 
-/// A number written in TOML as either an integer or a float.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Number {
@@ -249,8 +240,6 @@ pub enum Number {
 }
 
 impl Number {
-    /// Coerce to whatever type the cheat declared, so `value = 1000` works for
-    /// an f32 field without anyone having to write `1000.0`.
     pub fn to_scalar(self, kind: ValueKind) -> Scalar {
         let text = match self {
             Number::Int(v) => v.to_string(),

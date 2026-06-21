@@ -293,8 +293,12 @@ fn cheats(path: &PathBuf, process: Option<&str>) -> Result<(), String> {
     let target = attach(&exe)?;
 
     println!("{} ({})\n", table.game.name, exe);
+    let symbols = freeplay_table::resolve::Symbols::new();
     for cheat in &table.cheats {
-        let state = freeplay_table::evaluate(&target, &cheat.locator);
+        let state = match &cheat.locator {
+            Some(locator) => freeplay_table::resolve::evaluate_with(&target, locator, &symbols),
+            None => State::Ready { addr: 0 },
+        };
         let (mark, note) = match &state {
             State::Ready { addr } => ("ready".to_string(), format!("{addr:#x}")),
             State::Unavailable { reason } => ("wait".to_string(), reason.clone()),

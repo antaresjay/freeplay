@@ -1,24 +1,17 @@
-//! A live game with cheats switched on.
-//!
-//! Freezing a value means writing it back faster than the game can change it.
-//! There is no clever way around that: the game owns the number and we are
-//! arguing with it several times a second.
-
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use freeplay_aa::{Runner, Script};
 use freeplay_core::patch::Patch;
 use freeplay_core::target::Target;
 use freeplay_core::value::Scalar;
-use freeplay_table::resolve::{self, State};
+use freeplay_table::resolve::{self, State, Symbols};
 use freeplay_table::schema::{Action, Cheat};
 use freeplay_table::Table;
 
-/// How often frozen values are written back. Fast enough that a health bar
-/// never visibly dips, slow enough that it costs nothing.
 pub const TICK: Duration = Duration::from_millis(30);
 
 #[derive(Debug, thiserror::Error)]
@@ -34,6 +27,13 @@ pub enum Error {
 
     #[error("{0}")]
     Table(String),
+
+    #[error("{name}: {source}")]
+    Script {
+        name: String,
+        #[source]
+        source: freeplay_aa::AaError,
+    },
 }
 
 enum Engaged {
@@ -42,7 +42,10 @@ enum Engaged {
         value: Scalar,
     },
     Patched(Patch),
-    /// Written once, nothing to hold or undo.
+    Injected {
+        script: Box<Script>,
+        engaged: Box<freeplay_aa::Engaged>,
+    },
     Done,
 }
 
@@ -50,6 +53,7 @@ pub struct Session {
     target: Arc<dyn Target>,
     table: Table,
     engaged: Arc<Mutex<HashMap<String, Engaged>>>,
+    symbols: Arc<Mutex<Symbols>>,
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
@@ -60,6 +64,7 @@ impl Session {
             target,
             table,
             engaged: Arc::new(Mutex::new(HashMap::new())),
+            symbols: Arc::new(Mutex::new(Symbols::new())),
             stop: Arc::new(AtomicBool::new(false)),
             worker: None,
         }
@@ -73,18 +78,27 @@ impl Session {
         &self.target
     }
 
-    /// Current state of every cheat, for drawing the list.
+    pub fn symbols(&self) -> Symbols {
+        self.symbols.lock().unwrap().clone()
+    }
+
     pub fn survey(&self) -> Vec<(String, State)> {
+        let symbols = self.symbols();
         self.table
             .cheats
             .iter()
-            .map(|cheat| {
-                (
-                    cheat.id.clone(),
-                    resolve::evaluate(self.target.as_ref(), &cheat.locator),
-                )
-            })
+            .map(|cheat| (cheat.id.clone(), self.state_of(cheat, &symbols)))
             .collect()
+    }
+
+    pub fn state_of(&self, cheat: &Cheat, symbols: &Symbols) -> State {
+        match &cheat.locator {
+            Some(locator) => resolve::evaluate_with(self.target.as_ref(), locator, symbols),
+            None if cheat.action.is_script() => State::Ready { addr: 0 },
+            None => State::Broken {
+                reason: "this cheat has no address".into(),
+            },
+        }
     }
 
     pub fn is_on(&self, id: &str) -> bool {
@@ -107,7 +121,7 @@ impl Session {
             return Ok(());
         }
 
-        let addr = match resolve::evaluate(self.target.as_ref(), &cheat.locator) {
+        let addr = match self.state_of(cheat, &self.symbols()) {
             State::Ready { addr } => addr,
             State::Unavailable { reason } | State::Broken { reason } => {
                 return Err(Error::NotReady {
@@ -148,20 +162,53 @@ impl Session {
                 patch.apply(self.target.as_ref())?;
                 Ok(Engaged::Patched(patch))
             }
+            Action::Script { source } => {
+                let script = freeplay_aa::parse(source).map_err(|e| Error::Script {
+                    name: cheat.name.clone(),
+                    source: e,
+                })?;
+                let known = self.symbols();
+                let engaged = Runner::new(self.target.as_ref())
+                    .enable(&script, &known)
+                    .map_err(|e| Error::Script {
+                        name: cheat.name.clone(),
+                        source: e,
+                    })?;
+
+                self.symbols.lock().unwrap().extend(
+                    engaged
+                        .symbols
+                        .iter()
+                        .map(|(name, addr)| (name.clone(), *addr)),
+                );
+
+                Ok(Engaged::Injected {
+                    script: Box::new(script),
+                    engaged: Box::new(engaged),
+                })
+            }
         }
     }
 
-    /// Turn a cheat off, putting back anything that was overwritten.
-    ///
-    /// A value that was frozen keeps whatever it was last set to. Only patched
-    /// instructions are restored, because there is no sensible original for a
-    /// number the game has been fighting us over.
     pub fn disable(&self, id: &str) -> Result<(), Error> {
         let Some(mut engaged) = self.engaged.lock().unwrap().remove(id) else {
             return Ok(());
         };
-        if let Engaged::Patched(patch) = &mut engaged {
-            patch.revert(self.target.as_ref())?;
+        match &mut engaged {
+            Engaged::Patched(patch) => patch.revert(self.target.as_ref())?,
+            Engaged::Injected { script, engaged } => {
+                Runner::new(self.target.as_ref())
+                    .disable(script, engaged)
+                    .map_err(|e| Error::Script {
+                        name: id.to_string(),
+                        source: e,
+                    })?;
+                let mut symbols = self.symbols.lock().unwrap();
+                for name in engaged.symbols.keys() {
+                    symbols.remove(name);
+                }
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -175,8 +222,6 @@ impl Session {
         }
     }
 
-    /// One pass of writing frozen values back. The worker calls this on a
-    /// timer, and tests call it directly so nothing depends on sleeping.
     pub fn tick(&self) {
         let engaged = self.engaged.lock().unwrap();
         for (id, item) in engaged.iter() {
@@ -188,7 +233,6 @@ impl Session {
         }
     }
 
-    /// Start writing frozen values in the background.
     pub fn start(&mut self) {
         if self.worker.is_some() {
             return;
@@ -226,8 +270,6 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         self.stop();
-        // Leaving a game's code full of no-ops after the app closes would be
-        // rude, and confusing the next time it is launched.
         self.disable_all();
     }
 }
@@ -316,7 +358,6 @@ mod tests {
         let (mock, s) = session();
         s.enable("health").unwrap();
 
-        // The game overwrites it, as games do.
         mock.poke(BASE + 0x40, &7i32.to_ne_bytes());
         s.tick();
 

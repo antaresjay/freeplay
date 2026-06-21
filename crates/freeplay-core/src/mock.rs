@@ -1,6 +1,3 @@
-//! An in-memory target, so scanning and pointer logic can be tested without a
-//! running game.
-
 use std::sync::Mutex;
 
 use crate::error::{Error, Result};
@@ -39,15 +36,11 @@ impl MockTarget {
         Self::new(base, vec![0u8; len])
     }
 
-    /// Pretend to be a 32-bit game, so pointer chains can be tested at the
-    /// width they are actually walked at.
     pub fn x86(mut self) -> Self {
         self.arch = Arch::X86;
         self
     }
 
-    /// Write a pointer the way the target would store one, which is four bytes
-    /// on a 32-bit process and eight on a 64-bit one.
     pub fn poke_pointer(&self, addr: usize, value: usize) {
         self.poke(addr, &value.to_ne_bytes()[..self.arch.pointer_width()]);
     }

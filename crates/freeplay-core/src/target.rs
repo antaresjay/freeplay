@@ -19,12 +19,6 @@ impl Module {
     }
 }
 
-/// How wide the target's pointers are.
-///
-/// Plenty of games worth cheating in are still 32-bit, either because they are
-/// old or because they never needed the address space. A 64-bit process can
-/// read and write one perfectly well, but a pointer in it is four bytes, not
-/// eight, so a chain walked with the wrong width lands nowhere.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Arch {
     X86,
@@ -39,10 +33,6 @@ impl Arch {
         }
     }
 
-    /// Above this an address is not a pointer, it is a float or a run of text
-    /// being read as one. 32-bit Windows hands out the low 2GB by default and
-    /// the low 4GB to a large address aware process, so allow the whole range
-    /// rather than guess which one this is.
     pub fn ceiling(self) -> usize {
         match self {
             Arch::X86 => 0xFFFF_FFFF,
@@ -58,16 +48,10 @@ impl Arch {
     }
 }
 
-/// Everything the layers above need from an operating system.
-///
-/// Implementors do the raw work. The scanner, pointer chains and patcher are
-/// written against this and nothing else.
 pub trait Target: Send + Sync {
     fn pid(&self) -> u32;
     fn name(&self) -> &str;
 
-    /// Defaults to 64-bit, so an implementor that only ever sees one kind of
-    /// process does not have to care.
     fn arch(&self) -> Arch {
         Arch::X64
     }
@@ -77,16 +61,9 @@ pub trait Target: Send + Sync {
     fn read_into(&self, addr: usize, buf: &mut [u8]) -> Result<()>;
     fn write_bytes(&self, addr: usize, data: &[u8]) -> Result<()>;
 
-    /// Make a span writable, returning the previous protection so it can be
-    /// put back. Code pages are read-execute, so patching one means flipping
-    /// this first and restoring it after.
     fn make_writable(&self, addr: usize, len: usize) -> Result<u32>;
     fn restore_protection(&self, addr: usize, len: usize, previous: u32) -> Result<()>;
 
-    /// Reserve executable memory inside the target.
-    ///
-    /// `near` matters on 64-bit: a five byte jump reaches two gigabytes, so a
-    /// cave further away than that cannot be hooked without a longer detour.
     fn allocate(&self, _size: usize, _near: Option<usize>) -> Result<usize> {
         Err(Error::Unsupported("allocating inside the target"))
     }
@@ -120,8 +97,6 @@ pub trait Target: Send + Sync {
         let mut buf = [0u8; 8];
         let width = self.arch().pointer_width();
         self.read_into(addr, &mut buf[..width])?;
-        // The unread half stays zero, so a 32-bit pointer zero extends, which
-        // is exactly what the processor does with it.
         Ok(usize::from_ne_bytes(buf))
     }
 
@@ -133,7 +108,6 @@ pub trait Target: Send + Sync {
             .ok_or_else(|| Error::ModuleNotFound(name.to_string()))
     }
 
-    /// The game's own executable, which is where static addresses are anchored.
     fn main_module(&self) -> Result<Module> {
         let name = self.name().to_string();
         self.module(&name)

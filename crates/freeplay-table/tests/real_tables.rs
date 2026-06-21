@@ -1,80 +1,144 @@
-//! Import against a table somebody actually published, rather than one written
-//! to make the importer look good.
-//!
-//! aSwedishMagyar's Witcher 2 table is the normal shape for anything decent: a
-//! script finds the player by hooking an instruction and copying a register
-//! into a slot it allocated, and every value entry hangs off that slot's name.
-//! None of it can come across without running code inside the game, and the
-//! point of this test is that Freeplay says so precisely instead of blaming
-//! the first entry it tripped over.
-
-use freeplay_table::cheatengine::{import, Blocker};
+use freeplay_table::cheatengine::import;
+use freeplay_table::schema::{Action, Locator};
 
 const WITCHER2: &str = include_str!("data/witcher2.CT");
 
-/// 25 entries: 4 scripts, 19 values, and 2 pure group headings that are labels
-/// rather than cheats. So 23 have to be reported, and none can come across.
-#[test]
-fn reads_a_published_table_without_falling_over() {
-    let imported = import(WITCHER2, "witcher2.exe", "The Witcher 2").expect("should parse");
-    assert_eq!(imported.table.cheats.len(), 0);
-    assert_eq!(imported.skipped.len(), 23);
+fn witcher() -> freeplay_table::cheatengine::Imported {
+    import(WITCHER2, "witcher2.exe", "The Witcher 2").expect("should parse")
 }
 
-/// Four scripts, and two of them are also group headings. Those two used to be
-/// treated as nothing but labels and vanished from the report entirely.
 #[test]
-fn counts_scripts_that_are_also_headings() {
-    let imported = import(WITCHER2, "witcher2.exe", "The Witcher 2").unwrap();
+fn a_published_table_comes_across_whole() {
+    let imported = witcher();
+    assert_eq!(imported.table.cheats.len(), 23);
+    assert!(imported.skipped.is_empty(), "{:?}", imported.skipped);
+}
+
+#[test]
+fn the_scripts_come_across_as_scripts() {
+    let imported = witcher();
     let scripts: Vec<&str> = imported
-        .skipped
+        .table
+        .cheats
         .iter()
-        .filter(|s| s.blocker == Blocker::Script)
-        .map(|s| s.name.as_str())
+        .filter(|c| c.action.is_script())
+        .map(|c| c.name.as_str())
         .collect();
 
     assert_eq!(scripts.len(), 4);
-    assert!(scripts.contains(&"Get Witcher Base"), "{scripts:?}");
-    assert!(scripts.contains(&"Modify Exp Gain"), "{scripts:?}");
+    assert!(scripts.contains(&"Get Witcher Base"));
+    assert!(scripts.contains(&"Inf Health"));
+    assert!(scripts.contains(&"Inf Items"));
+    assert!(scripts.contains(&"Modify Exp Gain"));
 }
 
-/// The 19 value entries are anchored to `baseWitcher` and `expMultVal`, names
-/// the scripts register at runtime. Calling those "not anchored to a module"
-/// was true and useless.
 #[test]
-fn names_the_symbol_the_values_depend_on() {
-    let imported = import(WITCHER2, "witcher2.exe", "The Witcher 2").unwrap();
-
-    let health = imported
-        .skipped
+fn a_script_keeps_the_assembly_it_needs_to_run() {
+    let imported = witcher();
+    let base = imported
+        .table
+        .cheats
         .iter()
-        .find(|s| s.name == "Current Health")
-        .expect("Current Health should be listed");
+        .find(|c| c.name == "Get Witcher Base")
+        .unwrap();
 
-    assert_eq!(health.blocker, Blocker::Symbol("baseWitcher".into()));
-    assert!(health.why.contains("baseWitcher"), "{}", health.why);
-    assert!(!health.why.contains("another machine"), "{}", health.why);
+    let Action::Script { source } = &base.action else {
+        panic!("should be a script");
+    };
+    assert!(source.contains("[ENABLE]"));
+    assert!(source.contains("[DISABLE]"));
+    assert!(source.contains("aobscanmodule(getWitcher"));
+    assert!(source.contains("mov [baseWitcher],eax"));
+    assert!(!source.contains('\r'), "line endings should be normalised");
 }
 
 #[test]
-fn the_breakdown_explains_the_whole_table_in_one_line() {
-    let imported = import(WITCHER2, "witcher2.exe", "The Witcher 2").unwrap();
-    let text = imported.breakdown();
-
-    assert!(text.contains("4 are assembly"), "{text}");
-    assert!(text.contains("19 hang off"), "{text}");
-    assert!(text.contains("baseWitcher"), "{text}");
-    assert!(text.contains("expMultVal"), "{text}");
+fn a_script_has_no_address_of_its_own() {
+    let imported = witcher();
+    for cheat in imported
+        .table
+        .cheats
+        .iter()
+        .filter(|c| c.action.is_script())
+    {
+        assert!(cheat.locator.is_none(), "{}", cheat.name);
+    }
 }
 
-/// Groups give their children a category, and that has to survive the entry
-/// also being a script.
 #[test]
-fn group_headings_still_reach_their_children() {
-    let imported = import(WITCHER2, "witcher2.exe", "The Witcher 2").unwrap();
-    let names: Vec<&str> = imported.skipped.iter().map(|s| s.name.as_str()).collect();
+fn the_values_hang_off_the_symbol_their_script_writes() {
+    let imported = witcher();
+    let health = imported
+        .table
+        .cheats
+        .iter()
+        .find(|c| c.name == "Current Health")
+        .unwrap();
 
-    assert!(names.contains(&"Weight Limit"), "{names:?}");
-    assert!(names.contains(&"Multiplier"), "{names:?}");
-    assert!(names.contains(&"Orens"), "{names:?}");
+    let Some(Locator::Symbol { symbol, hops }) = &health.locator else {
+        panic!("should be anchored to a symbol, got {:?}", health.locator);
+    };
+    assert_eq!(symbol, "baseWitcher");
+    assert_eq!(
+        hops.iter().map(|h| h.0).collect::<Vec<_>>(),
+        vec![0x14, 0x8]
+    );
+}
+
+#[test]
+fn the_deep_chains_keep_all_their_hops() {
+    let imported = witcher();
+    let weight = imported
+        .table
+        .cheats
+        .iter()
+        .find(|c| c.name == "Weight Limit")
+        .unwrap();
+
+    let Some(Locator::Symbol { symbol, hops }) = &weight.locator else {
+        panic!("should be anchored to a symbol");
+    };
+    assert_eq!(symbol, "baseWitcher");
+    assert_eq!(
+        hops.iter().map(|h| h.0).collect::<Vec<_>>(),
+        vec![0xC4, 0x0, 0x1C, 0x50, 0x2C]
+    );
+}
+
+#[test]
+fn the_multiplier_hangs_off_the_slot_its_own_script_allocates() {
+    let imported = witcher();
+    let multiplier = imported
+        .table
+        .cheats
+        .iter()
+        .find(|c| c.name == "Multiplier")
+        .unwrap();
+
+    let Some(Locator::Symbol { symbol, .. }) = &multiplier.locator else {
+        panic!("should be anchored to a symbol");
+    };
+    assert_eq!(symbol, "expMultVal");
+}
+
+#[test]
+fn a_group_heading_still_gives_its_children_a_category() {
+    let imported = witcher();
+    let health = imported
+        .table
+        .cheats
+        .iter()
+        .find(|c| c.name == "Current Health")
+        .unwrap();
+    assert_eq!(health.category.label(), "Player");
+}
+
+#[test]
+fn what_it_produces_is_a_table_freeplay_will_load() {
+    let imported = witcher();
+    imported.table.validate().expect("should be valid");
+
+    let text = toml::to_string_pretty(&imported.table).unwrap();
+    let round = freeplay_table::Table::parse(&text).expect("should reparse");
+    assert_eq!(round.cheats.len(), 23);
 }

@@ -210,7 +210,7 @@ mod tests {
     #[test]
     fn reads_hops_written_as_hex_strings() {
         let table = Table::parse(SAMPLE).unwrap();
-        let Locator::Pattern { hops, offset, .. } =
+        let Some(Locator::Pattern { hops, offset, .. }) =
             &table.cheat("infinite-health").unwrap().locator
         else {
             panic!("expected a pattern locator");
@@ -225,7 +225,8 @@ mod tests {
     #[test]
     fn reads_static_offsets_written_as_hex() {
         let table = Table::parse(SAMPLE).unwrap();
-        let Locator::Static { offset, .. } = &table.cheat("freeze-timer").unwrap().locator else {
+        let Some(Locator::Static { offset, .. }) = &table.cheat("freeze-timer").unwrap().locator
+        else {
             panic!("expected a static locator");
         };
         assert_eq!(*offset, 0x1A2B3C);

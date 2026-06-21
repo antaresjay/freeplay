@@ -1,5 +1,3 @@
-//! Turning a locator into an address, and saying why when it fails.
-
 use freeplay_core::error::Error as CoreError;
 use freeplay_core::pattern::Pattern;
 use freeplay_core::pointer::PointerPath;
@@ -8,24 +6,11 @@ use freeplay_core::target::Target;
 
 use crate::schema::{Locator, Scope};
 
-/// Whether a cheat can be used right now.
-///
-/// The distinction matters to the person looking at the interface. A broken
-/// signature means the table needs updating. An unresolved pointer usually
-/// just means they are sat in a menu and it will light up on its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum State {
-    Ready {
-        addr: usize,
-    },
-    /// Found the code, but the object is not there yet.
-    Unavailable {
-        reason: String,
-    },
-    /// Could not find the code at all, so the table is out of date.
-    Broken {
-        reason: String,
-    },
+    Ready { addr: usize },
+    Unavailable { reason: String },
+    Broken { reason: String },
 }
 
 impl State {
@@ -51,8 +36,27 @@ impl From<Scope> for CoreScope {
     }
 }
 
+pub type Symbols = std::collections::HashMap<String, u64>;
+
 pub fn evaluate(target: &dyn Target, locator: &Locator) -> State {
+    evaluate_with(target, locator, &Symbols::new())
+}
+
+pub fn evaluate_with(target: &dyn Target, locator: &Locator, symbols: &Symbols) -> State {
     match locator {
+        Locator::Symbol { symbol, hops } => {
+            let Some(base) = symbols.get(symbol) else {
+                return State::Unavailable {
+                    reason: format!("{symbol} is not set until its script is switched on"),
+                };
+            };
+            if *base == 0 {
+                return State::Unavailable {
+                    reason: format!("{symbol} has not been filled in yet"),
+                };
+            }
+            follow(target, *base as usize, hops)
+        }
         Locator::Static {
             module,
             offset,
@@ -115,9 +119,6 @@ pub fn evaluate(target: &dyn Target, locator: &Locator) -> State {
             let mut addr = found.wrapping_add_signed(*offset as isize);
 
             if let Some(rip) = rip {
-                // The operand holds a signed 32 bit distance from the end of
-                // the instruction, so the target is that plus where the next
-                // instruction begins.
                 let raw = match target.read_bytes(found + rip.displacement_at, 4) {
                     Ok(bytes) => bytes,
                     Err(e) => {
@@ -155,8 +156,6 @@ fn follow(target: &dyn Target, start: usize, hops: &[crate::schema::Hop]) -> Sta
     }
 }
 
-/// Parse `"90 90 90"` into bytes. Unlike a pattern this has no wildcards,
-/// since you cannot write "any byte" into a program and expect it to run.
 pub fn parse_bytes(text: &str) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();
     for token in text.split_whitespace() {
@@ -231,7 +230,6 @@ mod tests {
             offset: 0x40,
             hops: vec![Hop(0x10)],
         };
-        // Nothing written at 0x40, which is what a main menu looks like.
         match evaluate(&t, &locator) {
             State::Unavailable { reason } => assert!(reason.contains("load into the game")),
             other => panic!("expected unavailable, got {other:?}"),
@@ -290,7 +288,6 @@ mod tests {
     #[test]
     fn rip_relative_operand_is_followed() {
         let t = MockTarget::zeroed(BASE, 0x2000).with_module("game.exe", BASE, 0x2000);
-        // mov rax, [rip+0x100] at 0x300, 7 bytes long, so it targets 0x407.
         let mut code = vec![0x48, 0x8B, 0x05];
         code.extend_from_slice(&0x100i32.to_ne_bytes());
         t.poke(BASE + 0x300, &code);

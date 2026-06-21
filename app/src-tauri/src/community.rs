@@ -1,19 +1,3 @@
-//! Pointing people at tables other people wrote.
-//!
-//! Freeplay does not fetch these itself. The tables belong to the forums they
-//! were posted on, and those forums ask that you get them from there, so this
-//! builds a url and hands it to the browser.
-//!
-//! The obvious thing was the forum's own search box. It does not work: phpBB
-//! indexes post text rather than topic titles, drops words under four letters,
-//! and a title like "The Witcher 2: Assassins of Kings Enhanced Edition"
-//! returns nothing at all even when the topic is right there. A web search
-//! scoped to the site finds it first time, which is what everybody ends up
-//! doing by hand anyway.
-
-/// Words that appear in a store's name for a game but not in the title anybody
-/// searches for. Dropping the tail is what turns "The Witcher 2: Assassins of
-/// Kings Enhanced Edition" into something with hits.
 const EDITION_NOISE: &[&str] = &[
     "game of the year edition",
     "definitive edition",
@@ -29,8 +13,6 @@ const EDITION_NOISE: &[&str] = &[
     "goty",
 ];
 
-/// Trademark marks, the separators stores use, and anything else that a search
-/// engine will only trip over.
 fn tidy(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     for ch in name.chars() {
@@ -43,8 +25,6 @@ fn tidy(name: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The terms worth searching for, which is the game's name with the store
-/// decoration taken off.
 pub fn terms(name: &str) -> String {
     let tidied = tidy(name);
     let lower = tidied.to_lowercase();
@@ -52,7 +32,6 @@ pub fn terms(name: &str) -> String {
     let mut best = tidied.as_str();
     for noise in EDITION_NOISE {
         if let Some(at) = lower.rfind(noise) {
-            // Only if it is the tail, and only if something is left in front.
             if at + noise.len() == lower.len() && at > 0 {
                 best = tidied[..at].trim_end();
                 break;
@@ -67,8 +46,6 @@ pub fn terms(name: &str) -> String {
     }
 }
 
-/// Percent encode for a query string. Spaces become `+`, everything outside
-/// the unreserved set becomes `%XX`.
 pub fn encode(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for byte in text.bytes() {
@@ -83,7 +60,6 @@ pub fn encode(text: &str) -> String {
     out
 }
 
-/// Where to send somebody looking for a table for this game.
 pub fn search_url(name: &str) -> String {
     let query = format!("site:fearlessrevolution.com {} trainer", terms(name));
     format!("https://duckduckgo.com/?q={}", encode(&query))
@@ -106,8 +82,6 @@ mod tests {
         assert_eq!(terms("DARK SOULS™ III"), "DARK SOULS III");
     }
 
-    /// The colon in a subtitle used to become a second `+`, and phpBB read the
-    /// empty term between them as a syntax error.
     #[test]
     fn punctuation_collapses_rather_than_doubling_up() {
         let url = search_url("Deus Ex: Human Revolution");

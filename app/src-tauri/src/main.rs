@@ -683,12 +683,13 @@ fn cheats(state: tauri::State<'_, App>) -> Vec<CheatRow> {
         return Vec::new();
     };
 
+    let symbols = session.symbols();
     session
         .table()
         .cheats
         .iter()
         .map(|cheat| {
-            let state = freeplay_table::evaluate(session.target().as_ref(), &cheat.locator);
+            let state = session.state_of(cheat, &symbols);
             let (label, reason) = match &state {
                 CheatState::Ready { .. } => ("ready", String::new()),
                 CheatState::Unavailable { reason } => ("wait", reason.clone()),

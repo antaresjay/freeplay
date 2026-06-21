@@ -1,15 +1,3 @@
-//! Reading Cheat Engine tables.
-//!
-//! There are thousands of `.CT` files in the wild for games nobody here is
-//! ever going to sit down and reverse. Most of what they contain is a name, a
-//! type, an address written as `game.exe+1A2B3C`, and a list of offsets, which
-//! is exactly what a Freeplay locator is. So import that part.
-//!
-//! What cannot come across is the Auto Assembler: `.CT` scripts are assembly
-//! with code caves and allocations, and running them means an assembler and
-//! injecting code. Those entries are reported as skipped, by name, rather than
-//! being quietly dropped so the table looks more complete than it is.
-
 use std::collections::HashSet;
 
 use freeplay_core::value::ValueKind;
@@ -40,11 +28,6 @@ impl Imported {
         )
     }
 
-    /// Why nothing came across, counted by reason.
-    ///
-    /// Naming the first skipped entry and stopping is useless on a table where
-    /// every entry failed for one of two reasons, which is the usual shape:
-    /// the scripts do the work and the values hang off what the scripts found.
     pub fn breakdown(&self) -> String {
         let mut scripts = 0usize;
         let mut symbols: Vec<&str> = Vec::new();
@@ -94,18 +77,13 @@ impl Imported {
     }
 }
 
-/// Why an entry could not come across, kept separate from the wording so the
-/// reasons can be counted rather than only printed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Blocker {
-    /// Auto Assembler. Needs an assembler and code injection.
     Script,
-    /// Anchored to a name a script registers at runtime.
     Symbol(String),
     Other,
 }
 
-/// One `<CheatEntry>`, with its children if it is a group.
 #[derive(Debug, Default, Clone)]
 struct Entry {
     description: String,
@@ -113,6 +91,7 @@ struct Entry {
     address: String,
     offsets: Vec<i64>,
     script: bool,
+    assembler: String,
     children: Vec<Entry>,
 }
 
@@ -145,8 +124,6 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
 
-    // One frame per open <CheatEntry>. Entries nest, so a stack is the whole
-    // structure: a group is just an entry whose children got closed first.
     let mut stack: Vec<Entry> = Vec::new();
     let mut roots: Vec<Entry> = Vec::new();
     let mut field = String::new();
@@ -157,8 +134,6 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
         match reader.read_event() {
             Err(e) => return Err(format!("line {}: {e}", reader.buffer_position())),
             Ok(Event::Eof) => {
-                // Running out of file inside an entry means the file is cut
-                // short. Reading it leniently would import half a table.
                 if depth != 0 {
                     return Err(format!(
                         "the file ends with {depth} tags still open, so it is cut short"
@@ -194,7 +169,13 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
                     "Description" => entry.description = unquote(&value),
                     "VariableType" => entry.variable_type = value,
                     "Address" => entry.address = value,
-                    "AssemblerScript" => entry.script = true,
+                    "AssemblerScript" => {
+                        entry.script = true;
+                        if !entry.assembler.is_empty() {
+                            entry.assembler.push('\n');
+                        }
+                        entry.assembler.push_str(&value);
+                    }
                     "Offset" if depth_of_offsets > 0 => {
                         if let Ok(v) = i64::from_str_radix(value.trim_start_matches("0x"), 16) {
                             entry.offsets.push(v);
@@ -251,19 +232,18 @@ fn convert(
             .variable_type
             .eq_ignore_ascii_case("Auto Assembler Script");
 
-    // A node with children is a heading. Its name is the best category hint
-    // the file has, so carry it down. It can be a script as well as a heading,
-    // which is the usual shape: the script finds the player and everything
-    // underneath it reads fields off what it found. Report the script in that
-    // case rather than treating the entry as nothing but a label.
-    if !entry.children.is_empty() {
-        if is_script {
-            skipped.push(Skipped {
+    if is_script {
+        match script_cheat(entry, &name, group, used) {
+            Ok(cheat) => out.push(cheat),
+            Err(why) => skipped.push(Skipped {
                 name: name.clone(),
-                why: "an auto assembler script, which needs code injection".into(),
+                why,
                 blocker: Blocker::Script,
-            });
+            }),
         }
+    }
+
+    if !entry.children.is_empty() {
         for child in &entry.children {
             convert(child, Some(&name), out, skipped, used);
         }
@@ -271,11 +251,6 @@ fn convert(
     }
 
     if is_script {
-        skipped.push(Skipped {
-            name,
-            why: "an auto assembler script, which needs code injection".into(),
-            blocker: Blocker::Script,
-        });
         return;
     }
 
@@ -291,32 +266,6 @@ fn convert(
         return;
     };
 
-    let Some((module, offset)) = split_address(&entry.address) else {
-        let (why, blocker) = if entry.address.is_empty() {
-            ("no address".to_string(), Blocker::Other)
-        } else if let Some(symbol) = symbol_in(&entry.address) {
-            (
-                format!(
-                    "anchored to {symbol}, which is not an address in the game but a name one of \
-                     the scripts writes down while it runs"
-                ),
-                Blocker::Symbol(symbol),
-            )
-        } else {
-            (
-                format!(
-                    "address {:?} is not anchored to a module, so it means nothing on another machine",
-                    entry.address
-                ),
-                Blocker::Other,
-            )
-        };
-        skipped.push(Skipped { name, why, blocker });
-        return;
-    };
-
-    // Cheat Engine lists offsets last hop first, the way its pointer editor
-    // shows them. Applying them in that order walks the chain backwards.
     let hops: Vec<Hop> = entry
         .offsets
         .iter()
@@ -324,17 +273,40 @@ fn convert(
         .map(|v| Hop(*v as isize))
         .collect();
 
+    let locator = match split_address(&entry.address) {
+        Some((module, offset)) => Locator::Static {
+            module,
+            offset,
+            hops,
+        },
+        None => match symbol_in(&entry.address) {
+            Some(symbol) => Locator::Symbol { symbol, hops },
+            None => {
+                let why = if entry.address.is_empty() {
+                    "no address".to_string()
+                } else {
+                    format!(
+                        "address {:?} is not anchored to a module, so it means nothing on another machine",
+                        entry.address
+                    )
+                };
+                skipped.push(Skipped {
+                    name,
+                    why,
+                    blocker: Blocker::Other,
+                });
+                return;
+            }
+        },
+    };
+
     out.push(Cheat {
         id: unique_id(&name, used),
         name: name.clone(),
         category: guess_category(&name, group),
         description: String::new(),
         hint: String::new(),
-        locator: Locator::Static {
-            module,
-            offset,
-            hops,
-        },
+        locator: Some(locator),
         action: Action::Freeze {
             kind: TypeName(kind),
             value: freeze_value(kind),
@@ -342,18 +314,37 @@ fn convert(
     });
 }
 
-/// A name an Auto Assembler script registered, rather than an address.
-///
-/// This is how nearly every table worth having is built. The script scans for
-/// an instruction, hooks it, and writes whatever register held the player into
-/// a slot it allocated. Every value entry then hangs off that slot's name. The
-/// name is meaningless until the script has run inside the game, so there is
-/// nothing for Freeplay to point at, and saying "that is not a module" about
-/// it explains nothing.
+fn script_cheat(
+    entry: &Entry,
+    name: &str,
+    group: Option<&str>,
+    used: &mut HashSet<String>,
+) -> std::result::Result<Cheat, String> {
+    let source = entry.assembler.replace("\r\n", "\n").replace('\r', "\n");
+    let source = source.trim();
+    if source.is_empty() {
+        return Err("the script is empty".into());
+    }
+    if !source.to_ascii_uppercase().contains("[ENABLE]") {
+        return Err("the script has no [ENABLE] section".into());
+    }
+
+    Ok(Cheat {
+        id: unique_id(name, used),
+        name: name.to_string(),
+        category: guess_category(name, group),
+        description: String::new(),
+        hint: String::new(),
+        locator: None,
+        action: Action::Script {
+            source: source.to_string(),
+        },
+    })
+}
+
 fn symbol_in(address: &str) -> Option<String> {
     let head = address.trim().split(['+', '-']).next()?.trim();
 
-    // A module is a file name and a bare number is an address. Neither is this.
     if head.is_empty() || head.contains('.') || head.chars().all(|c| c.is_ascii_hexdigit()) {
         return None;
     }
@@ -363,14 +354,11 @@ fn symbol_in(address: &str) -> Option<String> {
     None
 }
 
-/// Cheat Engine writes `game.exe+1A2B3C`, sometimes quoted, sometimes with the
-/// module in `"..."` because the name has a space in it.
 fn split_address(address: &str) -> Option<(String, usize)> {
     let text = address.trim();
     let (module, rest) = text.split_once('+')?;
 
     let module = module.trim().trim_matches('"').to_string();
-    // A bare hex address has no module and is worthless in a shared table.
     if module.is_empty() || !module.contains('.') {
         return None;
     }
@@ -392,9 +380,6 @@ fn value_kind(variable_type: &str) -> Option<ValueKind> {
     }
 }
 
-/// A freeze needs something to hold. There is no right answer without knowing
-/// the game, so hold what a "plenty of this" value usually looks like and let
-/// the number be edited.
 fn freeze_value(kind: ValueKind) -> Number {
     match kind {
         ValueKind::F32 | ValueKind::F64 => Number::Float(9999.0),
@@ -404,9 +389,6 @@ fn freeze_value(kind: ValueKind) -> Number {
     }
 }
 
-/// Cheat Engine tables have no categories, only whatever the author called
-/// their groups. The group name is the stronger signal when it matches one of
-/// ours outright, otherwise fall back to reading the cheat's own name.
 fn guess_category(name: &str, group: Option<&str>) -> Category {
     if let Some(group) = group {
         if let Some(category) = category_named(group) {
@@ -569,10 +551,18 @@ alloc(newmem,$1000)
     }
 
     #[test]
-    fn pulls_the_declarative_entries_across() {
+    fn pulls_every_entry_across() {
         let out = imported();
         let names: Vec<&str> = out.table.cheats.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["Infinite Health", "Infinite Vigor", "Orens"]);
+        assert_eq!(
+            names,
+            [
+                "Infinite Health",
+                "Infinite Vigor",
+                "Orens",
+                "God Mode Script"
+            ]
+        );
     }
 
     #[test]
@@ -583,12 +573,10 @@ alloc(newmem,$1000)
         assert_eq!(health.category, Category::Player);
     }
 
-    /// Cheat Engine shows the last hop first, so importing them in file order
-    /// would walk the chain backwards and read somewhere random.
     #[test]
     fn offsets_come_out_in_the_order_they_are_applied() {
         let out = imported();
-        match &out.table.cheats[0].locator {
+        match out.table.cheats[0].locator.as_ref().unwrap() {
             Locator::Static {
                 module,
                 offset,
@@ -609,27 +597,27 @@ alloc(newmem,$1000)
             .table
             .cheats
             .iter()
-            .map(|c| match &c.action {
-                Action::Freeze { kind, .. } => kind.0,
-                other => panic!("expected a freeze, got {other:?}"),
+            .filter_map(|c| match &c.action {
+                Action::Freeze { kind, .. } => Some(kind.0),
+                _ => None,
             })
             .collect();
         assert_eq!(kinds, [ValueKind::F32, ValueKind::I32, ValueKind::I32]);
     }
 
     #[test]
-    fn scripts_are_reported_rather_than_dropped() {
+    fn scripts_come_across_as_scripts() {
         let out = imported();
         let script = out
-            .skipped
+            .table
+            .cheats
             .iter()
-            .find(|s| s.name == "God Mode Script")
-            .expect("the script entry should be reported");
-        assert!(script.why.contains("auto assembler"));
+            .find(|c| c.name == "God Mode Script")
+            .expect("the script entry should be imported");
+        assert!(script.action.is_script());
+        assert!(script.locator.is_none());
     }
 
-    /// An address with no module is wherever that machine happened to put it
-    /// that day, so it is useless in a table meant to be shared.
     #[test]
     fn bare_addresses_are_refused() {
         let out = imported();
@@ -646,7 +634,15 @@ alloc(newmem,$1000)
         let xml = SAMPLE.replace("Infinite Vigor", "Infinite Health");
         let out = import(&xml, "witcher2.exe", "The Witcher 2").unwrap();
         let ids: Vec<&str> = out.table.cheats.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(ids, ["infinite-health", "infinite-health-2", "orens"]);
+        assert_eq!(
+            ids,
+            [
+                "infinite-health",
+                "infinite-health-2",
+                "orens",
+                "god-mode-script"
+            ]
+        );
     }
 
     #[test]
