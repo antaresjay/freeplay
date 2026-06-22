@@ -129,6 +129,7 @@ struct CheatRow {
     state: String,
     reason: String,
     on: bool,
+    does: String,
 }
 
 #[derive(Serialize)]
@@ -704,6 +705,7 @@ fn cheats(state: tauri::State<'_, App>) -> Vec<CheatRow> {
                 state: label.to_string(),
                 reason,
                 on: session.is_on(&cheat.id),
+                does: cheat.action.label().to_string(),
             }
         })
         .collect()

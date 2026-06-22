@@ -30,16 +30,20 @@ cargo run --release --bin freeplay -- import witcher2.exe.CT
 ```
 
 It prints the table it would build and, on stderr, every entry it could not
-take and why. Two things never come across:
+take and why.
 
-- **Auto Assembler scripts.** Those are assembly with code caves and
-  allocations, and running them means injecting code into the game. Freeplay
-  does not do that, so script entries are listed as skipped rather than
-  silently dropped.
-- **Bare addresses.** An entry whose address is a plain number like
-  `1A2B3C4D5E` is wherever that value happened to live on somebody else's
-  machine on the day they scanned. Only addresses anchored to a module,
-  `game.exe+1A2B3C`, mean anything anywhere else.
+**Auto Assembler scripts come across as scripts.** A script becomes a cheat
+whose toggle runs it: Freeplay scans for the signature, allocates a cave near
+the match, assembles the body, writes the hook, and puts the original bytes
+back when you switch it off. Value entries anchored to a name the script
+registers become `find = "symbol"` locators, so they wait until that script is
+on and then light up.
+
+The one thing that never comes across is a **bare address**. An entry whose
+address is a plain number like `1A2B3C4D5E` is wherever that value happened to
+live on somebody else's machine on the day they scanned. Only addresses
+anchored to a module, `game.exe+1A2B3C`, or to a script's symbol, mean anything
+anywhere else.
 
 Cheat Engine lists pointer offsets last hop first, the way its pointer editor
 shows them. Freeplay reverses them on import, so the chain in the converted
@@ -49,8 +53,63 @@ Tables for 32-bit games work the same way. Freeplay reads the process's pointer
 width off the process itself, so a chain written for a 32-bit build is walked
 four bytes at a time without anything in the table saying so.
 
-Everything that does come across is a `freeze` with a guessed value, because a
+Every value entry comes across as a `freeze` with a guessed number, because a
 `.CT` says what and where but never how much. Change the numbers.
+
+## Symbol locators
+
+```toml
+[cheat.locator]
+find = "symbol"
+symbol = "baseWitcher"
+hops = ["+0x14", "+0x8"]
+```
+
+The symbol is a name some script in the same table registers while it runs.
+Until that script is switched on the cheat waits, and says so. This is how a
+converted Cheat Engine table hangs together: one script finds the player, and
+twenty entries read fields off what it found.
+
+## Scripts
+
+```toml
+[[cheat]]
+id = "get-witcher-base"
+name = "Get Witcher Base"
+type = "script"
+source = """
+[ENABLE]
+aobscanmodule(getWitcher,witcher2.EXE,8B 10 8B C8 FF 92 34 02 00 00 84)
+alloc(newgetWitcher,100,getWitcher)
+label(baseWitcher)
+registersymbol(baseWitcher)
+newgetWitcher:
+  mov [baseWitcher],eax
+  mov edx,[eax]
+  jmp returngetWitcher
+baseWitcher:
+  dd 0
+getWitcher:
+  jmp newgetWitcher
+  nop 5
+returngetWitcher:
+
+[DISABLE]
+getWitcher:
+  db 8B 10 8B C8 FF 92 34 02 00 00
+dealloc(newgetWitcher)
+"""
+```
+
+A script has no `[cheat.locator]`, because it does not have one address.
+
+Supported: `aobscanmodule`, `aobscan`, `alloc`, `globalalloc`, `label`,
+`registersymbol`, `unregistersymbol`, `dealloc`, `define`, `assert`. Numbers are
+hexadecimal without a prefix, `#` makes one decimal, the way Cheat Engine writes
+them.
+
+`createthread`, `loadlibrary` and `luacall` are read and ignored rather than
+refused, so a script that only uses one for logging still works.
 
 ## The game block
 

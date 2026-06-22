@@ -1012,6 +1012,7 @@ dependencies = [
 name = "freeplay-session"
 version = "0.1.0"
 dependencies = [
+ "freeplay-aa",
  "freeplay-core",
  "freeplay-table",
  "thiserror 2.0.19",

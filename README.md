@@ -5,10 +5,11 @@ It discovers installed games, attaches to single player processes, scans memory,
 resolves pointer chains and applies configurable runtime modifications, through
 either a native desktop application or a command line tool.
 
-Modifications are declarative. A game is described by a TOML table saying where
-its values live and what to do with them, so adding a game needs no Rust and no
-release. Freeplay never injects or executes code inside a game, which is a
-deliberate boundary rather than a missing feature.
+A game is described by a TOML table saying where its values live and what to do
+with them, so adding a game needs no Rust and no release. Cheat Engine `.CT`
+files convert straight into that format, including their Auto Assembler
+scripts: Freeplay ships its own x86 and x64 assembler, allocates code caves in
+the target and hooks instructions, which is what those scripts need to run.
 
 It is free, it does not want your email address, and it refuses to attach to
 anything running an anti-cheat.
@@ -24,6 +25,8 @@ feeding coins into the slot.
       ┌────────────────┬─────────┴─────┬─────────────────┐
       │                │               │                 │
 freeplay-sync   freeplay-session   freeplay-library   freeplay-table
+      │                │                                 │
+      │           freeplay-aa ──────── freeplay-asm      │
       │                │                                 │
       └────────────────┴────────┬────────────────────────┘
                                 │
@@ -43,7 +46,9 @@ depend on the memory engine and does not.
 
 | Crate | What it does |
 | --- | --- |
-| `freeplay-core` | Process access, scanning, pointer chains, patching |
+| `freeplay-core` | Process access, scanning, pointer chains, patching, allocation |
+| `freeplay-asm` | x86 and x64 assembler |
+| `freeplay-aa` | Cheat Engine Auto Assembler: scans, code caves, hooks |
 | `freeplay-table` | Table format, `.CT` import, turning a locator into an address |
 | `freeplay-session` | An attached game with cheats held on |
 | `freeplay-library` | Finding installed games |
@@ -71,7 +76,8 @@ depend on the memory engine and does not.
   out with the reason, instead of being a toggle that silently does nothing
 - Finds values yourself: search for 100, take damage, search again, keep going
   until one address is left
-- Freezes values, sets them once, or patches the instruction that changes them
+- Freezes values, sets them once, patches the instruction that changes them, or
+  runs a Cheat Engine script and puts everything back when you switch it off
 - Saves what you found as a small readable table file you can share
 
 ## Single player only
@@ -147,18 +153,19 @@ there so you can do that yourself in a few minutes rather than an afternoon.
 I am not going to pretend otherwise by shipping a pile of tables I have never
 run. A toggle that silently does nothing is worse than no toggle.
 
-**Cheat Engine tables work.** Drop a `.CT` in `tables/` named after the process
-and Freeplay converts it on load: addresses, pointer chains, types, groups. The
-community has already written these for thousands of games, so that is the
-quickest route to a game Freeplay has never heard of.
+**Cheat Engine tables work, including the scripts.** Drop a `.CT` in `tables/`
+named after the process and Freeplay converts it: addresses, pointer chains,
+types, groups, and Auto Assembler.
 
-Auto Assembler scripts do not come across. Those are assembly with code caves
-and allocations, and running one means injecting and executing code inside the
-game. Freeplay applies declarative memory modifications only, and deliberately
-does not execute injected scripts or arbitrary code. That is the line the whole
-design sits on: every write Freeplay makes is described in a file you can read,
-so script entries are reported as skipped rather than quietly dropped. See
-[tables/README.md](tables/README.md).
+That last part is most of the work. Almost every table worth having is built the
+same way: a script scans for an instruction, allocates a cave next to it, writes
+a jump over it, and copies whatever register held the player into a slot. Every
+value entry then hangs off that slot's name rather than off an address. So
+Freeplay has an assembler, allocates inside the target, and hooks instructions.
+Without that, a table like aSwedishMagyar's Witcher 2 one imports nothing at
+all, because all 23 of its entries depend on it.
+
+See [tables/README.md](tables/README.md).
 
 ## What it sends
 

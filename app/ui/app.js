@@ -581,10 +581,17 @@ function cheatCard(item) {
   } else if (item.state === "wait") {
     why.classList.add("wait");
     why.textContent = item.hint || item.reason;
-  } else {
+  } else if (item.description) {
     why.textContent = item.description;
+  } else if (item.does === "Script") {
+    why.textContent = "Hooks the game. Other cheats here need what it finds.";
   }
 
+  const tag = document.createElement("span");
+  tag.className = "cheat-does";
+  tag.textContent = item.does || "";
+
+  name.appendChild(tag);
   main.append(name, why);
 
   const toggle = document.createElement("button");

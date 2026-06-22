@@ -1084,3 +1084,16 @@ input::placeholder { color: var(--faint); }
   font-weight: 600;
   pointer-events: none;
 }
+
+.cheat-does {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--faint);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}

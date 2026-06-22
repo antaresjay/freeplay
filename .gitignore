@@ -11,3 +11,6 @@ app/src-tauri/gen/
 # Local experiments and captured tables
 /scratch
 *.local.toml
+
+# working copies of tables being tested
+/*.CT
