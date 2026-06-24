@@ -1,5 +1,5 @@
-/* Dark is the default palette. Light overrides the same names below, so
-   nothing further down the file needs to know which one is on. */
+/* dark is the default. light overrides the same names below so nothing further
+   down has to know which one is on */
 :root {
   --bg: #0a0b0e;
   --panel: #0f1116;
@@ -71,8 +71,8 @@
   }
 }
 
-/* Amber by default. Freeplay is named after the arcade cabinet setting, and
-   the machines it is named after glowed this colour. */
+/* amber by default. the arcade cabinets this is named after glowed this
+   colour */
 :root,
 :root[data-accent="amber"] {
   --accent: #f0a52a;
@@ -407,8 +407,8 @@ input::placeholder { color: var(--faint); }
 
 /* ---------- game grid ---------- */
 
-/* Fixed columns rather than 1fr: box art has one right shape, and stretching
-   five posters across a wide window is how it ends up looking wrong. */
+/* fixed columns, not 1fr. box art has one right shape and stretching five
+   posters across a wide window is how it ends up looking wrong */
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, 166px);
@@ -451,7 +451,7 @@ input::placeholder { color: var(--faint); }
 }
 .card:hover .art::after { box-shadow: inset 0 0 0 2px var(--accent); }
 
-/* Games with no cached art get a tinted tile with their initials. */
+/* no cached art gets a tinted tile with the initials */
 .blankart {
   display: grid;
   place-items: center;
@@ -530,7 +530,7 @@ input::placeholder { color: var(--faint); }
 .badge.spare { margin-left: auto; }
 .badge.guarded { background: rgba(255, 107, 107, 0.92); color: #2a0808; }
 
-/* Games with an anti-cheat are shown but never offered. Hiding them would
+/* games with an anti-cheat are shown but never offered. hiding them would
    just look like Freeplay could not find them.
    A filter here would be nicer but it makes the whole grid a compositing
    layer, so the poster is dimmed directly and the fallback tile goes grey. */
@@ -575,7 +575,7 @@ input::placeholder { color: var(--faint); }
 }
 .game-hero-art { position: absolute; inset: 0; z-index: -1; }
 .game-hero-art img { width: 100%; height: 100%; object-fit: cover; }
-/* The banner keeps its dark treatment in both themes. Steam's logos are white
+/* the banner stays dark in both themes. steam logos are white
    cutouts drawn for a dark background, and on a light wash they disappear. */
 .game-hero::after {
   content: "";
@@ -691,7 +691,7 @@ input::placeholder { color: var(--faint); }
   color: var(--dim);
   min-width: 0;
 }
-/* Install paths are long and the interesting end is the last folder. */
+/* install paths are long and the bit you want is the last folder */
 .detail-row b.path {
   overflow: hidden;
   white-space: nowrap;
@@ -700,7 +700,7 @@ input::placeholder { color: var(--faint); }
   text-align: left;
 }
 
-/* ---------- what a table holds, before attaching ---------- */
+/* ---------- cheat cards ---------- */
 
 .table-card {
   padding: 18px 20px 20px;
@@ -796,13 +796,17 @@ input::placeholder { color: var(--faint); }
 }
 .cheat:hover { border-color: var(--faint); }
 .cheat.on { border-color: var(--accent-line); background: var(--accent-soft); }
-.cheat.off-limits { opacity: 0.7; }
+/* armed but not doing anything yet, which is every cheat until the game is far
+   enough in for its pointer to exist */
+.cheat.armed:not(.on) { border-color: var(--line); background: var(--raised); }
+.cheat.armed:not(.on) .switch { opacity: 0.65; }
 
 .cheat-main { flex: 1; min-width: 0; }
 .cheat-name { font-size: 13.5px; font-weight: 570; }
 .cheat-why { margin-top: 2px; font-size: 12px; color: var(--faint); overflow-wrap: anywhere; }
 .cheat-why.wait { color: var(--warn); }
 .cheat-why.dead { color: var(--bad); }
+.cheat-why.live { color: var(--accent); font-weight: 600; }
 
 .switch {
   position: relative;
@@ -1068,7 +1072,7 @@ input::placeholder { color: var(--faint); }
 
 .blank-actions { display: flex; gap: 10px; justify-content: center; }
 
-/* Dropping a .CT anywhere on the window imports it. */
+/* dropping a .CT anywhere on the window imports it */
 .dropping::after {
   content: "Drop the .CT file to import it";
   position: fixed;

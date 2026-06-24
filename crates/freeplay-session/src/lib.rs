@@ -1,18 +1,20 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use freeplay_aa::{Runner, Script};
 use freeplay_core::patch::Patch;
 use freeplay_core::target::Target;
 use freeplay_core::value::Scalar;
 use freeplay_table::resolve::{self, State, Symbols};
-use freeplay_table::schema::{Action, Cheat};
+use freeplay_table::schema::{Action, Cheat, Locator};
 use freeplay_table::Table;
 
 pub const TICK: Duration = Duration::from_millis(30);
+
+const RETRY: Duration = Duration::from_secs(5);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -54,6 +56,8 @@ pub struct Session {
     table: Table,
     engaged: Arc<Mutex<HashMap<String, Engaged>>>,
     symbols: Arc<Mutex<Symbols>>,
+    armed: Arc<Mutex<HashSet<String>>>,
+    tried: Arc<Mutex<HashMap<String, Instant>>>,
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
@@ -65,6 +69,8 @@ impl Session {
             table,
             engaged: Arc::new(Mutex::new(HashMap::new())),
             symbols: Arc::new(Mutex::new(Symbols::new())),
+            armed: Arc::new(Mutex::new(HashSet::new())),
+            tried: Arc::new(Mutex::new(HashMap::new())),
             stop: Arc::new(AtomicBool::new(false)),
             worker: None,
         }
@@ -103,6 +109,119 @@ impl Session {
 
     pub fn is_on(&self, id: &str) -> bool {
         self.engaged.lock().unwrap().contains_key(id)
+    }
+
+    pub fn is_armed(&self, id: &str) -> bool {
+        self.armed.lock().unwrap().contains(id)
+    }
+
+    pub fn armed(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.armed.lock().unwrap().iter().cloned().collect();
+        ids.sort();
+        ids
+    }
+
+    pub fn arm(&self, id: &str) -> Result<(), Error> {
+        if self.table.cheat(id).is_none() {
+            return Err(Error::NoSuchCheat(id.to_string()));
+        }
+
+        let mut wanted = vec![id.to_string()];
+        if let Some(script) = self.provider_for(id) {
+            wanted.push(script);
+        }
+
+        {
+            let mut armed = self.armed.lock().unwrap();
+            let mut tried = self.tried.lock().unwrap();
+            for name in &wanted {
+                armed.insert(name.clone());
+                tried.remove(name);
+            }
+        }
+
+        self.reconcile();
+        Ok(())
+    }
+
+    pub fn disarm(&self, id: &str) -> Result<(), Error> {
+        self.armed.lock().unwrap().remove(id);
+        self.tried.lock().unwrap().remove(id);
+        self.disable(id)
+    }
+
+    pub fn arm_all(&self, ids: &[String]) {
+        let mut armed = self.armed.lock().unwrap();
+        for id in ids {
+            if self.table.cheat(id).is_some() {
+                armed.insert(id.clone());
+            }
+        }
+        drop(armed);
+        self.reconcile();
+    }
+
+    fn provider_for(&self, id: &str) -> Option<String> {
+        let cheat = self.table.cheat(id)?;
+        let Some(Locator::Symbol { symbol, .. }) = &cheat.locator else {
+            return None;
+        };
+
+        self.table
+            .cheats
+            .iter()
+            .find(|other| match &other.action {
+                Action::Script { source } => freeplay_aa::parse(source)
+                    .map(|script| freeplay_aa::symbols_defined(&script).contains(symbol))
+                    .unwrap_or(false),
+                _ => false,
+            })
+            .map(|other| other.id.clone())
+    }
+
+    pub fn reconcile(&self) {
+        if !self.target.alive() {
+            return;
+        }
+
+        let wanted = self.armed();
+        if wanted.is_empty() {
+            return;
+        }
+
+        let mut order: Vec<&Cheat> = self
+            .table
+            .cheats
+            .iter()
+            .filter(|c| wanted.contains(&c.id) && !self.is_on(&c.id))
+            .collect();
+        order.sort_by_key(|c| !c.action.is_script());
+
+        for cheat in order {
+            {
+                let tried = self.tried.lock().unwrap();
+                if tried.get(&cheat.id).is_some_and(|at| at.elapsed() < RETRY) {
+                    continue;
+                }
+            }
+
+            if !self.state_of(cheat, &self.symbols()).is_ready() {
+                continue;
+            }
+
+            match self.enable(&cheat.id) {
+                Ok(()) => {
+                    self.tried.lock().unwrap().remove(&cheat.id);
+                }
+                Err(e) => {
+                    tracing::debug!("{} not on yet: {e}", cheat.name);
+                    self.tried
+                        .lock()
+                        .unwrap()
+                        .insert(cheat.id.clone(), Instant::now());
+                }
+            }
+        }
     }
 
     pub fn active_ids(&self) -> Vec<String> {
@@ -211,6 +330,12 @@ impl Session {
             _ => {}
         }
         Ok(())
+    }
+
+    pub fn disarm_all(&self) {
+        self.armed.lock().unwrap().clear();
+        self.tried.lock().unwrap().clear();
+        self.disable_all();
     }
 
     pub fn disable_all(&self) {

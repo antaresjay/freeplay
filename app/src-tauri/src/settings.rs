@@ -1,9 +1,7 @@
-//! What the interface remembers between launches.
-//!
-//! One small json file. Nothing here is worth a database, and a file you can
-//! open in notepad fits an app whose whole argument is that you can read what
-//! it does.
+//! one small json file. a database would be overkill and you can open this
+//! one in notepad, which suits an app whose whole point is being readable
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -11,16 +9,23 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    /// "system", "dark" or "light".
+    // system, dark or light
     pub theme: String,
     pub accent: String,
-    /// Game keys, in the order they were pinned.
+    // game keys, in the order they were pinned
     pub pinned: Vec<String>,
     pub favourites: Vec<String>,
-    /// Fetch published tables on start. Off means Freeplay never touches the
-    /// network at all and runs on whatever is already on disk.
+    // fetch published tables on start. off means we never touch the network
+    // and run on whatever is already on disk
     #[serde(default = "yes")]
     pub auto_update: bool,
+    // attach on our own when a game with a table starts
+    #[serde(default = "yes")]
+    pub auto_attach: bool,
+    // what is switched on, per exe. comes back next launch and engages once
+    // the game is far enough in to allow it
+    #[serde(default)]
+    pub armed: HashMap<String, Vec<String>>,
 }
 
 fn yes() -> bool {
@@ -35,13 +40,15 @@ impl Default for Settings {
             pinned: Vec::new(),
             favourites: Vec::new(),
             auto_update: true,
+            auto_attach: true,
+            armed: HashMap::new(),
         }
     }
 }
 
 impl Settings {
-    /// Keeps unknown values out of the file, so a hand edit cannot leave the
-    /// interface pointing at a theme that does not exist.
+    // keeps junk out, so a hand edit cannot leave the ui pointing at a theme
+    // that does not exist
     pub fn tidy(&mut self) {
         if !["system", "dark", "light"].contains(&self.theme.as_str()) {
             self.theme = "system".into();

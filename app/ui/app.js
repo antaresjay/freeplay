@@ -5,7 +5,6 @@ const $ = (id) => document.getElementById(id);
 let games = [];
 let attached = null;
 let scanning = false;
-let cheatTimer = null;
 let open = null; // key of the game whose page is showing
 let drawn = "";
 let config = { theme: "system", accent: "amber", pinned: [], favourites: [] };
@@ -41,6 +40,7 @@ function applyTheme() {
     ? `${config.pinned.length} pinned`
     : "Nothing pinned yet";
   $("auto-update").classList.toggle("on", config.auto_update !== false);
+  $("auto-attach").classList.toggle("on", config.auto_attach !== false);
 }
 
 async function checkForTables(manual) {
@@ -163,7 +163,7 @@ async function loadGames(refresh = false) {
   loadArt();
 }
 
-/* Running first, then anything with a table, anti-cheat last. */
+/* running first, then anything with a table, anti-cheat last */
 function ordered(list) {
   const rank = (g) => (g.guard ? 2 : 0) - (g.running ? 1 : 0);
   return [...list].sort(
@@ -171,8 +171,8 @@ function ordered(list) {
   );
 }
 
-/* Redrawing wipes hover and restarts image decoding, and the list is polled
-   every few seconds, so only rebuild when something actually moved. */
+/* redrawing wipes hover and restarts image decoding, and this polls every few
+   seconds, so only rebuild when something actually moved */
 function signature(list) {
   return (
     list
@@ -269,8 +269,8 @@ function card(game) {
   const overlay = document.createElement("div");
   overlay.className = "card-overlay";
   const label = document.createElement("b");
-  // Clicking always opens the game's page. Saying "Attach" here promised
-  // something the click does not do.
+  // clicking always opens the game page. saying "attach" here promised
+  // something the click does not do
   label.textContent = game.guard ? "Off limits" : "Open";
   overlay.appendChild(label);
   box.appendChild(overlay);
@@ -364,7 +364,6 @@ function drawGamePage() {
   $("detail-guard").textContent = game.guard || "";
   $("game-folder").disabled = !game.dir;
 
-  drawTableCard(game);
 
   $("game-fav").classList.toggle("on", game.favourite);
   $("game-pin").classList.toggle("on", game.pinned);
@@ -392,97 +391,8 @@ function drawGamePage() {
     note.hidden = true;
   }
 
-  if (!isAttached) {
-    $("cheat-groups").innerHTML = "";
-    $("no-table").hidden = true;
-  }
-}
-
-/* What the table holds, drawn before anything is attached. Reading it is the
-   point: you want to know whether a game is worth starting. */
-async function drawTableCard(game) {
-  const card = $("table-card");
-  const isAttached = attached && attached.process === game.exe;
-
-  // Once attached the live list below says all of this, with working toggles.
-  if (isAttached || !game.exe) {
-    card.hidden = true;
-    return;
-  }
-
-  let table = null;
-  try {
-    table = await invoke("table_preview", { exe: game.exe });
-  } catch {
-    card.hidden = true;
-    return;
-  }
-
-  // The page may have moved on while that was in flight.
-  if (open !== game.key) return;
-
-  if (!table) {
-    card.hidden = true;
-    $("no-table").hidden = false;
-    return;
-  }
-
-  $("no-table").hidden = true;
-  card.hidden = false;
-  $("table-title").textContent = table.game;
-
-  const by = [];
-  if (table.author) by.push(`by ${table.author}`);
-  if (table.verified.length) by.push(`checked against ${table.verified.join(", ")}`);
-  $("table-by").textContent = by.join(", ");
-  $("table-by").hidden = !by.length;
-
-  $("table-notes").textContent = table.notes;
-  $("table-notes").hidden = !table.notes;
-
-  const n = table.cheats.length;
-  $("table-count").textContent = `${n} ${n === 1 ? "cheat" : "cheats"}`;
-
-  const host = $("table-preview");
-  host.innerHTML = "";
-  const byCategory = new Map();
-  for (const cheat of table.cheats) {
-    if (!byCategory.has(cheat.category)) byCategory.set(cheat.category, []);
-    byCategory.get(cheat.category).push(cheat);
-  }
-
-  for (const [category, items] of byCategory) {
-    const group = document.createElement("div");
-    group.className = "preview-group";
-
-    const heading = document.createElement("h4");
-    heading.textContent = category;
-    group.appendChild(heading);
-
-    for (const item of items) {
-      const row = document.createElement("div");
-      row.className = "preview-row";
-
-      const name = document.createElement("span");
-      name.className = "preview-name";
-      name.textContent = item.name;
-
-      const does = document.createElement("span");
-      does.className = "preview-does";
-      does.textContent = item.does;
-
-      row.append(name, does);
-      if (item.description) row.title = item.description;
-      group.appendChild(row);
-    }
-    host.appendChild(group);
-  }
-
-  $("table-locked").textContent = game.guard
-    ? "Off limits while this game ships an anti-cheat."
-    : game.running
-      ? "Attach to switch these on."
-      : "Press Play, then attach to switch these on.";
+  refreshCheats.drawn = "";
+  refreshCheats();
 }
 
 /* ---------- attaching ---------- */
@@ -504,15 +414,11 @@ async function doAttach(exe) {
   }
   drawn = "";
   draw();
+  refreshCheats.drawn = "";
   await refreshCheats();
-
-  // States change as you move between menus and gameplay, so keep checking.
-  clearInterval(cheatTimer);
-  cheatTimer = setInterval(refreshCheats, 1500);
 }
 
 async function doDetach() {
-  clearInterval(cheatTimer);
   await invoke("detach");
   attached = null;
   scanning = false;
@@ -525,13 +431,12 @@ async function doDetach() {
 /* ---------- cheats ---------- */
 
 async function refreshCheats() {
-  // Resolving a locator can mean scanning the game's memory. Not worth doing
-  // for a page nobody is looking at.
-  if (!attached || $("view-game").hidden) return;
+  const game = gameFor(open);
+  if (!game || !game.exe || $("view-game").hidden) return;
 
   let rows = [];
   try {
-    rows = await invoke("cheats");
+    rows = await invoke("cheats", { exe: game.exe });
   } catch {
     return;
   }
@@ -545,6 +450,12 @@ async function refreshCheats() {
     byCategory.get(row.category).push(row);
   }
 
+  const stamp = rows
+    .map((r) => `${r.id}${r.armed}${r.live}${r.state}${r.reason}`)
+    .join("|");
+  if (stamp === refreshCheats.drawn) return;
+  refreshCheats.drawn = stamp;
+
   host.innerHTML = "";
   for (const [category, items] of byCategory) {
     const group = document.createElement("div");
@@ -555,16 +466,19 @@ async function refreshCheats() {
 
     const grid = document.createElement("div");
     grid.className = "cheats";
-    for (const item of items) grid.appendChild(cheatCard(item));
+    for (const item of items) grid.appendChild(cheatCard(item, game.exe));
 
     group.append(heading, grid);
     host.appendChild(group);
   }
 }
 
-function cheatCard(item) {
+/* you can switch a cheat on whenever. whether it is actually doing anything is
+   a separate thing the card says underneath, since the pointer most of them
+   hang off is null until you load a save */
+function cheatCard(item, exe) {
   const card = document.createElement("div");
-  card.className = "cheat" + (item.on ? " on" : "") + (item.state === "ready" ? "" : " off-limits");
+  card.className = "cheat" + (item.armed ? " armed" : "") + (item.live ? " on" : "");
 
   const main = document.createElement("div");
   main.className = "cheat-main";
@@ -573,33 +487,40 @@ function cheatCard(item) {
   name.className = "cheat-name";
   name.textContent = item.name;
 
+  const tag = document.createElement("span");
+  tag.className = "cheat-does";
+  tag.textContent = item.does || "";
+  name.appendChild(tag);
+
   const why = document.createElement("div");
   why.className = "cheat-why";
-  if (item.state === "broken") {
+
+  if (item.live) {
+    why.classList.add("live");
+    why.textContent = "On";
+  } else if (item.armed && item.state === "broken") {
     why.classList.add("dead");
     why.textContent = item.reason || "not found in this build";
-  } else if (item.state === "wait") {
+  } else if (item.armed && item.state === "wait") {
     why.classList.add("wait");
     why.textContent = item.hint || item.reason;
+  } else if (item.armed) {
+    why.classList.add("wait");
+    why.textContent = "Waiting for the game";
   } else if (item.description) {
     why.textContent = item.description;
   } else if (item.does === "Script") {
     why.textContent = "Hooks the game. Other cheats here need what it finds.";
   }
 
-  const tag = document.createElement("span");
-  tag.className = "cheat-does";
-  tag.textContent = item.does || "";
-
-  name.appendChild(tag);
   main.append(name, why);
 
   const toggle = document.createElement("button");
-  toggle.className = "switch" + (item.on ? " on" : "");
-  toggle.disabled = item.state !== "ready" && !item.on;
+  toggle.className = "switch" + (item.armed ? " on" : "");
   toggle.addEventListener("click", async () => {
     try {
-      await invoke("set_cheat", { id: item.id, on: !item.on });
+      await invoke("set_cheat", { exe, id: item.id, on: !item.armed });
+      refreshCheats.drawn = "";
       await refreshCheats();
     } catch (e) {
       toast(String(e), true);
@@ -818,6 +739,10 @@ $("game-pin").addEventListener("click", () => {
   if (open) saveConfig({ pinned: toggleIn(config.pinned, open) });
 });
 $("clear-pins").addEventListener("click", () => saveConfig({ pinned: [] }));
+$("auto-attach").addEventListener("click", () =>
+  saveConfig({ auto_attach: config.auto_attach === false })
+);
+
 $("auto-update").addEventListener("click", () =>
   saveConfig({ auto_update: config.auto_update === false })
 );
@@ -859,8 +784,8 @@ $("game-folder").addEventListener("click", () => {
   invoke("open_folder", { dir: game.dir }).catch((e) => toast(String(e), true));
 });
 
-/* Dropping a .CT anywhere on the window imports it. Tauri reports the drop
-   itself, the webview never sees the file. */
+/* dropping a .CT anywhere on the window imports it. tauri reports the drop, the
+   webview never sees the file */
 if (window.__TAURI__.event) {
   const { listen } = window.__TAURI__.event;
   listen("tables-updated", async (e) => {
@@ -919,6 +844,24 @@ async function start() {
   $("settings-path").textContent = "%APPDATA%\\freeplay\\settings.json";
   await loadGames();
   setInterval(loadGames, 5000);
+  setInterval(refreshCheats, 1500);
+
+  if (window.__TAURI__.event) {
+    const { listen } = window.__TAURI__.event;
+    listen("attached", (e) => {
+      attached = e.payload;
+      drawn = "";
+      draw();
+      if (open) drawGamePage();
+      toast(`Attached to ${attached.game}`);
+    });
+    listen("detached", () => {
+      attached = null;
+      drawn = "";
+      draw();
+      if (open) drawGamePage();
+    });
+  }
 }
 
 start();

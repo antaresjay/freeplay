@@ -1,10 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-//! Desktop front end.
-//!
-//! Everything here is glue. The interesting parts live in freeplay-core and
-//! freeplay-session, which is deliberate: the app should be replaceable
-//! without touching anything that knows how memory works.
+//! desktop front end. all glue, the real work is in core and session
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -33,24 +29,26 @@ struct App {
     target: Mutex<Option<Arc<dyn Target>>>,
     session: Mutex<Option<Session>>,
     search: Mutex<Option<Search>>,
-    /// Which art a game actually has, keyed by app id. The bytes go over the
-    /// art protocol, this is only the three existence checks.
+    // which art each game has, keyed by app id. the bytes go over the art
+    // protocol, this is just the three exists checks
     art: Mutex<HashMap<String, ArtUrls>>,
-    /// Anti-cheat found in a game's folder, keyed by install directory.
+    // anti-cheat found in a game's folder, keyed by install dir
     guards: Mutex<HashMap<PathBuf, Option<String>>>,
-    /// Installed games. Finding them means walking every install directory,
-    /// which takes seconds, so it happens once and then only when asked.
+    // walking every install dir takes seconds, so do it once and then only
+    // when asked
     library: Mutex<Option<Vec<InstalledGame>>>,
-    /// Parsed tables. The library list polls every few seconds and a .CT is
-    /// xml, so reparsing them on every poll is real work for no reason.
+    // detached by hand, so don't grab it again until the game restarts
+    declined: Mutex<Option<String>>,
+    // parsed tables. the library polls every few seconds and a .CT is xml, so
+    // reparsing every time is real work for nothing
     tables: Mutex<Option<Vec<Table>>>,
     settings: Mutex<Settings>,
 }
 
 #[derive(Serialize)]
 struct GameRow {
-    /// Stable across launches, which is what pinning and favourites are keyed
-    /// on. An app id where there is one, the install path otherwise.
+    // stable across launches, pinning and favourites key off it. app id if
+    // there is one, install path otherwise
     key: String,
     name: String,
     store: String,
@@ -59,9 +57,9 @@ struct GameRow {
     app_id: Option<String>,
     running: bool,
     has_table: bool,
-    /// Name of the anti-cheat shipped alongside the game, if there is one.
+    // anti-cheat shipped with the game, if any
     guard: Option<String>,
-    /// Minutes played and when, straight out of Steam's own record.
+    // minutes played and when, straight out of steam
     minutes: Option<u32>,
     last_played: Option<u64>,
     pinned: bool,
@@ -89,33 +87,15 @@ struct ProcessRow {
     name: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct Attached {
     process: String,
     pid: u32,
     game: String,
     table: bool,
-    /// "32-bit" or "64-bit". Worth showing, because it decides whether a
-    /// community table written for the other build will resolve at all.
+    // 32-bit or 64-bit. decides whether a table written for the other build
+    // resolves at all
     arch: String,
-}
-
-#[derive(Serialize)]
-struct TablePreview {
-    game: String,
-    author: String,
-    notes: String,
-    verified: Vec<String>,
-    cheats: Vec<PreviewCheat>,
-}
-
-#[derive(Serialize)]
-struct PreviewCheat {
-    name: String,
-    category: String,
-    description: String,
-    /// Freeze, set once, patch. What the toggle will actually do.
-    does: String,
 }
 
 #[derive(Serialize)]
@@ -125,10 +105,13 @@ struct CheatRow {
     category: String,
     description: String,
     hint: String,
-    /// "ready", "wait" or "broken".
+    // ready, wait, broken or on
     state: String,
     reason: String,
-    on: bool,
+    // what you want on, game running or not
+    armed: bool,
+    // actually doing something right now
+    live: bool,
     does: String,
 }
 
@@ -146,7 +129,7 @@ struct Hit {
 }
 
 fn tables_dir() -> PathBuf {
-    // Next to the executable when installed, in the repo while developing.
+    // next to the exe once installed, in the repo while developing
     let beside = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join("tables")));
@@ -156,13 +139,12 @@ fn tables_dir() -> PathBuf {
     PathBuf::from("tables")
 }
 
-/// Downloaded tables, which is where anything published ends up.
+// downloaded tables end up here
 fn synced_dir() -> PathBuf {
     freeplay_sync::cache_dir(&settings::path())
 }
 
-/// Both folders: what shipped next to the executable, and what has been
-/// fetched since. A downloaded table wins, because it is the newer one.
+// both folders. a downloaded table wins, it is the newer one
 fn load_tables() -> Vec<Table> {
     let mut tables = Table::load_dir(synced_dir());
     for table in Table::load_dir(tables_dir()) {
@@ -190,9 +172,8 @@ fn table_for(exe: &str) -> Option<Table> {
     load_tables().into_iter().find(|t| t.matches_process(exe))
 }
 
-/// Names sitting in a game's install folder, two levels down. Anti-cheats
-/// either drop their loader next to the executable or in a folder of their
-/// own, so that is deep enough and keeps this off the slow path.
+// names in a game's install folder, two deep. anti-cheats drop their loader
+// next to the exe or one folder down, so that is far enough
 fn folder_names(dir: &Path, depth: usize, out: &mut Vec<String>) {
     if depth == 0 || out.len() > 4000 {
         return;
@@ -226,9 +207,8 @@ fn guard_for(state: &tauri::State<'_, App>, dir: &Path) -> Option<String> {
     found
 }
 
-/// Walking every install directory takes seconds, and nothing about an
-/// installed game changes while the app is open. Scan once, then only when the
-/// refresh button is pressed.
+// scanning takes seconds and nothing changes while the app is open, so cache
+// it until the refresh button says otherwise
 fn library(state: &tauri::State<'_, App>, refresh: bool) -> Vec<InstalledGame> {
     if !refresh {
         if let Some(cached) = state.library.lock().unwrap().as_ref() {
@@ -241,8 +221,8 @@ fn library(state: &tauri::State<'_, App>, refresh: bool) -> Vec<InstalledGame> {
     found
 }
 
-/// Async so the scan lands on a worker thread. A synchronous command runs on
-/// the main thread, which means the window stops answering while it works.
+// async so it lands on a worker. a sync command runs on the main thread and
+// the window stops answering while it works
 #[tauri::command]
 async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<GameRow>, ()> {
     if refresh {
@@ -299,8 +279,8 @@ fn settings(state: tauri::State<'_, App>) -> Settings {
     state.settings.lock().unwrap().clone()
 }
 
-/// Everything worth pasting into an issue, gathered in one go so nobody has to
-/// be talked through finding a log file.
+// everything worth pasting into an issue, so nobody gets talked through
+// finding a log file
 #[tauri::command]
 fn diagnostics(state: tauri::State<'_, App>) -> String {
     let attached = match state.target.lock().unwrap().as_ref() {
@@ -329,8 +309,8 @@ fn diagnostics(state: tauri::State<'_, App>) -> String {
     log::report(&extra)
 }
 
-/// Convert a Cheat Engine table and keep it. Dropping the file on the window
-/// is the whole flow: nobody should have to find a folder.
+// convert a .CT and keep it. dropping the file on the window is the whole
+// flow, nobody should have to go find a folder
 #[tauri::command]
 fn import_table(
     state: tauri::State<'_, App>,
@@ -352,7 +332,7 @@ fn import_table(
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    // Whatever we are attached to beats guessing from the file name.
+    // whatever we are attached to beats guessing from the file name
     let exe = exe.unwrap_or_else(|| {
         if stem.to_lowercase().ends_with(".exe") {
             stem.clone()
@@ -396,36 +376,7 @@ fn import_table(
     ))
 }
 
-/// What a game's table offers, without attaching to anything.
-///
-/// The detail page used to be blank until a game was running, which is the
-/// wrong way round: whether a table exists and what is in it is exactly what
-/// you want to know before deciding to start the game.
-#[tauri::command]
-async fn table_preview(
-    state: tauri::State<'_, App>,
-    exe: String,
-) -> Result<Option<TablePreview>, ()> {
-    let found = tables(&state).into_iter().find(|t| t.matches_process(&exe));
-    Ok(found.map(|table| TablePreview {
-        game: table.game.name,
-        author: table.game.author,
-        notes: table.game.notes,
-        verified: table.game.verified,
-        cheats: table
-            .cheats
-            .into_iter()
-            .map(|cheat| PreviewCheat {
-                name: cheat.name,
-                category: cheat.category.label().to_string(),
-                description: cheat.description,
-                does: cheat.action.label().to_string(),
-            })
-            .collect(),
-    }))
-}
-
-/// Opens the game's install folder.
+// opens the install folder
 #[tauri::command]
 fn open_folder(dir: String) -> Result<(), String> {
     let path = PathBuf::from(dir);
@@ -435,16 +386,15 @@ fn open_folder(dir: String) -> Result<(), String> {
     freeplay_library::launch::show(&path)
 }
 
-/// Opens a community search for this game in the browser. Freeplay itself
-/// makes no request, it hands a url to the shell the same way it hands over a
-/// steam:// link. The tables belong to the people who wrote them, so this
-/// points at them rather than shipping copies.
+// opens a search in the browser. we make no request ourselves, just hand a url
+// to the shell like a steam link. the tables belong to whoever wrote them, so
+// point at them instead of shipping copies
 #[tauri::command]
 fn find_table(name: String) -> Result<(), String> {
     freeplay_library::launch::show_url(&community::search_url(&name))
 }
 
-/// Fetch published tables. Also runs once at start unless it is turned off.
+// fetch published tables. also runs once at start unless turned off
 #[tauri::command]
 async fn update_tables(state: tauri::State<'_, App>) -> Result<String, String> {
     let report = freeplay_sync::update(&synced_dir())?;
@@ -472,11 +422,10 @@ fn save_settings(state: tauri::State<'_, App>, next: Settings) -> Result<Setting
     Ok(next)
 }
 
-/// A window gets asked for two icons: a small one for its own title bar and a
-/// big one for the taskbar and alt-tab. Tauri only ever sets the small one, so
-/// windows had nothing to answer the big request with and stretched the small
-/// one instead, which is why the taskbar looked soft. Build both at the size
-/// windows is actually asking for, which also picks up display scaling.
+// windows asks for two icons, a small one for the title bar and a big one for
+// the taskbar and alt-tab. tauri only sets the small one, so windows stretched
+// 16px up to 48 and it looked soft. build both at the size it actually asks
+// for, which also picks up display scaling
 #[cfg(windows)]
 fn set_window_icons(window: &tauri::WebviewWindow) {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
@@ -486,7 +435,7 @@ fn set_window_icons(window: &tauri::WebviewWindow) {
     };
 
     const PNG: &[u8] = include_bytes!("../icons/256x256.png");
-    // Says the buffer is a 3.0 icon resource, which is what lets it be a png.
+    // marks the buffer as a 3.0 icon resource, which is what lets it be a png
     const ICON_RESOURCE_V3: u32 = 0x0003_0000;
 
     let Ok(hwnd) = window.hwnd() else { return };
@@ -534,10 +483,9 @@ async fn launch_game(state: tauri::State<'_, App>, key: String) -> Result<(), St
     }
 }
 
-/// Box art used to go over as base64 in the command reply. That put megabytes
-/// of string through the bridge and made the webview decode the same picture
-/// again on every redraw. It is served as bytes now, so it gets cached and
-/// decoded once like any other image.
+// art used to go over as base64 in the reply, which pushed megabytes of string
+// through the bridge and made the webview decode the same picture on every
+// redraw. as bytes it gets cached and decoded once like any other image
 fn art_url(app_id: &str, kind: &str) -> String {
     if cfg!(windows) {
         format!("http://art.localhost/{app_id}/{kind}")
@@ -564,7 +512,7 @@ fn game_art(state: tauri::State<'_, App>, app_id: String) -> ArtUrls {
     urls
 }
 
-/// Serves the files Steam already cached. Path is `/<appid>/<kind>`.
+// serves what steam already cached. path is /<appid>/<kind>
 fn serve_art(path: &str) -> tauri::http::Response<Vec<u8>> {
     let deny = || {
         tauri::http::Response::builder()
@@ -577,7 +525,7 @@ fn serve_art(path: &str) -> tauri::http::Response<Vec<u8>> {
     let (Some(app_id), Some(kind)) = (parts.next(), parts.next()) else {
         return deny();
     };
-    // The app id goes into a path, so it has to actually be one.
+    // the app id goes into a path, so it had better be one
     if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
         return deny();
     }
@@ -636,7 +584,8 @@ fn friendly(error: CoreError) -> String {
 
 #[tauri::command]
 fn attach(state: tauri::State<'_, App>, exe: String) -> Result<Attached, String> {
-    detach(state.clone());
+    tear_down(&state);
+    *state.declined.lock().unwrap() = None;
 
     let target = WindowsTarget::attach_by_name(&exe).map_err(friendly)?;
     let pid = target.pid();
@@ -653,6 +602,7 @@ fn attach(state: tauri::State<'_, App>, exe: String) -> Result<Attached, String>
     if let Some(table) = table {
         let mut session = Session::new(Arc::clone(&shared), table);
         session.start();
+        session.arm_all(&armed_for(&state, &exe));
         *state.session.lock().unwrap() = Some(session);
     }
     *state.target.lock().unwrap() = Some(shared);
@@ -669,6 +619,17 @@ fn attach(state: tauri::State<'_, App>, exe: String) -> Result<Attached, String>
 
 #[tauri::command]
 fn detach(state: tauri::State<'_, App>) {
+    let letting_go = state
+        .target
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|t| t.name().to_lowercase());
+    *state.declined.lock().unwrap() = letting_go;
+    tear_down(&state);
+}
+
+fn tear_down(state: &tauri::State<'_, App>) {
     if let Some(mut session) = state.session.lock().unwrap().take() {
         session.stop();
         session.disable_all();
@@ -678,48 +639,204 @@ fn detach(state: tauri::State<'_, App>) {
 }
 
 #[tauri::command]
-fn cheats(state: tauri::State<'_, App>) -> Vec<CheatRow> {
+fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
     let guard = state.session.lock().unwrap();
-    let Some(session) = guard.as_ref() else {
+    let attached = guard.as_ref().filter(|s| s.table().matches_process(&exe));
+
+    if let Some(session) = attached {
+        session.reconcile();
+        let symbols = session.symbols();
+        return session
+            .table()
+            .cheats
+            .iter()
+            .map(|cheat| {
+                let state = session.state_of(cheat, &symbols);
+                let live = session.is_on(&cheat.id);
+                let (label, reason) = match &state {
+                    CheatState::Ready { .. } => ("ready", String::new()),
+                    CheatState::Unavailable { reason } => ("wait", reason.clone()),
+                    CheatState::Broken { reason } => ("broken", reason.clone()),
+                };
+                CheatRow {
+                    id: cheat.id.clone(),
+                    name: cheat.name.clone(),
+                    category: cheat.category.label().to_string(),
+                    description: cheat.description.clone(),
+                    hint: cheat.hint.clone(),
+                    state: if live { "on".into() } else { label.to_string() },
+                    reason,
+                    armed: session.is_armed(&cheat.id),
+                    live,
+                    does: cheat.action.label().to_string(),
+                }
+            })
+            .collect();
+    }
+    drop(guard);
+
+    let armed = armed_for(&state, &exe);
+    let Some(table) = tables(&state).into_iter().find(|t| t.matches_process(&exe)) else {
         return Vec::new();
     };
 
-    let symbols = session.symbols();
-    session
-        .table()
+    table
         .cheats
         .iter()
-        .map(|cheat| {
-            let state = session.state_of(cheat, &symbols);
-            let (label, reason) = match &state {
-                CheatState::Ready { .. } => ("ready", String::new()),
-                CheatState::Unavailable { reason } => ("wait", reason.clone()),
-                CheatState::Broken { reason } => ("broken", reason.clone()),
-            };
-            CheatRow {
-                id: cheat.id.clone(),
-                name: cheat.name.clone(),
-                category: cheat.category.label().to_string(),
-                description: cheat.description.clone(),
-                hint: cheat.hint.clone(),
-                state: label.to_string(),
-                reason,
-                on: session.is_on(&cheat.id),
-                does: cheat.action.label().to_string(),
-            }
+        .map(|cheat| CheatRow {
+            id: cheat.id.clone(),
+            name: cheat.name.clone(),
+            category: cheat.category.label().to_string(),
+            description: cheat.description.clone(),
+            hint: cheat.hint.clone(),
+            state: "idle".into(),
+            reason: String::new(),
+            armed: armed.contains(&cheat.id),
+            live: false,
+            does: cheat.action.label().to_string(),
         })
         .collect()
 }
 
-#[tauri::command]
-fn set_cheat(state: tauri::State<'_, App>, id: String, on: bool) -> Result<(), String> {
-    let guard = state.session.lock().unwrap();
-    let session = guard.as_ref().ok_or("nothing is attached")?;
+fn armed_for(state: &tauri::State<'_, App>, exe: &str) -> Vec<String> {
+    state
+        .settings
+        .lock()
+        .unwrap()
+        .armed
+        .get(&exe.to_lowercase())
+        .cloned()
+        .unwrap_or_default()
+}
 
-    if on {
-        session.enable(&id).map_err(|e| e.to_string())
+fn remember_armed(state: &tauri::State<'_, App>, exe: &str, ids: Vec<String>) {
+    let mut settings = state.settings.lock().unwrap();
+    if ids.is_empty() {
+        settings.armed.remove(&exe.to_lowercase());
     } else {
-        session.disable(&id).map_err(|e| e.to_string())
+        settings.armed.insert(exe.to_lowercase(), ids);
+    }
+    let _ = settings::save(&settings);
+}
+
+#[tauri::command]
+fn set_cheat(
+    state: tauri::State<'_, App>,
+    exe: String,
+    id: String,
+    on: bool,
+) -> Result<(), String> {
+    let mut wanted = armed_for(&state, &exe);
+
+    {
+        let guard = state.session.lock().unwrap();
+        if let Some(session) = guard.as_ref().filter(|s| s.table().matches_process(&exe)) {
+            if on {
+                session.arm(&id).map_err(|e| e.to_string())?;
+            } else {
+                session.disarm(&id).map_err(|e| e.to_string())?;
+            }
+            wanted = session.armed();
+        } else {
+            wanted.retain(|held| held != &id);
+            if on {
+                wanted.push(id.clone());
+                if let Some(script) = provider_for(&state, &exe, &id) {
+                    if !wanted.contains(&script) {
+                        wanted.push(script);
+                    }
+                }
+            }
+        }
+    }
+
+    remember_armed(&state, &exe, wanted);
+    Ok(())
+}
+
+// which script writes down the symbol a cheat hangs off. switching on infinite
+// health should switch on the thing that finds the player too
+fn provider_for(state: &tauri::State<'_, App>, exe: &str, id: &str) -> Option<String> {
+    use freeplay_table::schema::{Action, Locator};
+
+    let table = tables(state).into_iter().find(|t| t.matches_process(exe))?;
+    let cheat = table.cheats.iter().find(|c| c.id == id)?;
+    let Some(Locator::Symbol { symbol, .. }) = &cheat.locator else {
+        return None;
+    };
+
+    table
+        .cheats
+        .iter()
+        .find(|other| match &other.action {
+            Action::Script { source } => freeplay_aa::parse(source)
+                .map(|script| freeplay_aa::symbols_defined(&script).contains(symbol))
+                .unwrap_or(false),
+            _ => false,
+        })
+        .map(|other| other.id.clone())
+}
+
+// grabs the game when it turns up and keeps retrying whatever is armed. the
+// pointer most cheats hang off is null until you load a save, so trying once
+// and giving up is what makes people alt-tab back to the app
+fn watch_for_games(handle: tauri::AppHandle) {
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+
+        let state = handle.state::<App>();
+        let running: Vec<String> = processes()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|p| p.name.to_lowercase())
+            .collect();
+
+        {
+            let mut declined = state.declined.lock().unwrap();
+            if declined.as_ref().is_some_and(|exe| !running.contains(exe)) {
+                *declined = None;
+            }
+        }
+
+        let held = state.target.lock().unwrap().as_ref().map(|t| {
+            let name = t.name().to_lowercase();
+            (name, t.alive())
+        });
+
+        match held {
+            Some((name, alive)) => {
+                if !alive || !running.contains(&name) {
+                    tracing::info!("{name} closed, letting go");
+                    tear_down(&state);
+                    let _ = handle.emit("detached", name);
+                    continue;
+                }
+                if let Some(session) = state.session.lock().unwrap().as_ref() {
+                    session.reconcile();
+                }
+            }
+            None => {
+                if !state.settings.lock().unwrap().auto_attach {
+                    continue;
+                }
+                let declined = state.declined.lock().unwrap().clone();
+                let candidate = tables(&state).into_iter().find(|table| {
+                    let exe = table.game.exe.to_lowercase();
+                    running.contains(&exe) && declined.as_ref() != Some(&exe)
+                });
+
+                if let Some(table) = candidate {
+                    let exe = table.game.exe.clone();
+                    match attach(state.clone(), exe.clone()) {
+                        Ok(what) => {
+                            tracing::info!("attached to {exe} on its own");
+                            let _ = handle.emit("attached", what);
+                        }
+                        Err(e) => tracing::debug!("could not attach to {exe}: {e}"),
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -820,7 +937,7 @@ fn write_value(
 }
 
 fn main() {
-    // A windowed build has no console, so this went nowhere.
+    // a windowed build has no console, so this went nowhere
     log::start(std::env::var("FREEPLAY_VERBOSE").is_ok());
 
     tauri::Builder::default()
@@ -837,8 +954,8 @@ fn main() {
                 set_window_icons(&window);
             }
 
-            // On a thread of its own: a slow or blocked network must never be
-            // something you wait for before the window appears.
+            // own thread. a slow or blocked network must never be something
+            // you wait on before the window shows up
             if app.state::<App>().settings.lock().unwrap().auto_update {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || match freeplay_sync::update(&synced_dir()) {
@@ -850,6 +967,9 @@ fn main() {
                     Err(e) => tracing::warn!("could not fetch tables: {e}"),
                 });
             }
+
+            let handle = app.handle().clone();
+            std::thread::spawn(move || watch_for_games(handle));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -861,7 +981,6 @@ fn main() {
             open_log,
             import_table,
             find_table,
-            table_preview,
             open_folder,
             update_tables,
             launch_game,

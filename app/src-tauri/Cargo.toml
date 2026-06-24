@@ -16,6 +16,7 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+freeplay-aa = { path = "../../crates/freeplay-aa" }
 freeplay-core = { path = "../../crates/freeplay-core" }
 freeplay-library = { path = "../../crates/freeplay-library" }
 freeplay-session = { path = "../../crates/freeplay-session" }

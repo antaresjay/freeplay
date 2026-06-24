@@ -72,8 +72,12 @@ depend on the memory engine and does not.
   since plenty of the games worth cheating in are still 32-bit
 - Shows what a game's table holds before you attach, so you can see whether it
   is worth starting
-- Only offers cheats that work right now. Anything that cannot resolve is greyed
-  out with the reason, instead of being a toggle that silently does nothing
+- Switch cheats on with the game closed. Freeplay attaches on its own when the
+  game starts and holds them on as soon as you are far enough in for them to
+  work, so you never alt-tab back to the app
+- Remembers what you had on, per game, across launches
+- Says what each cheat is doing rather than pretending. On, waiting for the
+  game, or not found in this build
 - Finds values yourself: search for 100, take damage, search again, keep going
   until one address is left
 - Freezes values, sets them once, patches the instruction that changes them, or

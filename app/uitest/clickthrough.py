@@ -1,12 +1,12 @@
-"""Click through the interface with a fake Tauri bridge behind it.
+"""click through the ui with a fake tauri bridge behind it.
 
-There is no bundler here and nothing type checks the front end, so the only way
-to know a click still works is to do the click. This copies app/ui somewhere
-temporary, replaces window.__TAURI__ with canned answers, drives the interface
-in headless edge or chrome, and fails if anything throws or a view will not open.
+nothing type checks the front end, so the only way to know a click still works
+is to do the click. copies app/ui somewhere temporary, swaps window.__TAURI__
+for canned answers, drives it in headless edge or chrome, and fails if anything
+throws or a view will not open.
 
-A missing id="game-cover" once meant every game page threw before it was shown,
-so clicking a game silently did nothing. Nothing in cargo test could see that.
+a missing id="game-cover" once made every game page throw before it was shown,
+so clicking a game did nothing at all and cargo test could not see it.
 
     python app/uitest/clickthrough.py
 """
@@ -39,15 +39,14 @@ const GAMES = [
    guard:"easyanticheat", minutes:73451, last_played:1786142235, pinned:false, favourite:false}
 ];
 
-const TABLE = {
-  game: "The Witcher 2", author: "somebody", notes: "tested on the enhanced edition",
-  verified: ["3.5.0.1"],
-  cheats: [
-    {name:"Infinite Vitality", category:"Player", description:"never die", does:"Freeze"},
-    {name:"Infinite Vigor", category:"Player", description:"signs never run out", does:"Freeze"},
-    {name:"Orens", category:"Resources", description:"money", does:"Set once"}
-  ]
-};
+const CHEATS = [
+  {id:"base", name:"Get Witcher Base", category:"Misc", description:"", hint:"",
+   state:"idle", reason:"", armed:false, live:false, does:"Script"},
+  {id:"vitality", name:"Infinite Vitality", category:"Player", description:"never die", hint:"",
+   state:"idle", reason:"", armed:true, live:false, does:"Freeze"},
+  {id:"orens", name:"Orens", category:"Resources", description:"money", hint:"",
+   state:"idle", reason:"", armed:false, live:false, does:"Set once"}
+];
 
 window.__calls = [];
 window.__TAURI__ = {
@@ -60,13 +59,12 @@ window.__TAURI__ = {
           return {theme:"dark", accent:"amber", pinned:["steam:1222140"], favourites:[]};
         case "list_games": return GAMES;
         case "game_art": return {cover:null, hero:null, logo:null};
-        case "cheats": return [];
+        case "cheats": return CHEATS;
+        case "set_cheat": return null;
         case "list_processes": return [{pid:1234, name:"witcher2.exe"}];
         case "attach":
           return {process:"witcher2.exe", pid:1234, game:"The Witcher 2",
                   table:false, arch:"32-bit"};
-        case "table_preview":
-          return TABLE;
         default: return null;
       }
     }
@@ -108,17 +106,22 @@ PROBE = r"""
     note(document.getElementById("detail-dir").textContent.length > 0,
          "detail rows show the install folder");
 
-    // The whole point of the card: what the table holds, before attaching.
-    note(visible("table-card"), "table card shows without attaching");
-    const rows = document.querySelectorAll("#table-preview .preview-row").length;
-    note(rows === 3, "table card lists every cheat (" + rows + ")");
-    const groups = document.querySelectorAll("#table-preview .preview-group").length;
-    note(groups === 2, "table card groups them by category (" + groups + ")");
-    note(document.getElementById("table-count").textContent === "3 cheats",
-         "table card counts the cheats");
-    note(document.getElementById("table-locked").textContent.length > 0,
-         "table card says why the toggles are not there yet");
+    // cheats list and switch on with nothing attached and the game closed
+    const listed = document.querySelectorAll("#cheat-groups .cheat").length;
+    note(listed === 3, "cheats list without attaching (" + listed + ")");
+    const groups = document.querySelectorAll("#cheat-groups .group").length;
+    note(groups === 3, "cheats are grouped by category (" + groups + ")");
     note(!visible("no-table"), "no-table notice stays hidden when there is a table");
+
+    const switches = document.querySelectorAll("#cheat-groups .switch");
+    note([...switches].every((s) => !s.disabled),
+         "every toggle is usable with the game closed");
+    note(document.querySelectorAll("#cheat-groups .cheat.armed").length === 1,
+         "an armed cheat is drawn as armed");
+
+    switches[0].click();
+    await settle(250);
+    note(window.__calls.includes("set_cheat"), "toggling arms the cheat");
 
     document.getElementById("game-play").click();
     await settle(300);

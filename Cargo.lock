@@ -948,6 +948,7 @@ dependencies = [
 name = "freeplay-app"
 version = "0.1.0"
 dependencies = [
+ "freeplay-aa",
  "freeplay-core",
  "freeplay-library",
  "freeplay-session",
