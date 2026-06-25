@@ -24,6 +24,11 @@ pub enum AaError {
         room: usize,
     },
 
+    #[error("that table does not get to do this: {}", .refusals.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "))]
+    Refused {
+        refusals: Vec<crate::safety::Refusal>,
+    },
+
     #[error(transparent)]
     Assembly(#[from] freeplay_asm::AsmError),
 

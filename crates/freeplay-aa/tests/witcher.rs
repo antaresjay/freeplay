@@ -171,3 +171,39 @@ fn a_build_without_the_signature_says_so_rather_than_writing_anywhere() {
     assert!(outcome.is_err());
     assert_eq!(read(&target, HOOK, 11), vec![0; 11]);
 }
+
+#[test]
+fn a_guarded_runner_still_runs_an_ordinary_table() {
+    let target = game();
+    let script = parse(SCRIPT).unwrap();
+    let engaged = Runner::new(&target)
+        .guarded()
+        .enable(&script, &HashMap::new())
+        .expect("the witcher table does nothing a cheat should not");
+
+    assert!(engaged.symbols.contains_key("baseWitcher"));
+}
+
+#[test]
+fn a_guarded_runner_refuses_a_table_that_loads_a_dll() {
+    let target = game();
+    let nasty = SCRIPT.replace("[ENABLE]", "[ENABLE]\nloadlibrary(something.dll)");
+    let script = parse(&nasty).unwrap();
+
+    let outcome = Runner::new(&target)
+        .guarded()
+        .enable(&script, &HashMap::new());
+    assert!(outcome.is_err());
+    assert_eq!(read(&target, HOOK, 11), ORIGINAL.to_vec());
+}
+
+#[test]
+fn an_unguarded_runner_leaves_your_own_tables_alone() {
+    let target = game();
+    let nasty = SCRIPT.replace("[ENABLE]", "[ENABLE]\nloadlibrary(something.dll)");
+    let script = parse(&nasty).unwrap();
+
+    assert!(Runner::new(&target)
+        .enable(&script, &HashMap::new())
+        .is_ok());
+}

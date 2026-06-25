@@ -1,4 +1,5 @@
 pub mod error;
+pub mod safety;
 pub mod script;
 
 use std::collections::HashMap;
@@ -36,6 +37,9 @@ pub struct Plan {
 pub struct Runner<'a> {
     target: &'a dyn Target,
     bits: Bits,
+    // a table off the network gets the rules applied. one you wrote or dropped
+    // in yourself does not, it is your machine
+    guarded: bool,
 }
 
 impl<'a> Runner<'a> {
@@ -44,11 +48,50 @@ impl<'a> Runner<'a> {
             Arch::X86 => Bits::X86,
             Arch::X64 => Bits::X64,
         };
-        Self { target, bits }
+        Self {
+            target,
+            bits,
+            guarded: false,
+        }
+    }
+
+    pub fn guarded(mut self) -> Self {
+        self.guarded = true;
+        self
     }
 
     pub fn enable(&self, script: &Script, known: &HashMap<String, u64>) -> Result<Engaged> {
+        if self.guarded {
+            let refusals = safety::check(script);
+            if !refusals.is_empty() {
+                return Err(AaError::Refused { refusals });
+            }
+        }
+
         let plan = self.plan(&script.enable, known, true)?;
+
+        if self.guarded {
+            let modules = self.target.modules()?;
+            let caves: Vec<(usize, usize)> = plan
+                .allocations
+                .iter()
+                .map(|addr| (*addr, safety::MAX_ALLOC))
+                .collect();
+            let writes: Vec<(usize, usize)> = plan
+                .writes
+                .iter()
+                .map(|(addr, bytes)| (*addr, bytes.len()))
+                .collect();
+
+            let refusals = safety::writes_stay_inside(&writes, &modules, &caves);
+            if !refusals.is_empty() {
+                for addr in &plan.allocations {
+                    let _ = self.target.release(*addr);
+                }
+                return Err(AaError::Refused { refusals });
+            }
+        }
+
         self.apply(plan)
     }
 
