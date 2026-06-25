@@ -1,10 +1,8 @@
-//! Cheat tables: what a game offers and how to find it.
-//!
-//! A table is data, not code. Nothing here knows anything about a specific
-//! game, which is what lets somebody add support for one without touching
-//! Rust or waiting for a release.
+//! a table is data, not code. nothing here knows about any specific game,
+//! which is what lets somebody add one without touching rust
 
 pub mod cheatengine;
+pub mod fingerprint;
 pub mod resolve;
 pub mod schema;
 
@@ -52,9 +50,8 @@ impl Table {
         Ok(table)
     }
 
-    /// A Cheat Engine table, converted on the way in. The exe and the game
-    /// name come from the file name, since a `.CT` does not reliably say
-    /// which game it belongs to.
+    // a .CT, converted on the way in. exe and game name come off the file
+    // name, since a .CT does not reliably say which game it is for
     pub fn load_ct(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref();
         let xml = std::fs::read_to_string(path).map_err(|source| Error::Read {
@@ -88,9 +85,8 @@ impl Table {
         Ok(imported.table)
     }
 
-    /// Every table in a directory, skipping anything that will not parse so one
-    /// bad file does not hide the rest. Cheat Engine tables are read too, so
-    /// dropping a `.CT` in the folder is all it takes.
+    // everything in a folder, skipping what will not parse so one bad file
+    // does not hide the rest. .CT files count, so dropping one in is enough
     pub fn load_dir(dir: impl AsRef<Path>) -> Vec<Self> {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return Vec::new();
@@ -143,7 +139,7 @@ impl Table {
         Ok(())
     }
 
-    /// Matches the executable name, case insensitively.
+    // matches the exe name, case insensitively
     pub fn matches_process(&self, process: &str) -> bool {
         self.game.exe.eq_ignore_ascii_case(process)
     }

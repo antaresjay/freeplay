@@ -4,8 +4,72 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Table {
     pub game: Game,
+    #[serde(default)]
+    pub meta: Meta,
     #[serde(default, rename = "cheat")]
     pub cheats: Vec<Cheat>,
+}
+
+// where a table came from and whether anybody has run it. a toggle that has
+// been watched working in the game is worth more than one somebody typed out,
+// and the interface should be able to say which is which
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct Meta {
+    pub source: Source,
+    pub submitted_by: String,
+    // date the check ran, and the game build it ran against
+    pub checked_at: String,
+    pub checked_build: String,
+    pub checked: Option<Checked>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Source {
+    // written or converted here and never run anywhere
+    #[default]
+    Unverified,
+    // somebody ran it against the game and sent it in
+    Community,
+    // shipped with freeplay
+    Bundled,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Checked {
+    pub worked: u32,
+    pub tried: u32,
+}
+
+impl Meta {
+    pub fn trust(&self) -> Trust {
+        match (self.source, self.checked) {
+            (_, Some(c)) if c.tried > 0 && c.worked == c.tried => Trust::Verified,
+            (_, Some(c)) if c.tried > 0 && c.worked > 0 => Trust::Partial,
+            (Source::Community, _) => Trust::Community,
+            _ => Trust::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Trust {
+    Verified,
+    Partial,
+    Community,
+    Unknown,
+}
+
+impl Trust {
+    pub fn label(self) -> &'static str {
+        match self {
+            Trust::Verified => "verified",
+            Trust::Partial => "partly working",
+            Trust::Community => "community",
+            Trust::Unknown => "unchecked",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

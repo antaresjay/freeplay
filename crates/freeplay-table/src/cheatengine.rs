@@ -4,7 +4,7 @@ use freeplay_core::value::ValueKind;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-use crate::schema::{Action, Category, Cheat, Game, Hop, Locator, Number, Table, TypeName};
+use crate::schema::{Action, Category, Cheat, Game, Hop, Locator, Meta, Number, Table, TypeName};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skipped {
@@ -107,6 +107,7 @@ pub fn import(xml: &str, exe: &str, game_name: &str) -> Result<Imported, String>
 
     Ok(Imported {
         table: Table {
+            meta: Meta::default(),
             game: Game {
                 name: game_name.to_string(),
                 exe: exe.to_string(),
