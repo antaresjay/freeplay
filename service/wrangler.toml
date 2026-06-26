@@ -13,3 +13,7 @@ crons = ["*/5 * * * *"]
 [vars]
 TABLES_REPO = "antaresjay/freeplay-tables"
 TABLES_BRANCH = "main"
+# who the mirror commits are from. leave this alone and github will stamp them
+# with whatever address the token's account uses
+MIRROR_NAME = "freeplay"
+MIRROR_EMAIL = "freeplay@users.noreply.github.com"

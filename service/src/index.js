@@ -80,8 +80,12 @@ async function one(path, env) {
 }
 
 async function submit(request, env) {
-  const ip = request.headers.get("cf-connecting-ip") || "";
   const now = Math.floor(Date.now() / 1000);
+  // rate limiting needs to tell two submitters apart, not know who they are.
+  // a salted hash does that, and there is no address sat in the database
+  const ip = await stamp(request.headers.get("cf-connecting-ip") || "", env);
+
+  await env.DB.prepare("delete from posts where at < ?1").bind(now - 3600).run();
 
   const recent = await env.DB.prepare(
     "select count(*) as n from posts where ip = ?1 and at > ?2"
@@ -247,12 +251,22 @@ async function mirror(env) {
     body: JSON.stringify({ base_tree: head.tree.sha, tree }),
   });
 
+  // say who the commit is from. left out, github stamps it with whatever the
+  // token's account uses, which can be a real address
+  const who = {
+    name: env.MIRROR_NAME || "freeplay",
+    email: env.MIRROR_EMAIL || "freeplay@users.noreply.github.com",
+    date: new Date().toISOString(),
+  };
+
   const commit = await api("/git/commits", {
     method: "POST",
     body: JSON.stringify({
       message: `add ${rows.length} table${rows.length === 1 ? "" : "s"}`,
       tree: built.sha,
       parents: [ref.object.sha],
+      author: who,
+      committer: who,
     }),
   });
 
@@ -264,6 +278,16 @@ async function mirror(env) {
   await env.DB.prepare(
     `update tables set mirrored = 1 where id in (${rows.map((r) => r.id).join(",")})`
   ).run();
+}
+
+async function stamp(value, env) {
+  const salt = env.IP_SALT || "freeplay";
+  const bytes = new TextEncoder().encode(salt + "|" + value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .slice(0, 12)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function slug(exe) {

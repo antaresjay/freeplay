@@ -41,6 +41,30 @@ wrangler deploy
 `GITHUB_TOKEN` is a fine grained token with contents write on the
 `freeplay-tables` repository and nothing else. It never leaves Cloudflare.
 
+`IP_SALT` is optional and worth setting:
+
+```
+wrangler secret put IP_SALT
+```
+
+## What is public
+
+The `workers.dev` subdomain, because it is compiled into the app. Pick a neutral
+one, it has nothing to do with the account behind it.
+
+Not public: the Cloudflare account or its email. Nothing in a response header or
+a URL carries it.
+
+Mirror commits are stamped with `MIRROR_NAME` and `MIRROR_EMAIL` on purpose. Left
+unset, GitHub uses whatever address the token's account has, which may be a real
+one.
+
+Submitter handles are optional, free text, and whatever somebody types.
+
+Addresses are never stored. Rate limiting hashes them with `IP_SALT`, keeps
+twelve bytes of that, and drops rows older than an hour. Nothing in the tables
+repository has ever seen one.
+
 ## Endpoints
 
 | Method | Path | What |
