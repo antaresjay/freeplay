@@ -1,0 +1,15 @@
+name = "freeplay-tables"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "freeplay-tables"
+database_id = "set-this-after-wrangler-d1-create"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+TABLES_REPO = "antaresjay/freeplay-tables"
+TABLES_BRANCH = "main"
