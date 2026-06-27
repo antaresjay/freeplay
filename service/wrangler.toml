@@ -5,7 +5,7 @@ compatibility_date = "2026-06-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "freeplay-tables"
-database_id = "set-this-after-wrangler-d1-create"
+database_id = "b71e8b8e-a914-41bd-bfe8-2c50b0110c93"
 
 [triggers]
 crons = ["*/5 * * * *"]
