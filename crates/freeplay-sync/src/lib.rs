@@ -11,6 +11,7 @@
 //! settings and Freeplay works exactly as it did, on whatever is already on
 //! disk.
 
+pub mod community;
 pub mod http;
 
 use std::collections::HashMap;
