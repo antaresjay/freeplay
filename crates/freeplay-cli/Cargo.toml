@@ -18,6 +18,7 @@ clap = { version = "4", features = ["derive"] }
 freeplay-core = { path = "../freeplay-core" }
 freeplay-library = { path = "../freeplay-library" }
 freeplay-session = { path = "../freeplay-session" }
+freeplay-sync = { path = "../freeplay-sync" }
 freeplay-table = { path = "../freeplay-table" }
 tracing.workspace = true
 tracing-subscriber = "0.3"

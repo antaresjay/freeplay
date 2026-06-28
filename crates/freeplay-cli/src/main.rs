@@ -1,8 +1,6 @@
-//! Command line driver.
-//!
-//! The interface most people will use is the desktop app. This exists because
-//! it is the fastest way to try the engine against a real game, and because
-//! finding an address is a conversation, not a single command.
+//! most people will use the desktop app. this exists because it is the fastest
+//! way to try the engine against a real game, and because finding an address is
+//! a conversation rather than one command
 
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -81,6 +79,35 @@ enum Command {
         #[arg(long, help = "starting value, omit if you cannot see the number")]
         value: Option<String>,
     },
+    /// What other people have shared for a game.
+    Browse {
+        #[arg(help = "the game's executable, e.g. witcher2.exe")]
+        exe: String,
+        #[arg(long, default_value = "", help = "prefer tables checked on this build")]
+        build: String,
+    },
+    /// Send a table so everybody else gets it.
+    Share {
+        #[arg(help = "path to a freeplay table")]
+        table: PathBuf,
+        #[arg(long, default_value = "", help = "a name to put on it, any name")]
+        as_: String,
+        #[arg(
+            long,
+            default_value = "",
+            help = "the game build you checked it against"
+        )]
+        build: String,
+    },
+    /// Say whether a shared table worked.
+    Rate {
+        #[arg(help = "the id browse printed")]
+        id: i64,
+        #[arg(long, help = "it did not work")]
+        down: bool,
+        #[arg(long, default_value = "", help = "your install id")]
+        install: String,
+    },
     /// Read a value at an address.
     Read {
         #[arg(long)]
@@ -126,12 +153,83 @@ fn run(command: Command) -> Result<(), String> {
             r#type,
             value,
         } => scan(&process, &r#type, value.as_deref()),
+        Command::Browse { exe, build } => browse(&exe, &build),
+        Command::Share { table, as_, build } => share(&table, &as_, &build),
+        Command::Rate { id, down, install } => rate(id, !down, &install),
         Command::Read {
             process,
             address,
             r#type,
         } => read(&process, &address, &r#type),
     }
+}
+
+fn service<'a>(
+    wire: &'a freeplay_sync::community::Live,
+) -> freeplay_sync::community::Community<'a> {
+    let endpoint = std::env::var("FREEPLAY_SERVICE")
+        .unwrap_or_else(|_| freeplay_sync::community::ENDPOINT.to_string());
+    freeplay_sync::community::Community::new(&endpoint, wire)
+}
+
+fn browse(exe: &str, build: &str) -> Result<(), String> {
+    let wire = freeplay_sync::community::Live;
+    let found = service(&wire).list(exe, build)?;
+
+    if found.is_empty() {
+        println!("nothing shared for {exe} yet");
+        return Ok(());
+    }
+
+    println!("{} table(s) for {exe}\n", found.len());
+    for row in &found {
+        let mark = if row.built_for == build && !build.is_empty() {
+            "*"
+        } else {
+            " "
+        };
+        println!("{mark} {:<5} {}", row.id, row.game);
+        println!("        {}", row.standing());
+        if !row.built_for.is_empty() {
+            println!("        checked on {}", row.built_for);
+        }
+    }
+    if !build.is_empty() {
+        println!("\n* means somebody used it on {build}");
+    }
+    Ok(())
+}
+
+fn share(path: &PathBuf, who: &str, build: &str) -> Result<(), String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("could not read it: {e}"))?;
+    let table = Table::parse(&text).map_err(|e| e.to_string())?;
+    table.validate()?;
+
+    let wire = freeplay_sync::community::Live;
+    let sent = service(&wire).submit(&table, &text, who, build)?;
+
+    if sent.already {
+        println!("already shared, it is number {}", sent.id);
+    } else {
+        println!("shared {} as number {}", table.game.name, sent.id);
+    }
+    Ok(())
+}
+
+fn rate(id: i64, up: bool, install: &str) -> Result<(), String> {
+    let install = if install.is_empty() {
+        freeplay_sync::community::new_install_id(std::process::id() as u128)
+    } else {
+        install.to_string()
+    };
+
+    let wire = freeplay_sync::community::Live;
+    service(&wire).vote(id, &install, up, "")?;
+    println!(
+        "{} table {id}",
+        if up { "recommended" } else { "marked down" }
+    );
+    Ok(())
 }
 
 fn attach(name: &str) -> Result<WindowsTarget, String> {
