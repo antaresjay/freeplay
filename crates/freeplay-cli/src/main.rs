@@ -85,6 +85,12 @@ enum Command {
         exe: String,
         #[arg(long, default_value = "", help = "prefer tables checked on this build")]
         build: String,
+        #[arg(
+            long,
+            default_value = "best",
+            help = "best, votes, downloads, new, old, cheats"
+        )]
+        sort: String,
     },
     /// Send a table so everybody else gets it.
     Share {
@@ -153,7 +159,7 @@ fn run(command: Command) -> Result<(), String> {
             r#type,
             value,
         } => scan(&process, &r#type, value.as_deref()),
-        Command::Browse { exe, build } => browse(&exe, &build),
+        Command::Browse { exe, build, sort } => browse(&exe, &build, &sort),
         Command::Share { table, as_, build } => share(&table, &as_, &build),
         Command::Rate { id, down, install } => rate(id, !down, &install),
         Command::Read {
@@ -172,9 +178,10 @@ fn service<'a>(
     freeplay_sync::community::Community::new(&endpoint, wire)
 }
 
-fn browse(exe: &str, build: &str) -> Result<(), String> {
+fn browse(exe: &str, build: &str, sort: &str) -> Result<(), String> {
+    let sort: freeplay_sync::community::Sort = sort.parse()?;
     let wire = freeplay_sync::community::Live;
-    let found = service(&wire).list(exe, build)?;
+    let found = service(&wire).list_by(exe, build, sort)?;
 
     if found.is_empty() {
         println!("nothing shared for {exe} yet");

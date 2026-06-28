@@ -10,6 +10,7 @@ create table if not exists tables (
   built_for text not null default '',
   up integer not null default 0,
   down integer not null default 0,
+  downloads integer not null default 0,
   blocked integer not null default 0,
   mirrored integer not null default 0,
   created_at integer not null
@@ -33,3 +34,10 @@ create table if not exists posts (
 );
 
 create index if not exists posts_by_ip on posts (ip, at);
+
+create table if not exists grabs (
+  install text not null,
+  table_id integer not null,
+  created_at integer not null,
+  primary key (install, table_id)
+);

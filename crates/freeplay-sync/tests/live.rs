@@ -49,7 +49,9 @@ fn talks_to_the_worker() {
         listed[0].standing()
     );
 
-    let (text, fetched) = community.fetch(sent.id).expect("fetch should work");
+    let (text, fetched) = community
+        .fetch(sent.id, "0123456789abcdef")
+        .expect("fetch should work");
     assert_eq!(fetched.game.exe, "freeplay-live-check.exe");
     assert_eq!(text.trim(), TABLE.trim());
 

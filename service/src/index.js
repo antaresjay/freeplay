@@ -28,7 +28,7 @@ export default {
 
     try {
       if (request.method === "GET" && path === "/tables") return list(url, env);
-      if (request.method === "GET" && path.startsWith("/table/")) return one(path, env);
+      if (request.method === "GET" && path.startsWith("/table/")) return one(path, url, env);
       if (request.method === "POST" && path === "/submit") return submit(request, env);
       if (request.method === "POST" && path === "/vote") return vote(request, env);
       return bad("no such endpoint", 404);
@@ -42,41 +42,72 @@ export default {
   },
 };
 
-// what freeplay asks for when you open a game page. best first, and a table
-// checked against your own build wins over one with more votes from an older
-// one, because tables die when a game patches
+// best puts a table somebody already used on your build first, because tables
+// die when a game patches and twenty votes from two patches ago are worth less
+// than one from the version you are running
+const ORDER = {
+  best: "(built_for = ?2) desc, (up - down) desc, downloads desc, created_at desc",
+  votes: "(up - down) desc, up desc, created_at desc",
+  downloads: "downloads desc, (up - down) desc, created_at desc",
+  new: "created_at desc",
+  old: "created_at asc",
+  cheats: "cheats desc, (up - down) desc",
+};
+
 async function list(url, env) {
   const exe = (url.searchParams.get("exe") || "").toLowerCase();
   if (!exe) return bad("which game");
   const build = url.searchParams.get("build") || "";
 
-  const rows = await env.DB.prepare(
+  const sort = url.searchParams.get("sort") || "best";
+  const order = ORDER[sort];
+  if (!order) return bad(`sort by one of ${Object.keys(ORDER).join(", ")}`);
+
+  const statement = env.DB.prepare(
     `select id, exe, game, fingerprint, cheats, bytes, submitted_by, built_for,
-            up, down, created_at
+            up, down, downloads, created_at
        from tables
       where exe = ?1 and blocked = 0
-      order by (built_for = ?2) desc,
-               (up - down) desc,
-               created_at desc
+      order by ${order}
       limit 50`
-  )
-    .bind(exe, build)
-    .all();
+  );
 
-  return json({ tables: rows.results || [] });
+  // only best looks at the build, and d1 refuses a spare bound parameter
+  const bound = order.includes("?2") ? statement.bind(exe, build) : statement.bind(exe);
+  const rows = await bound.all();
+
+  return json({ tables: rows.results || [], sort });
 }
 
-async function one(path, env) {
+async function one(path, url, env) {
   const id = Number(path.slice("/table/".length));
   if (!Number.isInteger(id)) return bad("that is not an id");
 
   const row = await env.DB.prepare(
-    "select id, exe, game, toml, fingerprint from tables where id = ?1 and blocked = 0"
+    "select id, exe, game, toml, fingerprint, downloads from tables where id = ?1 and blocked = 0"
   )
     .bind(id)
     .first();
 
-  return row ? json(row) : bad("not here", 404);
+  if (!row) return bad("not here", 404);
+
+  // counted per install, so opening the same table twice is still one download
+  const install = url.searchParams.get("install") || "";
+  if (/^[0-9a-f]{16,64}$/.test(install)) {
+    const grabbed = await env.DB.prepare(
+      "insert or ignore into grabs (install, table_id, created_at) values (?1, ?2, ?3)"
+    )
+      .bind(install, id, Math.floor(Date.now() / 1000))
+      .run();
+
+    if (grabbed.meta && grabbed.meta.changes) {
+      await env.DB.prepare("update tables set downloads = downloads + 1 where id = ?1")
+        .bind(id)
+        .run();
+    }
+  }
+
+  return json(row);
 }
 
 async function submit(request, env) {
@@ -224,7 +255,7 @@ async function mirror(env) {
   }
 
   const everything = await env.DB.prepare(
-    `select exe, game, fingerprint, cheats, up, down
+    `select exe, game, fingerprint, cheats, up, down, downloads, submitted_by, created_at
        from tables where blocked = 0 order by exe, (up - down) desc`
   ).all();
 
@@ -237,6 +268,11 @@ async function mirror(env) {
       revision: 1,
       cheats: row.cheats,
       score: row.up - row.down,
+      up: row.up,
+      down: row.down,
+      downloads: row.downloads,
+      by: row.submitted_by,
+      added: row.created_at,
     })),
   };
 

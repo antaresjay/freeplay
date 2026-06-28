@@ -23,6 +23,71 @@ pub struct Listing {
     pub up: i64,
     #[serde(default)]
     pub down: i64,
+    #[serde(default)]
+    pub downloads: i64,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Sort {
+    // a table somebody used on your build first, then the ones people liked
+    #[default]
+    Best,
+    Votes,
+    Downloads,
+    Newest,
+    Oldest,
+    Most,
+}
+
+impl Sort {
+    pub fn key(self) -> &'static str {
+        match self {
+            Sort::Best => "best",
+            Sort::Votes => "votes",
+            Sort::Downloads => "downloads",
+            Sort::Newest => "new",
+            Sort::Oldest => "old",
+            Sort::Most => "cheats",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Sort::Best => "Best match",
+            Sort::Votes => "Most liked",
+            Sort::Downloads => "Most used",
+            Sort::Newest => "Newest",
+            Sort::Oldest => "Oldest",
+            Sort::Most => "Most cheats",
+        }
+    }
+
+    pub fn all() -> [Sort; 6] {
+        [
+            Sort::Best,
+            Sort::Votes,
+            Sort::Downloads,
+            Sort::Newest,
+            Sort::Oldest,
+            Sort::Most,
+        ]
+    }
+}
+
+impl std::str::FromStr for Sort {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<Self, String> {
+        Sort::all()
+            .into_iter()
+            .find(|s| s.key() == text.trim().to_lowercase())
+            .ok_or_else(|| {
+                let names: Vec<&str> = Sort::all().iter().map(|s| s.key()).collect();
+                format!("sort by one of {}", names.join(", "))
+            })
+    }
 }
 
 impl Listing {
@@ -33,19 +98,26 @@ impl Listing {
     // what the picker puts under the name. a table nobody has voted on yet
     // should say so rather than showing a smug zero
     pub fn standing(&self) -> String {
-        let who = if self.submitted_by.is_empty() {
-            String::new()
-        } else {
-            format!("by {}, ", self.submitted_by)
-        };
+        let mut parts = Vec::new();
+
+        if !self.submitted_by.is_empty() {
+            parts.push(format!("by {}", self.submitted_by));
+        }
+        parts.push(format!("{} cheats", self.cheats));
 
         if self.up == 0 && self.down == 0 {
-            return format!("{who}{} cheats, nobody has voted yet", self.cheats);
+            parts.push("nobody has voted yet".into());
+        } else {
+            parts.push(format!("{} up and {} down", self.up, self.down));
         }
-        format!(
-            "{who}{} cheats, {} up and {} down",
-            self.cheats, self.up, self.down
-        )
+
+        match self.downloads {
+            0 => {}
+            1 => parts.push("used once".into()),
+            n => parts.push(format!("used {n} times")),
+        }
+
+        parts.join(", ")
     }
 }
 
@@ -98,11 +170,16 @@ impl<'a> Community<'a> {
     }
 
     pub fn list(&self, exe: &str, build: &str) -> Result<Vec<Listing>, String> {
+        self.list_by(exe, build, Sort::Best)
+    }
+
+    pub fn list_by(&self, exe: &str, build: &str, sort: Sort) -> Result<Vec<Listing>, String> {
         let url = format!(
-            "{}/tables?exe={}&build={}",
+            "{}/tables?exe={}&build={}&sort={}",
             self.endpoint,
             encode(&exe.to_lowercase()),
-            encode(build)
+            encode(build),
+            sort.key()
         );
         let raw = self.wire.get(&url)?;
         let listings: Listings =
@@ -112,8 +189,12 @@ impl<'a> Community<'a> {
 
     // whatever comes back has to parse and validate before it is a table we
     // will hand to anything else
-    pub fn fetch(&self, id: i64) -> Result<(String, Table), String> {
-        let raw = self.wire.get(&format!("{}/table/{id}", self.endpoint))?;
+    pub fn fetch(&self, id: i64, install: &str) -> Result<(String, Table), String> {
+        let raw = self.wire.get(&format!(
+            "{}/table/{id}?install={}",
+            self.endpoint,
+            encode(install)
+        ))?;
         let fetched: Fetched =
             serde_json::from_slice(&raw).map_err(|e| format!("could not read that table: {e}"))?;
 
@@ -281,9 +362,63 @@ mod tests {
         let answer = serde_json::json!({ "toml": TABLE }).to_string();
         let wire = Fake::default().with("/table/", &answer);
 
-        let (text, table) = Community::new("https://x", &wire).fetch(7).unwrap();
+        let (text, table) = Community::new("https://x", &wire)
+            .fetch(7, "0123456789abcdef")
+            .unwrap();
         assert_eq!(table.cheats.len(), 1);
         assert!(text.contains("witcher2.exe"));
+    }
+
+    // the worker counts a download per install, so it has to be told which one
+    #[test]
+    fn fetching_says_who_is_asking_so_it_can_be_counted() {
+        let answer = serde_json::json!({ "toml": TABLE }).to_string();
+        let wire = Fake::default().with("/table/", &answer);
+        Community::new("https://x", &wire)
+            .fetch(7, "0123456789abcdef")
+            .unwrap();
+
+        assert!(wire.seen.borrow()[0].contains("install=0123456789abcdef"));
+    }
+
+    #[test]
+    fn sorting_is_passed_along() {
+        let wire = Fake::default().with("/tables", r#"{"tables":[]}"#);
+        Community::new("https://x", &wire)
+            .list_by("a.exe", "", Sort::Downloads)
+            .unwrap();
+        assert!(wire.seen.borrow()[0].contains("sort=downloads"));
+    }
+
+    #[test]
+    fn sort_names_round_trip() {
+        for sort in Sort::all() {
+            assert_eq!(sort.key().parse::<Sort>().unwrap(), sort);
+        }
+        assert!("nonsense".parse::<Sort>().is_err());
+    }
+
+    #[test]
+    fn standing_counts_downloads_too() {
+        let one = Listing {
+            cheats: 3,
+            downloads: 1,
+            ..Default::default()
+        };
+        assert!(one.standing().contains("used once"), "{}", one.standing());
+
+        let many = Listing {
+            cheats: 3,
+            downloads: 42,
+            ..Default::default()
+        };
+        assert!(many.standing().contains("used 42 times"));
+
+        let never = Listing {
+            cheats: 3,
+            ..Default::default()
+        };
+        assert!(!never.standing().contains("used"));
     }
 
     #[test]
@@ -291,7 +426,9 @@ mod tests {
         let answer = serde_json::json!({ "toml": "this is not toml {{{" }).to_string();
         let wire = Fake::default().with("/table/", &answer);
 
-        assert!(Community::new("https://x", &wire).fetch(7).is_err());
+        assert!(Community::new("https://x", &wire)
+            .fetch(7, "0123456789abcdef")
+            .is_err());
     }
 
     #[test]
