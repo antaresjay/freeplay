@@ -16,8 +16,12 @@ use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const WORD_COUNT: usize = 16;
-const ENTROPY: usize = 15;
+// 256 words is one byte each, so 16 of them carry 128 bits and the last is a
+// checksum. 128 because that is what ed25519 itself is worth, and there is no
+// sense making the phrase the weakest part of the chain
+pub const WORD_COUNT: usize = 17;
+const ENTROPY: usize = 16;
+pub const BITS: usize = ENTROPY * 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Phrase(Vec<String>);
@@ -307,9 +311,19 @@ mod tests {
 
     #[test]
     fn a_phrase_of_the_wrong_length_is_refused() {
-        assert!(Phrase::parse("able acid acorn")
-            .unwrap_err()
-            .contains("16 words"));
+        let why = Phrase::parse("able acid acorn").unwrap_err();
+        assert!(why.contains("17 words"), "{why}");
+    }
+
+    // the list being public is not the secret, the entropy is. one byte per
+    // word and sixteen of them is 2^128, which is what ed25519 is worth
+    #[test]
+    fn a_phrase_carries_as_many_bits_as_the_curve_is_worth() {
+        assert_eq!(words::list().len(), 256);
+        assert_eq!(BITS, 128);
+
+        let combinations = (words::list().len() as f64).powi(ENTROPY as i32);
+        assert!((combinations.log2() - 128.0).abs() < 0.001);
     }
 
     #[test]
