@@ -16,6 +16,7 @@ path = "src/main.rs"
 toml = "0.9"
 clap = { version = "4", features = ["derive"] }
 freeplay-core = { path = "../freeplay-core" }
+freeplay-id = { path = "../freeplay-id" }
 freeplay-library = { path = "../freeplay-library" }
 freeplay-session = { path = "../freeplay-session" }
 freeplay-sync = { path = "../freeplay-sync" }

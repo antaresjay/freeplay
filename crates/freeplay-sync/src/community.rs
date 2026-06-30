@@ -1,3 +1,4 @@
+use freeplay_id::Identity;
 use freeplay_table::Table;
 use serde::{Deserialize, Serialize};
 
@@ -203,28 +204,51 @@ impl<'a> Community<'a> {
         Ok((fetched.toml, table))
     }
 
+    // no identity means anonymous, which is the default and needs nothing.
+    // with one, the name is signed for so nobody else can publish under it
     pub fn submit(
         &self,
         table: &Table,
         toml: &str,
-        submitted_by: &str,
+        who: Option<&Identity>,
         built_for: &str,
     ) -> Result<Submitted, String> {
-        let body = serde_json::json!({
-            "fingerprint": freeplay_table::fingerprint::fingerprint(table),
+        let fingerprint = freeplay_table::fingerprint::fingerprint(table);
+
+        let mut body = serde_json::json!({
+            "fingerprint": fingerprint,
             "exe": table.game.exe.to_lowercase(),
             "game": table.game.name,
             "toml": toml,
-            "submitted_by": submitted_by,
             "built_for": built_for,
             "cheats": table.cheats.len(),
         });
+
+        if let Some(me) = who {
+            let signed = freeplay_id::message(&me.name, &fingerprint);
+            body["submitted_by"] = me.name.clone().into();
+            body["pubkey"] = me.public().into();
+            body["signature"] = me.sign(&signed).into();
+        }
 
         let raw = self.wire.post(
             &format!("{}/submit", self.endpoint),
             body.to_string().as_bytes(),
         )?;
         serde_json::from_slice(&raw).map_err(|e| format!("odd answer to a submission: {e}"))
+    }
+
+    // whether a name is already spoken for, so the interface can say so before
+    // somebody picks one and gets refused
+    pub fn taken(&self, name: &str) -> Result<bool, String> {
+        match self
+            .wire
+            .get(&format!("{}/who/{}", self.endpoint, encode(name)))
+        {
+            Ok(raw) => Ok(!String::from_utf8_lossy(&raw).contains("\"taken\":false")),
+            Err(why) if why.contains("404") => Ok(false),
+            Err(_) => Ok(false),
+        }
     }
 
     pub fn vote(&self, id: i64, install: &str, up: bool, built_for: &str) -> Result<(), String> {
@@ -437,7 +461,7 @@ mod tests {
         let wire = Fake::default().with("/submit", r#"{"id":4,"already":false}"#);
 
         let out = Community::new("https://x", &wire)
-            .submit(&table, TABLE, "someone", "3.5")
+            .submit(&table, TABLE, None, "3.5")
             .unwrap();
         assert_eq!(out.id, 4);
         assert!(!out.already);
@@ -450,12 +474,51 @@ mod tests {
     }
 
     #[test]
+    fn an_anonymous_submission_carries_no_name_or_key() {
+        let table = Table::parse(TABLE).unwrap();
+        let wire = Fake::default().with("/submit", r#"{"id":4,"already":false}"#);
+        Community::new("https://x", &wire)
+            .submit(&table, TABLE, None, "")
+            .unwrap();
+
+        let sent = wire.seen.borrow()[0].clone();
+        assert!(!sent.contains("submitted_by"), "{sent}");
+        assert!(!sent.contains("pubkey"), "{sent}");
+        assert!(!sent.contains("signature"), "{sent}");
+    }
+
+    #[test]
+    fn a_named_submission_is_signed_for() {
+        let table = Table::parse(TABLE).unwrap();
+        let me = Identity::create("someone").unwrap();
+        let wire = Fake::default().with("/submit", r#"{"id":4,"already":false}"#);
+
+        Community::new("https://x", &wire)
+            .submit(&table, TABLE, Some(&me), "")
+            .unwrap();
+
+        let sent = wire.seen.borrow()[0].clone();
+        let body: serde_json::Value =
+            serde_json::from_str(sent.split_once(' ').unwrap().1.trim()).unwrap();
+
+        assert_eq!(body["submitted_by"], "someone");
+        assert_eq!(body["pubkey"], me.public());
+
+        let signed = freeplay_id::message("someone", body["fingerprint"].as_str().unwrap());
+        assert!(freeplay_id::verify(
+            &me.public(),
+            &signed,
+            body["signature"].as_str().unwrap()
+        ));
+    }
+
+    #[test]
     fn a_table_already_there_says_so_rather_than_failing() {
         let table = Table::parse(TABLE).unwrap();
         let wire = Fake::default().with("/submit", r#"{"id":4,"already":true}"#);
 
         let out = Community::new("https://x", &wire)
-            .submit(&table, TABLE, "", "")
+            .submit(&table, TABLE, None, "")
             .unwrap();
         assert!(out.already);
     }

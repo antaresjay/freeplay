@@ -96,14 +96,28 @@ enum Command {
     Share {
         #[arg(help = "path to a freeplay table")]
         table: PathBuf,
-        #[arg(long, default_value = "", help = "a name to put on it, any name")]
-        as_: String,
+        #[arg(long, help = "share without a name on it")]
+        anonymous: bool,
         #[arg(
             long,
             default_value = "",
             help = "the game build you checked it against"
         )]
         build: String,
+    },
+    /// The name your uploads go out under.
+    Whoami,
+    /// Claim a name nobody else can publish under.
+    Claim {
+        #[arg(help = "letters, numbers, dot, dash, underscore")]
+        name: String,
+    },
+    /// Get a name back on another machine.
+    Recover {
+        #[arg(help = "the name")]
+        name: String,
+        #[arg(help = "the words you wrote down")]
+        phrase: Vec<String>,
     },
     /// Say whether a shared table worked.
     Rate {
@@ -160,7 +174,14 @@ fn run(command: Command) -> Result<(), String> {
             value,
         } => scan(&process, &r#type, value.as_deref()),
         Command::Browse { exe, build, sort } => browse(&exe, &build, &sort),
-        Command::Share { table, as_, build } => share(&table, &as_, &build),
+        Command::Share {
+            table,
+            anonymous,
+            build,
+        } => share(&table, anonymous, &build),
+        Command::Whoami => whoami(),
+        Command::Claim { name } => claim(&name),
+        Command::Recover { name, phrase } => recover(&name, &phrase.join(" ")),
         Command::Rate { id, down, install } => rate(id, !down, &install),
         Command::Read {
             process,
@@ -207,18 +228,82 @@ fn browse(exe: &str, build: &str, sort: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn share(path: &PathBuf, who: &str, build: &str) -> Result<(), String> {
+fn identity_path() -> PathBuf {
+    let base = std::env::var("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."));
+    base.join("freeplay").join("identity.json")
+}
+
+fn me() -> Result<Option<freeplay_id::Identity>, String> {
+    freeplay_id::Identity::load(&identity_path())
+}
+
+fn whoami() -> Result<(), String> {
+    match me()? {
+        Some(who) => {
+            println!("{}", who.name);
+            println!("key {}", who.public());
+            println!("kept in {}", identity_path().display());
+        }
+        None => {
+            println!("no name yet, uploads go out anonymous. claim one with: freeplay claim <name>")
+        }
+    }
+    Ok(())
+}
+
+fn claim(name: &str) -> Result<(), String> {
+    if let Some(already) = me()? {
+        return Err(format!(
+            "this machine already publishes as {}. delete {} first if you meant to start again",
+            already.name,
+            identity_path().display()
+        ));
+    }
+
+    let wire = freeplay_sync::community::Live;
+    if service(&wire).taken(name)? {
+        return Err(format!("{name} belongs to somebody else already"));
+    }
+
+    let who = freeplay_id::Identity::create(name)?;
+    who.save(&identity_path())?;
+
+    println!("{name} is yours, and it is not registered until your first upload.\n");
+    println!("write these down. they are the only way back if this machine dies:\n");
+    for (row, chunk) in who.phrase().words().chunks(6).enumerate() {
+        println!("  {:>2}. {}", row * 6 + 1, chunk.join("  "));
+    }
+    println!("\nthere is no password and no reset. lose the words, lose the name.");
+    Ok(())
+}
+
+fn recover(name: &str, phrase: &str) -> Result<(), String> {
+    let who = freeplay_id::Identity::recover(name, phrase)?;
+    who.save(&identity_path())?;
+    println!("{} is back, key {}", who.name, who.public());
+    Ok(())
+}
+
+fn share(path: &PathBuf, anonymous: bool, build: &str) -> Result<(), String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("could not read it: {e}"))?;
     let table = Table::parse(&text).map_err(|e| e.to_string())?;
     table.validate()?;
 
+    let who = if anonymous { None } else { me()? };
     let wire = freeplay_sync::community::Live;
-    let sent = service(&wire).submit(&table, &text, who, build)?;
+    let sent = service(&wire).submit(&table, &text, who.as_ref(), build)?;
+
+    let by = match &who {
+        Some(who) => format!(" as {}", who.name),
+        None => " anonymously".to_string(),
+    };
 
     if sent.already {
         println!("already shared, it is number {}", sent.id);
     } else {
-        println!("shared {} as number {}", table.game.name, sent.id);
+        println!("shared {}{by}, number {}", table.game.name, sent.id);
     }
     Ok(())
 }

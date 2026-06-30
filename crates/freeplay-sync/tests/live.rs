@@ -29,13 +29,11 @@ fn talks_to_the_worker() {
     let table = Table::parse(TABLE).unwrap();
 
     let sent = community
-        .submit(&table, TABLE, "live-check", "1.0")
+        .submit(&table, TABLE, None, "1.0")
         .expect("submit should work");
     println!("submitted id {} already {}", sent.id, sent.already);
 
-    let again = community
-        .submit(&table, TABLE, "live-check", "1.0")
-        .unwrap();
+    let again = community.submit(&table, TABLE, None, "1.0").unwrap();
     assert_eq!(again.id, sent.id);
     assert!(again.already, "the second one should be recognised");
 
@@ -77,8 +75,40 @@ fn the_worker_refuses_what_it_should() {
     );
     let table = Table::parse(&nasty).expect("should still parse");
 
-    let outcome = community.submit(&table, &nasty, "live-check", "1.0");
+    let outcome = community.submit(&table, &nasty, None, "1.0");
     let why = outcome.unwrap_err();
     println!("refused with: {why}");
     assert!(why.contains("loadlibrary"), "{why}");
+}
+
+#[test]
+#[ignore]
+fn a_claimed_name_cannot_be_taken_by_somebody_else() {
+    let wire = Live;
+    let community = Community::new(ENDPOINT, &wire);
+
+    let thief = freeplay_id::Identity::create("aSwedishMagyar").unwrap();
+    let table = Table::parse(&TABLE.replace("0x1000", "0x2000")).unwrap();
+
+    let why = community
+        .submit(&table, TABLE, Some(&thief), "1.0")
+        .expect_err("a different key must not publish under a taken name");
+
+    println!("refused with: {why}");
+    assert!(why.contains("somebody else"), "{why}");
+}
+
+#[test]
+#[ignore]
+fn an_anonymous_submission_still_works() {
+    let wire = Live;
+    let community = Community::new(ENDPOINT, &wire);
+    let table = Table::parse(&TABLE.replace("0x1000", "0x3000")).unwrap();
+
+    let sent = community.submit(&table, TABLE, None, "1.0").unwrap();
+    println!("anonymous submission got id {}", sent.id);
+
+    let listed = community.list("freeplay-live-check.exe", "1.0").unwrap();
+    let row = listed.iter().find(|r| r.id == sent.id).unwrap();
+    assert!(row.submitted_by.is_empty(), "no name should be on it");
 }
