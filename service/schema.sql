@@ -41,3 +41,9 @@ create table if not exists grabs (
   created_at integer not null,
   primary key (install, table_id)
 );
+
+create table if not exists accounts (
+  name text primary key,
+  pubkey text not null unique,
+  created_at integer not null
+);

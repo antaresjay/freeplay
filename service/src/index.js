@@ -31,6 +31,7 @@ export default {
       if (request.method === "GET" && path.startsWith("/table/")) return one(path, url, env);
       if (request.method === "POST" && path === "/submit") return submit(request, env);
       if (request.method === "POST" && path === "/vote") return vote(request, env);
+      if (request.method === "GET" && path.startsWith("/who/")) return who(path, env);
       return bad("no such endpoint", 404);
     } catch (e) {
       return bad(String(e && e.message ? e.message : e), 500);
@@ -110,6 +111,72 @@ async function one(path, url, env) {
   return json(row);
 }
 
+// a name belongs to whoever registered it, and staying that person means
+// signing. no password to lose, and nothing here worth stealing since all we
+// keep is the public half
+async function verifySignature(pubkey, message, signature) {
+  const bytes = (hex) =>
+    new Uint8Array(hex.match(/../g).map((pair) => parseInt(pair, 16)));
+
+  for (const algorithm of ["Ed25519", "NODE-ED25519"]) {
+    try {
+      const key = await crypto.subtle.importKey(
+        "raw",
+        bytes(pubkey),
+        { name: algorithm, namedCurve: algorithm },
+        false,
+        ["verify"]
+      );
+      return await crypto.subtle.verify(
+        algorithm,
+        key,
+        bytes(signature),
+        new TextEncoder().encode(message)
+      );
+    } catch (e) {
+      // the runtime only takes one of the two names, try the other
+    }
+  }
+  throw new Error("this runtime cannot check signatures");
+}
+
+async function who(path, env) {
+  const name = decodeURIComponent(path.slice("/who/".length)).toLowerCase();
+  const row = await env.DB.prepare(
+    "select name, pubkey, created_at from accounts where name = ?1"
+  )
+    .bind(name)
+    .first();
+
+  return row ? json(row) : json({ taken: false }, 404);
+}
+
+async function claim(env, name, pubkey, signature, fingerprint) {
+  if (!/^[0-9a-f]{64}$/.test(pubkey || "")) return "that is not a key";
+  if (!/^[0-9a-f]{128}$/.test(signature || "")) return "that is not a signature";
+  if (!/^[\w.-]{2,32}$/.test(name)) return "that name has odd characters in it";
+
+  const message = `freeplay/1\n${name.toLowerCase()}\n${fingerprint}`;
+  if (!(await verifySignature(pubkey, message, signature))) {
+    return "that signature does not match the key";
+  }
+
+  const held = await env.DB.prepare("select pubkey from accounts where name = ?1")
+    .bind(name.toLowerCase())
+    .first();
+
+  if (held) {
+    return held.pubkey === pubkey ? null : `${name} belongs to somebody else`;
+  }
+
+  await env.DB.prepare(
+    "insert into accounts (name, pubkey, created_at) values (?1, ?2, ?3)"
+  )
+    .bind(name.toLowerCase(), pubkey, Math.floor(Date.now() / 1000))
+    .run();
+  return null;
+}
+
 async function submit(request, env) {
   const now = Math.floor(Date.now() / 1000);
   // rate limiting needs to tell two submitters apart, not know who they are.
@@ -136,8 +203,13 @@ async function submit(request, env) {
   if (typeof toml !== "string" || !toml.length) return bad("nothing to store");
   if (toml.length > MAX_BYTES) return bad("that table is far too big");
 
-  const handle = String(submitted_by || "").slice(0, 40);
-  if (handle && !/^[\w .-]+$/.test(handle)) return bad("odd characters in that name");
+  // a name only counts if it is signed for. anything else is anonymous
+  let handle = "";
+  if (submitted_by) {
+    const wrong = await claim(env, String(submitted_by), body.pubkey, body.signature, fingerprint);
+    if (wrong) return bad(wrong, 403);
+    handle = String(submitted_by);
+  }
 
   const lowered = toml.toLowerCase();
   const hit = BANNED.find((word) => lowered.includes(word + "("));
