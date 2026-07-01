@@ -48,6 +48,23 @@ const CHEATS = [
    state:"idle", reason:"", armed:false, live:false, does:"Set once"}
 ];
 
+const SORTS = [
+  {key:"best", label:"Best match"},
+  {key:"votes", label:"Most liked"},
+  {key:"downloads", label:"Most used"},
+  {key:"new", label:"Newest"}
+];
+
+const SHARED = [
+  {id:7, game:"The Witcher 2", by:"aSwedishMagyar", cheats:23, up:9, down:1,
+   downloads:140, built_for:"3.5.0.1", added:1786142235, standing:"", installed:false},
+  {id:8, game:"The Witcher 2", by:"", cheats:11, up:0, down:0,
+   downloads:0, built_for:"", added:1786142235, standing:"", installed:true}
+];
+
+const PHRASE = ["cold","burst","cash","camel","cargo","bread","cloth","clerk",
+  "adopt","camel","bear","candy","chalk","bank","alloy","boot","column"];
+
 window.__calls = [];
 window.__TAURI__ = {
   core: {
@@ -61,6 +78,14 @@ window.__TAURI__ = {
         case "game_art": return {cover:null, hero:null, logo:null};
         case "cheats": return CHEATS;
         case "set_cheat": return null;
+        case "sort_options": return SORTS;
+        case "shared_tables": return SHARED;
+        case "install_shared": return "The Witcher 2 is ready, 23 cheats";
+        case "using": return [7, false];
+        case "rate_shared": return null;
+        case "share_table": return "shared, it is number 9";
+        case "whoami": return null;
+        case "claim_name": return PHRASE;
         case "list_processes": return [{pid:1234, name:"witcher2.exe"}];
         case "attach":
           return {process:"witcher2.exe", pid:1234, game:"The Witcher 2",
@@ -80,6 +105,13 @@ PROBE = r"""
 <script>
 (async () => {
   const out = [];
+  const finish = () => {
+    const pre = document.createElement("pre");
+    pre.id = "probe-results";
+    pre.textContent = out.join(String.fromCharCode(10));
+    document.body.appendChild(pre);
+  };
+  try {
   const visible = id => { const el = document.getElementById(id); return !!el && !el.hidden; };
   const note = (ok, label) => out.push((ok ? "PASS " : "FAIL ") + label);
   const settle = ms => new Promise(r => setTimeout(r, ms));
@@ -123,6 +155,27 @@ PROBE = r"""
     await settle(250);
     note(window.__calls.includes("set_cheat"), "toggling arms the cheat");
 
+    // shared tables
+    const rows = document.querySelectorAll("#shared-list .shared-row");
+    note(rows.length === 2, "shared tables listed (" + rows.length + ")");
+    note(document.querySelectorAll("#shared-sort option").length === 4,
+         "sort options filled in");
+    note(document.querySelector("#shared-list .shared-row .verified") !== null,
+         "a signed name is marked as signed");
+    note(document.querySelectorAll("#shared-list .shared-row.have").length === 1,
+         "one is already installed");
+
+    const blurb = document.querySelector("#shared-list .shared-facts").textContent;
+    note(blurb.includes("23 cheats"), "row shows the cheat count");
+    note(blurb.includes("9 up"), "row shows votes");
+    note(blurb.includes("140 downloads"), "row shows downloads");
+    note(blurb.includes("3.5.0.1"), "row shows the build");
+
+    const use = [...document.querySelectorAll("#shared-list button")].find(b => !b.disabled);
+    use.click();
+    await settle(400);
+    note(window.__calls.includes("install_shared"), "using a shared table installs it");
+
     document.getElementById("game-play").click();
     await settle(300);
     note(window.__calls.includes("launch_game"), "play button invokes launch_game");
@@ -143,6 +196,27 @@ PROBE = r"""
     note(visible("view-game"), "clicking the side rail opens the game page");
   }
 
+  // claiming a name
+  const settingsNav = [...document.querySelectorAll(".nav-item")]
+    .find(i => i.dataset.view === "settings");
+  settingsNav.click();
+  await settle(200);
+  note(visible("claim-name"), "settings offers to claim a name");
+
+  document.getElementById("claim-name").click();
+  await settle(200);
+  note(visible("name-sheet"), "the name sheet opens");
+
+  document.getElementById("name-input").value = "aSwedishMagyar";
+  document.getElementById("name-go").click();
+  await settle(400);
+  const words = document.querySelectorAll("#phrase-words span").length;
+  note(words === 17, "the recovery phrase is shown, all " + words + " words");
+
+  document.getElementById("phrase-done").click();
+  await settle(200);
+  note(!visible("name-sheet"), "the sheet closes once written down");
+
   for (const item of document.querySelectorAll(".nav-item")) {
     const target = item.dataset.view;
     item.click();
@@ -152,11 +226,10 @@ PROBE = r"""
 
   note(window.__errors.length === 0,
        "no uncaught errors" + (window.__errors.length ? ": " + window.__errors.join(" | ") : ""));
-
-  const pre = document.createElement("pre");
-  pre.id = "probe-results";
-  pre.textContent = out.join("\n");
-  document.body.appendChild(pre);
+  } catch (e) {
+    out.push("FAIL the probe itself threw: " + (e && e.message ? e.message : e));
+  }
+  finish();
 })();
 </script>
 """
@@ -202,8 +275,8 @@ def main():
     if not found:
         print("the probe never ran, so app.js threw before it could report")
         for line in run.stderr.splitlines():
-            if "error" in line.lower():
-                print("  ", line.strip()[:200])
+            if any(word in line.lower() for word in ("error", "uncaught", "cannot", "null")):
+                print("  ", line.strip()[:300])
         return 1
 
     body = found.group(1).strip()
