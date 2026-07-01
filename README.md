@@ -52,7 +52,8 @@ depend on the memory engine and does not.
 | `freeplay-table` | Table format, `.CT` import, turning a locator into an address |
 | `freeplay-session` | An attached game with cheats held on |
 | `freeplay-library` | Finding installed games |
-| `freeplay-sync` | Fetching published tables |
+| `freeplay-sync` | Fetching published tables, and the community service |
+| `freeplay-id` | Signing, so a name cannot be taken by typing it |
 | `freeplay-cli` | Command line driver |
 | `app` | Tauri desktop application |
 
@@ -63,6 +64,8 @@ depend on the memory engine and does not.
   all read from what Steam already cached on your own disk
 - Downloads new cheat tables by itself, so a game somebody adds today works for
   everybody tomorrow without anyone hunting for a file
+- Shows what other people have shared for a game, sorted by what worked for
+  them, and asks afterwards whether it worked for you
 - A page per game: art, play time, launch it, pin it to the top, favourite it
 - Marks games that ship an anti-cheat before you click them, rather than letting
   you find out at the point of refusal
@@ -171,10 +174,33 @@ all, because all 23 of its entries depend on it.
 
 See [tables/README.md](tables/README.md).
 
+## Sharing tables
+
+If you work out a table that works, one button sends it and everybody else gets
+it. They vote on whether it worked for them, which is what decides the order the
+next person sees.
+
+Names are optional and anonymous is the default. If you do want your name on
+what you share, Freeplay makes a key and registers the name against it, so
+nobody can publish under your name by typing it. There is no password and no
+email, just seventeen words you write down once, which is also how the name
+moves to another machine. Lose the words and the name is gone, and there is no
+way around that: a secret cannot be recovered from nothing.
+
+Everything shared is our own table format, never a raw `.CT`, so it has been
+parsed and validated before it can reach anybody. A downloaded script may only
+touch the game's own modules, and anything calling `loadlibrary` or spawning a
+thread is refused outright. See `freeplay-aa/src/safety.rs`.
+
+Tables land in a Cloudflare D1 database within seconds and are mirrored into
+[freeplay-tables](https://github.com/antaresjay/freeplay-tables) every few
+minutes, so the repository outlives the service and you can read every table on
+GitHub without installing anything.
+
 ## What it sends
 
-Nothing about you. There is no account, no identifier, no telemetry, and no
-crash reporting.
+No account, no email, no telemetry, no crash reporting, and nothing about you or
+your machine.
 
 The one thing Freeplay does over the network is fetch cheat tables: a GET of
 `tables/index.json` from this repository, then a GET of any table file that is
