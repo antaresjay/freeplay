@@ -393,6 +393,8 @@ function drawGamePage() {
 
   refreshCheats.drawn = "";
   refreshCheats();
+  loadShared();
+  checkRatePrompt();
 }
 
 /* ---------- attaching ---------- */
@@ -831,7 +833,273 @@ $("scan-value").addEventListener("keydown", (e) => {
   if (e.key === "Enter") (scanning ? narrow("exact") : startScan());
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") $("sheet").hidden = true;
+  if (e.key !== "Escape") return;
+  $("sheet").hidden = true;
+  $("name-sheet").hidden = true;
+});
+
+
+/* ---------- shared tables ---------- */
+
+let sharedSorts = [];
+let sharedFor = null;
+
+async function loadSortOptions() {
+  if (sharedSorts.length) return;
+  try {
+    sharedSorts = await invoke("sort_options");
+  } catch {
+    sharedSorts = [{ key: "best", label: "Best match" }];
+  }
+  const box = $("shared-sort");
+  box.innerHTML = "";
+  for (const option of sharedSorts) {
+    const el = document.createElement("option");
+    el.value = option.key;
+    el.textContent = option.label;
+    box.appendChild(el);
+  }
+}
+
+function when(seconds) {
+  if (!seconds) return "";
+  const days = Math.floor((Date.now() / 1000 - seconds) / 86400);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return days + " days ago";
+  if (days < 365) return Math.floor(days / 30) + " months ago";
+  return Math.floor(days / 365) + " years ago";
+}
+
+async function loadShared(force = false) {
+  const game = gameFor(open);
+  if (!game || !game.exe) return;
+  if (!force && sharedFor === game.exe) return;
+  sharedFor = game.exe;
+
+  await loadSortOptions();
+  const host = $("shared-list");
+  host.innerHTML = '<div class="placeholder">Looking</div>';
+
+  let rows = [];
+  try {
+    rows = await invoke("shared_tables", {
+      exe: game.exe,
+      sort: $("shared-sort").value || "best",
+    });
+  } catch (e) {
+    host.innerHTML = "";
+    $("shared-empty").hidden = false;
+    $("shared-empty").textContent = String(e);
+    return;
+  }
+
+  if (sharedFor !== game.exe) return;
+
+  host.innerHTML = "";
+  $("shared-empty").hidden = rows.length > 0;
+  $("shared-empty").textContent =
+    "Nothing shared for this game yet. If you have a table that works, send it.";
+
+  for (const row of rows) host.appendChild(sharedRow(row));
+}
+
+function sharedRow(row) {
+  const card = document.createElement("div");
+  card.className = "shared-row" + (row.installed ? " have" : "");
+
+  const main = document.createElement("div");
+  main.className = "shared-main";
+
+  const title = document.createElement("div");
+  title.className = "shared-name";
+  title.textContent = row.by ? row.game + " by " + row.by : row.game;
+  if (row.by) {
+    const tick = document.createElement("span");
+    tick.className = "verified";
+    tick.textContent = "signed";
+    tick.title = "this name is registered to a key, nobody else can publish under it";
+    title.appendChild(tick);
+  }
+
+  const facts = document.createElement("div");
+  facts.className = "shared-facts";
+  const bits = [row.cheats + " cheats"];
+  bits.push(row.up || row.down ? row.up + " up, " + row.down + " down" : "no votes yet");
+  if (row.downloads) bits.push(row.downloads + " downloads");
+  if (row.built_for) bits.push("checked on " + row.built_for);
+  const added = when(row.added);
+  if (added) bits.push(added);
+  facts.textContent = bits.join("  .  ");
+
+  main.append(title, facts);
+
+  const button = document.createElement("button");
+  button.className = row.installed ? "ghost" : "primary";
+  button.textContent = row.installed ? "Installed" : "Use this";
+  button.disabled = row.installed;
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "Getting it";
+    try {
+      toast(await invoke("install_shared", { id: row.id }));
+      await loadGames(false);
+      refreshCheats.drawn = "";
+      await refreshCheats();
+      await loadShared(true);
+      await checkRatePrompt();
+    } catch (e) {
+      toast(String(e), true);
+      button.disabled = false;
+      button.textContent = "Use this";
+    }
+  });
+
+  card.append(main, button);
+  return card;
+}
+
+/* asked once per table, and only once the game has actually been attached,
+   because before that nobody knows whether it worked */
+async function checkRatePrompt() {
+  const game = gameFor(open);
+  const ask = $("rate-ask");
+  ask.hidden = true;
+  if (!game || !game.exe) return;
+
+  let held = null;
+  try {
+    held = await invoke("using", { exe: game.exe });
+  } catch {
+    return;
+  }
+  if (!held) return;
+
+  const id = held[0];
+  const rated = held[1];
+  if (rated) return;
+  if (!attached || attached.process !== game.exe) return;
+
+  ask.hidden = false;
+  ask.dataset.id = id;
+}
+
+async function rateShared(up) {
+  const id = Number($("rate-ask").dataset.id);
+  try {
+    await invoke("rate_shared", { id, up });
+    toast(up ? "Thanks, that helps the next person" : "Noted, it will sink down the list");
+  } catch (e) {
+    toast(String(e), true);
+  }
+  $("rate-ask").hidden = true;
+  await loadShared(true);
+}
+
+$("rate-up").addEventListener("click", () => rateShared(true));
+$("rate-down").addEventListener("click", () => rateShared(false));
+$("shared-refresh").addEventListener("click", () => loadShared(true));
+$("shared-sort").addEventListener("change", () => loadShared(true));
+
+$("shared-share").addEventListener("click", async () => {
+  const game = gameFor(open);
+  if (!game) return;
+  try {
+    toast(await invoke("share_table", { exe: game.exe, anonymous: false }));
+    await loadShared(true);
+  } catch (e) {
+    toast(String(e), true);
+  }
+});
+
+/* ---------- who you publish as ---------- */
+
+async function drawWhoami() {
+  let who = null;
+  try {
+    who = await invoke("whoami");
+  } catch {
+    // stays anonymous
+  }
+  $("whoami-state").textContent = who
+    ? "Uploads go out as " + who.name + "."
+    : "Uploads go out anonymously.";
+  $("claim-name").hidden = !!who;
+  $("forget-name").hidden = !who;
+}
+
+function showNameSheet(step) {
+  $("name-sheet").hidden = false;
+  $("name-pick").hidden = step !== "pick";
+  $("name-recover").hidden = step !== "recover";
+  $("name-phrase").hidden = step !== "phrase";
+}
+
+$("claim-name").addEventListener("click", () => {
+  $("name-input").value = "";
+  $("name-why").textContent = "";
+  showNameSheet("pick");
+  $("name-input").focus();
+});
+
+$("name-cancel").addEventListener("click", () => ($("name-sheet").hidden = true));
+$("name-recover-go").addEventListener("click", () => showNameSheet("recover"));
+$("recover-back").addEventListener("click", () => showNameSheet("pick"));
+
+$("name-go").addEventListener("click", async () => {
+  const name = $("name-input").value.trim();
+  $("name-why").textContent = "Checking";
+  try {
+    const words = await invoke("claim_name", { name });
+    const host = $("phrase-words");
+    host.innerHTML = "";
+    words.forEach((word, at) => {
+      const el = document.createElement("span");
+      const number = document.createElement("b");
+      number.textContent = at + 1;
+      el.append(number, document.createTextNode(" " + word));
+      host.appendChild(el);
+    });
+    host.dataset.phrase = words.join(" ");
+    showNameSheet("phrase");
+  } catch (e) {
+    $("name-why").textContent = String(e);
+  }
+});
+
+$("recover-go").addEventListener("click", async () => {
+  $("recover-why").textContent = "Checking";
+  try {
+    const name = await invoke("recover_name", {
+      name: $("recover-name").value.trim(),
+      phrase: $("recover-phrase").value.trim(),
+    });
+    $("name-sheet").hidden = true;
+    toast("Welcome back, " + name);
+    await drawWhoami();
+  } catch (e) {
+    $("recover-why").textContent = String(e);
+  }
+});
+
+$("phrase-copy").addEventListener("click", () => {
+  navigator.clipboard.writeText($("phrase-words").dataset.phrase || "");
+  toast("Copied. Put it somewhere that is not this machine");
+});
+
+$("phrase-done").addEventListener("click", async () => {
+  $("name-sheet").hidden = true;
+  await drawWhoami();
+});
+
+$("forget-name").addEventListener("click", async () => {
+  try {
+    await invoke("forget_name");
+    toast("Forgotten. Uploads go out anonymously now");
+    await drawWhoami();
+  } catch (e) {
+    toast(String(e), true);
+  }
 });
 
 async function start() {
@@ -841,6 +1109,7 @@ async function start() {
     // defaults are already in place
   }
   applyTheme();
+  drawWhoami();
   $("settings-path").textContent = "%APPDATA%\\freeplay\\settings.json";
   await loadGames();
   setInterval(loadGames, 5000);

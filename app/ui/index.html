@@ -135,6 +135,31 @@
         </div>
       </div>
 
+      <div id="rate-ask" class="banner ask" hidden>
+        <span class="pip live"></span>
+        <div>
+          <strong>Did that table work?</strong>
+          <p>Say so and the next person gets a better one first.</p>
+        </div>
+        <div class="ask-buttons">
+          <button id="rate-up" class="primary">It worked</button>
+          <button id="rate-down" class="ghost">It did not</button>
+        </div>
+      </div>
+
+      <div id="shared" class="shared">
+        <div class="section-head">
+          <h3>Shared by other people</h3>
+          <div class="shared-tools">
+            <select id="shared-sort" class="filter"></select>
+            <button id="shared-refresh" class="ghost">Refresh</button>
+            <button id="shared-share" class="ghost" title="Send this game's table to everybody else">Share mine</button>
+          </div>
+        </div>
+        <div id="shared-list" class="shared-list"></div>
+        <p id="shared-empty" class="dim" hidden>Nothing shared for this game yet. If you have a table that works, send it.</p>
+      </div>
+
       <div id="cheat-groups"></div>
 
       <div id="no-table" class="blank" hidden>
@@ -234,6 +259,17 @@
 
       <div class="setting">
         <div class="setting-label">
+          <strong>Your name on shared tables</strong>
+          <span id="whoami-state">Uploads go out anonymously.</span>
+        </div>
+        <div class="setting-actions">
+          <button id="claim-name" class="ghost">Claim a name</button>
+          <button id="forget-name" class="ghost" hidden>Forget it</button>
+        </div>
+      </div>
+
+      <div class="setting">
+        <div class="setting-label">
           <strong>Attach when a game starts</strong>
           <span>Switch cheats on whenever you like, even with the game closed. Freeplay attaches on its own when the game turns up and holds them on as soon as you are far enough in for them to work.</span>
         </div>
@@ -311,6 +347,43 @@
 </div>
 
 <div id="toast" class="toast" hidden></div>
+
+
+<div id="name-sheet" class="sheet" hidden>
+  <div class="sheet-card">
+    <h3 id="name-title">Claim a name</h3>
+    <p class="dim" id="name-blurb">Nobody else can publish under it once it is yours. No password, no email.</p>
+
+    <div id="name-pick">
+      <input id="name-input" type="text" placeholder="a name, letters and numbers" autocomplete="off" spellcheck="false">
+      <p id="name-why" class="dim"></p>
+      <div class="sheet-actions">
+        <button id="name-cancel" class="ghost">Cancel</button>
+        <button id="name-recover-go" class="ghost">I have a phrase</button>
+        <button id="name-go" class="primary">Claim it</button>
+      </div>
+    </div>
+
+    <div id="name-recover" hidden>
+      <input id="recover-name" type="text" placeholder="the name" autocomplete="off" spellcheck="false">
+      <textarea id="recover-phrase" rows="3" placeholder="the seventeen words you wrote down" spellcheck="false"></textarea>
+      <p id="recover-why" class="dim"></p>
+      <div class="sheet-actions">
+        <button id="recover-back" class="ghost">Back</button>
+        <button id="recover-go" class="primary">Get it back</button>
+      </div>
+    </div>
+
+    <div id="name-phrase" hidden>
+      <p>Write these down. They are the only way back if this machine dies, and there is no reset.</p>
+      <div id="phrase-words" class="phrase"></div>
+      <div class="sheet-actions">
+        <button id="phrase-copy" class="ghost">Copy</button>
+        <button id="phrase-done" class="primary">I have written them down</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

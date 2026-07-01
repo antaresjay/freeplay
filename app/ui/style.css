@@ -1101,3 +1101,82 @@ input::placeholder { color: var(--faint); }
   text-transform: uppercase;
   vertical-align: 1px;
 }
+
+/* ---------- shared tables ---------- */
+
+.shared { margin-bottom: 28px; }
+.shared .section-head { margin-bottom: 12px; }
+.shared-tools { display: flex; align-items: center; gap: 8px; }
+.shared-tools .filter { width: auto; }
+
+.shared-list { display: flex; flex-direction: column; gap: 8px; }
+
+.shared-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--panel);
+}
+.shared-row.have { border-color: var(--accent-line); background: var(--accent-soft); }
+.shared-main { flex: 1; min-width: 0; }
+.shared-name { font-size: 13.5px; font-weight: 570; }
+.shared-facts { margin-top: 2px; font-size: 12px; color: var(--faint); }
+
+.verified {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.banner.ask { align-items: center; }
+.ask-buttons { display: flex; gap: 8px; flex: none; }
+
+.setting-actions { display: flex; gap: 8px; flex: none; }
+
+/* seventeen words somebody has to copy off the screen onto paper, so they get
+   room and a number each */
+.phrase {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px 12px;
+  margin: 14px 0 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12.5px;
+  user-select: text;
+}
+.phrase b { margin-right: 5px; color: var(--faint); font-weight: 500; }
+
+#name-sheet .sheet-card { width: 560px; max-width: 90vw; }
+#name-sheet input, #name-sheet textarea {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  resize: vertical;
+}
+#name-sheet input:focus, #name-sheet textarea:focus {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.sheet-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
