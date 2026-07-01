@@ -26,6 +26,16 @@ pub struct Settings {
     // the game is far enough in to allow it
     #[serde(default)]
     pub armed: HashMap<String, Vec<String>>,
+    // random, made once. it stops one person voting twice and is not tied to
+    // the machine or to any name
+    #[serde(default)]
+    pub install_id: String,
+    // tables pulled from the service, so the picker can show which you have
+    #[serde(default)]
+    pub grabbed: HashMap<String, i64>,
+    // games already asked whether the table worked, so it is asked once
+    #[serde(default)]
+    pub rated: Vec<i64>,
 }
 
 fn yes() -> bool {
@@ -42,6 +52,9 @@ impl Default for Settings {
             auto_update: true,
             auto_attach: true,
             armed: HashMap::new(),
+            install_id: String::new(),
+            grabbed: HashMap::new(),
+            rated: Vec::new(),
         }
     }
 }
@@ -58,6 +71,15 @@ impl Settings {
         }
         self.pinned.dedup();
         self.favourites.dedup();
+
+        if self.install_id.len() != 32 || !self.install_id.chars().all(|c| c.is_ascii_hexdigit()) {
+            let seed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(1)
+                ^ (std::process::id() as u128) << 64;
+            self.install_id = freeplay_sync::community::new_install_id(seed);
+        }
     }
 }
 
@@ -93,6 +115,27 @@ pub fn save(settings: &Settings) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_install_id_is_made_once_and_then_kept() {
+        let mut settings = Settings::default();
+        settings.tidy();
+        let first = settings.install_id.clone();
+
+        assert_eq!(first.len(), 32);
+        settings.tidy();
+        assert_eq!(settings.install_id, first, "it must not change under you");
+    }
+
+    #[test]
+    fn a_junk_install_id_is_replaced() {
+        let mut settings = Settings {
+            install_id: "not hex".into(),
+            ..Default::default()
+        };
+        settings.tidy();
+        assert_eq!(settings.install_id.len(), 32);
+    }
 
     #[test]
     fn defaults_are_sane() {

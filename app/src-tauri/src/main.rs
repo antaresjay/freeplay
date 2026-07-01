@@ -20,6 +20,7 @@ use serde::Serialize;
 mod community;
 mod log;
 mod settings;
+mod shared;
 mod ui_contract;
 use settings::Settings;
 use tauri::{Emitter, Manager};
@@ -374,6 +375,111 @@ fn import_table(
         imported.summary(),
         destination.display()
     ))
+}
+
+#[tauri::command]
+async fn shared_tables(
+    state: tauri::State<'_, App>,
+    exe: String,
+    sort: String,
+) -> Result<Vec<shared::Shared>, String> {
+    let have: Vec<String> = tables(&state)
+        .iter()
+        .map(freeplay_table::fingerprint::fingerprint)
+        .collect();
+    shared::list(&exe, "", &sort, &have)
+}
+
+#[tauri::command]
+fn sort_options() -> Vec<shared::SortOption> {
+    shared::sorts()
+}
+
+#[tauri::command]
+async fn install_shared(state: tauri::State<'_, App>, id: i64) -> Result<String, String> {
+    let install_id = state.settings.lock().unwrap().install_id.clone();
+    let (_, table) = shared::install(id, &install_id, &synced_dir())?;
+
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.grabbed.insert(table.game.exe.to_lowercase(), id);
+        let _ = settings::save(&settings);
+    }
+    forget_tables(&state);
+    Ok(format!(
+        "{} is ready, {} cheats",
+        table.game.name,
+        table.cheats.len()
+    ))
+}
+
+#[tauri::command]
+async fn rate_shared(state: tauri::State<'_, App>, id: i64, up: bool) -> Result<(), String> {
+    let install_id = state.settings.lock().unwrap().install_id.clone();
+    shared::rate(id, up, &install_id, "")?;
+
+    let mut settings = state.settings.lock().unwrap();
+    if !settings.rated.contains(&id) {
+        settings.rated.push(id);
+    }
+    let _ = settings::save(&settings);
+    Ok(())
+}
+
+// which shared table this game is using, and whether it has been rated yet
+#[tauri::command]
+fn using(state: tauri::State<'_, App>, exe: String) -> Option<(i64, bool)> {
+    let settings = state.settings.lock().unwrap();
+    settings
+        .grabbed
+        .get(&exe.to_lowercase())
+        .map(|id| (*id, settings.rated.contains(id)))
+}
+
+#[tauri::command]
+async fn share_table(
+    state: tauri::State<'_, App>,
+    exe: String,
+    anonymous: bool,
+) -> Result<String, String> {
+    let table = tables(&state)
+        .into_iter()
+        .find(|t| t.matches_process(&exe))
+        .ok_or("there is no table for that game to share")?;
+
+    let toml = toml::to_string_pretty(&table).map_err(|e| e.to_string())?;
+    let (id, already) = shared::share(&table, &toml, anonymous, "")?;
+
+    Ok(if already {
+        format!("somebody already shared that one, it is number {id}")
+    } else {
+        format!("shared, it is number {id}")
+    })
+}
+
+#[derive(Serialize)]
+struct Who {
+    name: String,
+}
+
+#[tauri::command]
+fn whoami() -> Option<Who> {
+    shared::me().map(|who| Who { name: who.name })
+}
+
+#[tauri::command]
+async fn claim_name(name: String) -> Result<Vec<String>, String> {
+    shared::claim(&name)
+}
+
+#[tauri::command]
+async fn recover_name(name: String, phrase: String) -> Result<String, String> {
+    shared::recover(&name, &phrase)
+}
+
+#[tauri::command]
+fn forget_name() -> Result<(), String> {
+    shared::forget()
 }
 
 // opens the install folder
@@ -981,6 +1087,16 @@ fn main() {
             open_log,
             import_table,
             find_table,
+            shared_tables,
+            sort_options,
+            install_shared,
+            rate_shared,
+            using,
+            share_table,
+            whoami,
+            claim_name,
+            recover_name,
+            forget_name,
             open_folder,
             update_tables,
             launch_game,
