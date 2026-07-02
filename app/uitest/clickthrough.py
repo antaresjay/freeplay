@@ -39,13 +39,20 @@ const GAMES = [
    guard:"easyanticheat", minutes:73451, last_played:1786142235, pinned:false, favourite:false}
 ];
 
+const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true};
 const CHEATS = [
   {id:"base", name:"Get Witcher Base", category:"Misc", description:"", hint:"",
-   state:"idle", reason:"", armed:false, live:false, does:"Script"},
+   state:"idle", reason:"", armed:false, live:false, does:"Script", ...plain},
   {id:"vitality", name:"Infinite Vitality", category:"Player", description:"never die", hint:"",
-   state:"idle", reason:"", armed:true, live:false, does:"Freeze"},
+   state:"idle", reason:"", armed:true, live:false, does:"Freeze", ...plain,
+   editable:true, kind:"f32", value:"9999", current:"312"},
   {id:"orens", name:"Orens", category:"Resources", description:"money", hint:"",
-   state:"idle", reason:"", armed:false, live:false, does:"Set once"}
+   state:"idle", reason:"", armed:false, live:false, does:"Value", ...plain,
+   editable:true, kind:"i32", value:"5000", current:"120"},
+  {id:"difficulty", name:"Difficulty", category:"Game", description:"", hint:"",
+   state:"idle", reason:"", armed:false, live:false, does:"Set once", ...plain,
+   editable:true, kind:"i32", value:"1", holds:false,
+   choices:[{value:"0",label:"Easy"},{value:"1",label:"Normal"},{value:"2",label:"Hard"}]}
 ];
 
 const SORTS = [
@@ -66,14 +73,20 @@ const PHRASE = ["cold","burst","cash","camel","cargo","bread","cloth","clerk",
   "adopt","camel","bear","candy","chalk","bank","alloy","boot","column"];
 
 window.__calls = [];
+/* save_settings hands back what it was given, same as the real one. a stub
+   that answered with a fixed object hid the bug where pinning a game did not
+   show up until you left the page */
+let SETTINGS = {theme:"dark", accent:"amber", pinned:["steam:1222140"],
+                favourites:[], cheats_open:true};
 window.__TAURI__ = {
   core: {
-    invoke: async (cmd) => {
+    invoke: async (cmd, args) => {
       window.__calls.push(cmd);
       switch (cmd) {
-        case "settings":
+        case "settings": return SETTINGS;
         case "save_settings":
-          return {theme:"dark", accent:"amber", pinned:["steam:1222140"], favourites:[]};
+          SETTINGS = {...SETTINGS, ...args.next};
+          return SETTINGS;
         case "list_games": return GAMES;
         case "game_art": return {cover:null, hero:null, logo:null};
         case "cheats": return CHEATS;
@@ -87,6 +100,16 @@ window.__TAURI__ = {
         case "whoami": return null;
         case "claim_name": return PHRASE;
         case "list_processes": return [{pid:1234, name:"witcher2.exe"}];
+        case "set_cheat_value": return "5000";
+        case "profile_games": return [
+          {exe:"witcher2.exe", name:"The Witcher 2", cheats:3, values:2, shared:true},
+          {exe:"detroit.exe", name:"Detroit Become Human", cheats:1, values:0, shared:false}];
+        case "export_profile": return "Saved 2 games to D:/profile.freeplay";
+        case "open_profile": return {games:2, prefs:true, account:"aSwedishMagyar", tables:1};
+        case "apply_profile": return "Imported preferences, 2 games";
+        case "save_phrase": return "Saved to D:/words.txt";
+        case "pick_table": return "23 cheats imported, 0 skipped";
+        case "open_url": return null;
         case "attach":
           return {process:"witcher2.exe", pid:1234, game:"The Witcher 2",
                   table:false, arch:"32-bit"};
@@ -95,7 +118,11 @@ window.__TAURI__ = {
     }
   },
   window: {
-    getCurrentWindow: () => ({ minimize(){}, toggleMaximize(){}, close(){} })
+    getCurrentWindow: () => ({
+      minimize(){}, close(){},
+      async toggleMaximize(){ window.__big = !window.__big; },
+      async isMaximized(){ return !!window.__big; }
+    })
   }
 };
 </script>
@@ -140,9 +167,9 @@ PROBE = r"""
 
     // cheats list and switch on with nothing attached and the game closed
     const listed = document.querySelectorAll("#cheat-groups .cheat").length;
-    note(listed === 3, "cheats list without attaching (" + listed + ")");
+    note(listed === 4, "cheats list without attaching (" + listed + ")");
     const groups = document.querySelectorAll("#cheat-groups .group").length;
-    note(groups === 3, "cheats are grouped by category (" + groups + ")");
+    note(groups === 4, "cheats are grouped by category (" + groups + ")");
     note(!visible("no-table"), "no-table notice stays hidden when there is a table");
 
     const switches = document.querySelectorAll("#cheat-groups .switch");
@@ -154,6 +181,54 @@ PROBE = r"""
     switches[0].click();
     await settle(250);
     note(window.__calls.includes("set_cheat"), "toggling arms the cheat");
+
+    // a cheat that needs a number, which plenty of them are
+    const boxes = document.querySelectorAll("#cheat-groups .cheat-value input");
+    note(boxes.length === 2, "value cheats get a box to type in (" + boxes.length + ")");
+    note(boxes[0].value === "9999", "the box starts on what the table suggests");
+    const drops = document.querySelectorAll("#cheat-groups .cheat-value select");
+    note(drops.length === 1, "a cheat with listed options gets a dropdown");
+    note(drops[0].options.length === 3, "the dropdown lists every option");
+    note(drops[0].value === "1", "the dropdown starts on the right option");
+    const live = document.querySelector("[data-live-for=orens]");
+    note(live && live.textContent === "now 120",
+         "the box says what the game is holding now");
+    note(document.querySelectorAll(".cheat-once").length === 1,
+         "a cheat that does not hold its value says so");
+
+    boxes[1].value = "12345";
+    boxes[1].dispatchEvent(new Event("change"));
+    await settle(250);
+    note(window.__calls.includes("set_cheat_value"), "typing a number saves it");
+
+    // the panel the cheats live in
+    note(visible("cheat-dock"), "cheats sit in their own panel");
+    note(!visible("dock-open"), "the reopen tab is hidden while the panel is open");
+    document.getElementById("dock-close").click();
+    await settle(300);
+    note(!visible("cheat-dock"), "the panel folds away");
+    note(visible("dock-open"), "and leaves a tab to bring it back");
+    document.getElementById("dock-open").click();
+    await settle(300);
+    note(visible("cheat-dock"), "the tab brings it back");
+
+    // pinning without having to leave the page and come back
+    const pin = document.getElementById("game-pin");
+    const wasPinned = pin.classList.contains("on");
+    pin.click();
+    await settle(300);
+    note(pin.classList.contains("on") !== wasPinned, "the pin fills in straight away");
+    note(pin.title.toLowerCase().includes(wasPinned ? "pin to" : "unpin"),
+         "and the tooltip says what clicking it again does");
+
+    const fav = document.getElementById("game-fav");
+    fav.click();
+    await settle(300);
+    note(fav.classList.contains("on"), "the star fills in straight away");
+
+    document.getElementById("game-import").click();
+    await settle(250);
+    note(window.__calls.includes("pick_table"), "the game page can import a .CT");
 
     // shared tables
     const rows = document.querySelectorAll("#shared-list .shared-row");
@@ -217,6 +292,70 @@ PROBE = r"""
   await settle(200);
   note(!visible("name-sheet"), "the sheet closes once written down");
 
+  // saving the words rather than copying them by hand
+  document.getElementById("claim-name").click();
+  await settle(200);
+  document.getElementById("name-input").value = "someoneElse";
+  document.getElementById("name-go").click();
+  await settle(400);
+  document.getElementById("phrase-save").click();
+  await settle(300);
+  note(window.__calls.includes("save_phrase"), "the phrase can be saved to a file");
+  note(document.getElementById("phrase-saved").textContent.length > 0,
+       "and it says where it went");
+  document.getElementById("phrase-done").click();
+  await settle(200);
+
+  // exporting a profile
+  document.getElementById("export-profile").click();
+  await settle(300);
+  note(visible("export-sheet"), "the export sheet opens");
+  const picks = document.querySelectorAll("#export-games input");
+  note(picks.length === 2, "every game with something set is offered (" + picks.length + ")");
+  note([...picks].every(p => p.checked), "all games start ticked");
+  document.getElementById("export-none").click();
+  note([...document.querySelectorAll("#export-games input")].every(p => !p.checked),
+       "none clears every tick");
+  document.getElementById("export-all").click();
+  document.getElementById("export-go").click();
+  await settle(300);
+  note(window.__calls.includes("export_profile"), "export writes a file");
+  note(!visible("export-sheet"), "the export sheet closes after saving");
+
+  // importing one back
+  document.getElementById("import-profile").click();
+  await settle(300);
+  note(visible("import-sheet"), "the import sheet opens");
+  note(visible("import-needs-phrase"), "a profile with an account asks for the words");
+  note(document.getElementById("import-summary").textContent.includes("2 games"),
+       "the import sheet says what is in the file");
+  document.getElementById("import-go").click();
+  await settle(400);
+  note(window.__calls.includes("apply_profile"), "import applies the profile");
+
+  // importing a .CT without knowing you can drag one in
+  document.getElementById("import-table").click();
+  await settle(300);
+  note(window.__calls.includes("pick_table"), "settings can import a .CT file");
+
+  // the about links go somewhere
+  const aboutNav = [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "about");
+  aboutNav.click();
+  await settle(200);
+  const link = document.querySelector("#view-about [data-open]");
+  note(!!link, "about lists a source link");
+  link.click();
+  await settle(200);
+  note(window.__calls.includes("open_url"), "the source link actually opens something");
+
+  // window buttons
+  document.getElementById("win-max").click();
+  await settle(200);
+  note(document.body.classList.contains("maximised"), "maximising swaps the icon");
+  document.getElementById("win-max").click();
+  await settle(200);
+  note(!document.body.classList.contains("maximised"), "restoring swaps it back");
+
   for (const item of document.querySelectorAll(".nav-item")) {
     const target = item.dataset.view;
     item.click();
@@ -268,7 +407,7 @@ def main():
     url = "file:///" + page_path.replace("\\", "/")
     run = subprocess.run(
         [browser, "--headless", "--disable-gpu", "--allow-file-access-from-files",
-         "--virtual-time-budget=6000", "--dump-dom", url],
+         "--virtual-time-budget=25000", "--dump-dom", url],
         capture_output=True, text=True, timeout=180)
 
     found = re.search(r'<pre id="probe-results">(.*?)</pre>', run.stdout, re.S)
