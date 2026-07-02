@@ -84,6 +84,12 @@ pub fn fingerprint(table: &Table) -> String {
         .iter()
         .map(|cheat| {
             let what = match &cheat.action {
+                // a locked value does what a freeze does, so it hashes the
+                // same. otherwise converting the same .CT twice, once either
+                // side of this change, would look like two different tables
+                Action::Value { kind, lock, .. } => {
+                    format!("{}:{:?}", if *lock { "freeze" } else { "set" }, kind.0)
+                }
                 Action::Freeze { kind, .. } => format!("freeze:{:?}", kind.0),
                 Action::Set { kind, .. } => format!("set:{:?}", kind.0),
                 Action::Nop { length } => format!("nop:{length}"),

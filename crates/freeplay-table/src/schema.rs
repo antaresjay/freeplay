@@ -240,6 +240,25 @@ fn hex_or_int<'de, D: serde::Deserializer<'de>>(d: D) -> Result<usize, D::Error>
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Action {
+    // a number the player picks. weight limit, game speed, how much gold.
+    // freeze is the special case where the number is always the same one
+    Value {
+        #[serde(rename = "value_type")]
+        kind: TypeName,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value: Option<Number>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min: Option<Number>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max: Option<Number>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        choices: Vec<Choice>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        hex: bool,
+        // hold it there against the game writing it back
+        #[serde(default = "yes", skip_serializing_if = "is_yes")]
+        lock: bool,
+    },
     Freeze {
         #[serde(rename = "value_type")]
         kind: TypeName,
@@ -261,9 +280,63 @@ pub enum Action {
     },
 }
 
+fn yes() -> bool {
+    true
+}
+
+fn is_yes(v: &bool) -> bool {
+    *v
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+
+// one line of a cheat engine dropdown, "0:Off". a bare number is allowed and
+// just labels itself
+#[derive(Debug, Clone, PartialEq)]
+pub struct Choice {
+    pub value: Number,
+    pub label: String,
+}
+
+impl Choice {
+    pub fn parse(text: &str) -> Option<Self> {
+        let text = text.trim();
+        let (number, label) = match text.split_once(':') {
+            Some((number, label)) => (number.trim(), label.trim().to_string()),
+            None => (text, text.to_string()),
+        };
+        Some(Self {
+            value: Number::parse(number)?,
+            label: if label.is_empty() {
+                number.to_string()
+            } else {
+                label
+            },
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for Choice {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let text = String::deserialize(d)?;
+        Choice::parse(&text).ok_or_else(|| D::Error::custom(format!("bad choice {text:?}")))
+    }
+}
+
+impl Serialize for Choice {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&format!("{}:{}", self.value, self.label))
+    }
+}
+
 impl Action {
     pub fn label(&self) -> &'static str {
         match self {
+            Action::Value { lock: true, .. } => "Value",
+            Action::Value { .. } => "Set once",
             Action::Freeze { .. } => "Freeze",
             Action::Set { .. } => "Set once",
             Action::Nop { .. } => "Patch out",
@@ -274,6 +347,56 @@ impl Action {
 
     pub fn is_script(&self) -> bool {
         matches!(self, Action::Script { .. })
+    }
+
+    // the type held at the address, for anything that reads or writes one
+    pub fn kind(&self) -> Option<ValueKind> {
+        match self {
+            Action::Value { kind, .. } | Action::Freeze { kind, .. } | Action::Set { kind, .. } => {
+                Some(kind.0)
+            }
+            _ => None,
+        }
+    }
+
+    // what goes in the box before anybody touches it
+    pub fn default_value(&self) -> Option<Number> {
+        match self {
+            Action::Value { value, .. } => *value,
+            Action::Freeze { value, .. } | Action::Set { value, .. } => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub fn takes_a_number(&self) -> bool {
+        matches!(self, Action::Value { .. })
+    }
+
+    pub fn choices(&self) -> &[Choice] {
+        match self {
+            Action::Value { choices, .. } => choices,
+            _ => &[],
+        }
+    }
+
+    pub fn shows_hex(&self) -> bool {
+        matches!(self, Action::Value { hex: true, .. })
+    }
+
+    // whether it has to be written over and over, or once is enough
+    pub fn holds(&self) -> bool {
+        match self {
+            Action::Value { lock, .. } => *lock,
+            Action::Freeze { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn limits(&self) -> (Option<Number>, Option<Number>) {
+        match self {
+            Action::Value { min, max, .. } => (*min, *max),
+            _ => (None, None),
+        }
     }
 }
 
@@ -303,7 +426,31 @@ pub enum Number {
     Float(f64),
 }
 
+impl std::fmt::Display for Number {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Number::Int(v) => write!(f, "{v}"),
+            Number::Float(v) => write!(f, "{v}"),
+        }
+    }
+}
+
 impl Number {
+    pub fn parse(text: &str) -> Option<Self> {
+        let text = text.trim();
+        if let Some(hex) = text
+            .strip_prefix("0x")
+            .or_else(|| text.strip_prefix("0X"))
+            .or_else(|| text.strip_prefix('$'))
+        {
+            return i64::from_str_radix(hex, 16).ok().map(Number::Int);
+        }
+        if let Ok(v) = text.parse::<i64>() {
+            return Some(Number::Int(v));
+        }
+        text.parse::<f64>().ok().map(Number::Float)
+    }
+
     pub fn to_scalar(self, kind: ValueKind) -> Scalar {
         let text = match self {
             Number::Int(v) => v.to_string(),

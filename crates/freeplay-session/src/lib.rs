@@ -57,6 +57,8 @@ pub struct Session {
     engaged: Arc<Mutex<HashMap<String, Engaged>>>,
     symbols: Arc<Mutex<Symbols>>,
     armed: Arc<Mutex<HashSet<String>>>,
+    // numbers the player typed, over whatever the table suggests
+    chosen: Arc<Mutex<HashMap<String, Scalar>>>,
     tried: Arc<Mutex<HashMap<String, Instant>>>,
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
@@ -70,6 +72,7 @@ impl Session {
             engaged: Arc::new(Mutex::new(HashMap::new())),
             symbols: Arc::new(Mutex::new(Symbols::new())),
             armed: Arc::new(Mutex::new(HashSet::new())),
+            chosen: Arc::new(Mutex::new(HashMap::new())),
             tried: Arc::new(Mutex::new(HashMap::new())),
             stop: Arc::new(AtomicBool::new(false)),
             worker: None,
@@ -255,8 +258,75 @@ impl Session {
         Ok(())
     }
 
+    // what the cheat will write. the typed number wins, then whatever the
+    // table suggested, then whatever the game is holding right now
+    pub fn value_for(&self, id: &str) -> Option<Scalar> {
+        let cheat = self.table.cheat(id)?;
+        let kind = cheat.action.kind()?;
+
+        if let Some(picked) = self.chosen.lock().unwrap().get(id) {
+            return Some(*picked);
+        }
+        if let Some(suggested) = cheat.action.default_value() {
+            return Some(suggested.to_scalar(kind));
+        }
+        self.live_value(id)
+    }
+
+    // what is at the address at this instant, for showing next to the box
+    pub fn live_value(&self, id: &str) -> Option<Scalar> {
+        let cheat = self.table.cheat(id)?;
+        let kind = cheat.action.kind()?;
+        let State::Ready { addr } = self.state_of(cheat, &self.symbols()) else {
+            return None;
+        };
+        self.target.read_scalar(addr, kind).ok()
+    }
+
+    pub fn choose(&self, id: &str, text: &str) -> Result<Scalar, Error> {
+        let cheat = self
+            .table
+            .cheat(id)
+            .ok_or_else(|| Error::NoSuchCheat(id.to_string()))?;
+        let kind = cheat
+            .action
+            .kind()
+            .ok_or_else(|| Error::Table(format!("{} does not take a number", cheat.name)))?;
+        let scalar = kind
+            .parse(text.trim())
+            .ok_or_else(|| Error::Table(format!("{text:?} is not a {kind}")))?;
+
+        self.chosen.lock().unwrap().insert(id.to_string(), scalar);
+
+        // already running, so put the new number in without a round trip
+        // through disable and enable
+        let mut engaged = self.engaged.lock().unwrap();
+        if let Some(Engaged::Freeze { addr, value }) = engaged.get_mut(id) {
+            *value = scalar;
+            let addr = *addr;
+            drop(engaged);
+            self.target.write_scalar(addr, scalar)?;
+        }
+        Ok(scalar)
+    }
+
     fn engage(&self, cheat: &Cheat, addr: usize) -> Result<Engaged, Error> {
         match &cheat.action {
+            Action::Value { lock, .. } => {
+                let scalar = self.value_for(&cheat.id).ok_or_else(|| Error::NotReady {
+                    name: cheat.name.clone(),
+                    reason: "nothing to write yet".into(),
+                })?;
+                self.target.write_scalar(addr, scalar)?;
+                Ok(if *lock {
+                    Engaged::Freeze {
+                        addr,
+                        value: scalar,
+                    }
+                } else {
+                    Engaged::Done
+                })
+            }
             Action::Set { kind, value } => {
                 let scalar = value.to_scalar(kind.0);
                 self.target.write_scalar(addr, scalar)?;
@@ -447,6 +517,28 @@ mod tests {
             offset = "0xC0"
 
             [[cheat]]
+            id = "weight"
+            name = "Carry Weight"
+            type = "value"
+            value_type = "i32"
+            [cheat.locator]
+            find = "static"
+            module = "mock.exe"
+            offset = "0x100"
+
+            [[cheat]]
+            id = "speed"
+            name = "Game Speed"
+            type = "value"
+            value_type = "f32"
+            value = 1.0
+            lock = false
+            [cheat.locator]
+            find = "static"
+            module = "mock.exe"
+            offset = "0x140"
+
+            [[cheat]]
             id = "orphan"
             name = "Broken One"
             type = "nop"
@@ -566,10 +658,77 @@ mod tests {
     }
 
     #[test]
+    fn a_typed_number_is_what_gets_written() {
+        let (mock, s) = session();
+        s.choose("weight", "480").unwrap();
+        s.enable("weight").unwrap();
+
+        assert_eq!(
+            mock.read_scalar(BASE + 0x100, ValueKind::I32).unwrap(),
+            Scalar::I32(480)
+        );
+    }
+
+    #[test]
+    fn changing_the_number_while_it_is_on_takes_effect_there_and_then() {
+        let (mock, s) = session();
+        s.choose("weight", "480").unwrap();
+        s.enable("weight").unwrap();
+        s.choose("weight", "9000").unwrap();
+
+        assert_eq!(
+            mock.read_scalar(BASE + 0x100, ValueKind::I32).unwrap(),
+            Scalar::I32(9000)
+        );
+
+        mock.poke(BASE + 0x100, &1i32.to_ne_bytes());
+        s.tick();
+        assert_eq!(
+            mock.read_scalar(BASE + 0x100, ValueKind::I32).unwrap(),
+            Scalar::I32(9000)
+        );
+    }
+
+    #[test]
+    fn a_value_with_nothing_typed_falls_back_to_whatever_the_game_holds() {
+        let (mock, s) = session();
+        mock.poke(BASE + 0x100, &37i32.to_ne_bytes());
+        assert_eq!(s.value_for("weight"), Some(Scalar::I32(37)));
+    }
+
+    #[test]
+    fn lock_off_writes_once_and_lets_go() {
+        let (mock, s) = session();
+        s.choose("speed", "2.5").unwrap();
+        s.enable("speed").unwrap();
+        assert_eq!(
+            mock.read_scalar(BASE + 0x140, ValueKind::F32).unwrap(),
+            Scalar::F32(2.5)
+        );
+
+        mock.poke(BASE + 0x140, &1.0f32.to_ne_bytes());
+        s.tick();
+        assert_eq!(
+            mock.read_scalar(BASE + 0x140, ValueKind::F32).unwrap(),
+            Scalar::F32(1.0)
+        );
+    }
+
+    #[test]
+    fn rubbish_in_the_box_is_refused_before_anything_is_written() {
+        let (mock, s) = session();
+        assert!(s.choose("weight", "lots").is_err());
+        assert_eq!(
+            mock.read_scalar(BASE + 0x100, ValueKind::I32).unwrap(),
+            Scalar::I32(0)
+        );
+    }
+
+    #[test]
     fn survey_reports_every_cheat() {
         let (_, s) = session();
         let states = s.survey();
-        assert_eq!(states.len(), 4);
+        assert_eq!(states.len(), 6);
 
         let broken = states.iter().find(|(id, _)| id == "orphan").unwrap();
         assert!(matches!(broken.1, State::Broken { .. }));

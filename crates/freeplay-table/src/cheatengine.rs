@@ -4,7 +4,9 @@ use freeplay_core::value::ValueKind;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-use crate::schema::{Action, Category, Cheat, Game, Hop, Locator, Meta, Number, Table, TypeName};
+use crate::schema::{
+    Action, Category, Cheat, Choice, Game, Hop, Locator, Meta, Number, Table, TypeName,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skipped {
@@ -92,6 +94,12 @@ struct Entry {
     offsets: Vec<i64>,
     script: bool,
     assembler: String,
+    // "0:Off" lines out of a dropdown, if the author gave one
+    dropdown: Vec<String>,
+    hex: bool,
+    // whatever cheat engine last saw at that address. the only honest starting
+    // number we have, so it beats making one up
+    last_seen: String,
     children: Vec<Entry>,
 }
 
@@ -153,6 +161,16 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
                 }
             }
 
+            // <LastState Value="100" .../> carries no text, only attributes
+            Ok(Event::Empty(tag)) => {
+                if String::from_utf8_lossy(tag.name().as_ref()) == "LastState" {
+                    if let (Some(entry), Some(seen)) = (stack.last_mut(), attribute(&tag, "Value"))
+                    {
+                        entry.last_seen = seen;
+                    }
+                }
+            }
+
             Ok(Event::Text(text)) => {
                 let value = text
                     .unescape()
@@ -182,6 +200,15 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
                             entry.offsets.push(v);
                         }
                     }
+                    "DropDownList" => {
+                        entry.dropdown = value
+                            .lines()
+                            .map(str::trim)
+                            .filter(|l| !l.is_empty())
+                            .map(str::to_string)
+                            .collect();
+                    }
+                    "ShowAsHex" => entry.hex = value == "1",
                     _ => {}
                 }
             }
@@ -213,6 +240,13 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
 
 fn unquote(text: &str) -> String {
     text.trim().trim_matches('"').to_string()
+}
+
+fn attribute(tag: &quick_xml::events::BytesStart<'_>, want: &str) -> Option<String> {
+    tag.attributes().flatten().find_map(|a| {
+        (a.key.as_ref() == want.as_bytes())
+            .then(|| String::from_utf8_lossy(a.value.as_ref()).to_string())
+    })
 }
 
 fn convert(
@@ -301,6 +335,12 @@ fn convert(
         },
     };
 
+    let choices: Vec<Choice> = entry
+        .dropdown
+        .iter()
+        .filter_map(|l| Choice::parse(l))
+        .collect();
+
     out.push(Cheat {
         id: unique_id(&name, used),
         name: name.clone(),
@@ -308,11 +348,50 @@ fn convert(
         description: String::new(),
         hint: String::new(),
         locator: Some(locator),
-        action: Action::Freeze {
+        action: Action::Value {
             kind: TypeName(kind),
-            value: freeze_value(kind),
+            value: starting_value(&name, kind, &entry.last_seen, &choices),
+            min: None,
+            max: None,
+            choices,
+            hex: entry.hex,
+            lock: true,
         },
     });
+}
+
+// cheat engine gives no hint of what a good number is, so this is a guess and
+// the box is editable precisely because it is one. "infinite health" wants the
+// ceiling, "carry weight" wants whatever the player types
+fn starting_value(
+    name: &str,
+    kind: ValueKind,
+    last_seen: &str,
+    choices: &[Choice],
+) -> Option<Number> {
+    if let Some(first) = choices.first() {
+        return Some(first.value);
+    }
+    if wants_the_ceiling(name) {
+        return Some(freeze_value(kind));
+    }
+    Number::parse(last_seen)
+}
+
+fn wants_the_ceiling(name: &str) -> bool {
+    let name = name.to_lowercase();
+    [
+        "infinite",
+        "unlimited",
+        "inf ",
+        "max ",
+        "no reload",
+        "godmode",
+        "god mode",
+    ]
+    .iter()
+    .any(|w| name.contains(w))
+        || name.starts_with("max")
 }
 
 fn script_cheat(
@@ -598,12 +677,73 @@ alloc(newmem,$1000)
             .table
             .cheats
             .iter()
-            .filter_map(|c| match &c.action {
-                Action::Freeze { kind, .. } => Some(kind.0),
-                _ => None,
-            })
+            .filter_map(|c| c.action.kind())
             .collect();
         assert_eq!(kinds, [ValueKind::F32, ValueKind::I32, ValueKind::I32]);
+    }
+
+    #[test]
+    fn a_plain_value_can_be_typed_into_rather_than_just_switched_on() {
+        let out = imported();
+        let orens = out.table.cheats.iter().find(|c| c.name == "Orens").unwrap();
+        assert!(orens.action.takes_a_number());
+        assert!(orens.action.holds());
+    }
+
+    // this is the bug the whole change is about. "multiplier" got frozen at
+    // 9999 because nothing else was on offer
+    #[test]
+    fn a_number_nobody_can_guess_is_left_for_the_player() {
+        let xml = SAMPLE.replace("Orens", "Carry Weight");
+        let out = import(&xml, "witcher2.exe", "The Witcher 2").unwrap();
+        let weight = out
+            .table
+            .cheats
+            .iter()
+            .find(|c| c.name == "Carry Weight")
+            .unwrap();
+        assert_eq!(weight.action.default_value(), None);
+    }
+
+    #[test]
+    fn infinite_anything_still_gets_the_ceiling() {
+        let out = imported();
+        let health = &out.table.cheats[0];
+        assert_eq!(health.name, "Infinite Health");
+        assert_eq!(health.action.default_value(), Some(Number::Float(9999.0)));
+    }
+
+    #[test]
+    fn the_last_number_cheat_engine_saw_is_the_starting_point() {
+        let xml = SAMPLE.replace(
+            "<Address>witcher2.exe+3C4D5E</Address>",
+            "<Address>witcher2.exe+3C4D5E</Address><LastState Value=\"742\" RealAddress=\"0\"/>",
+        );
+        let out = import(&xml, "witcher2.exe", "The Witcher 2").unwrap();
+        let orens = out.table.cheats.iter().find(|c| c.name == "Orens").unwrap();
+        assert_eq!(orens.action.default_value(), Some(Number::Int(742)));
+    }
+
+    #[test]
+    fn a_dropdown_comes_across_as_the_options_it_lists() {
+        let xml = SAMPLE.replace(
+            "<Address>witcher2.exe+3C4D5E</Address>",
+            "<Address>witcher2.exe+3C4D5E</Address>\
+             <DropDownList ReadOnly=\"1\">0:Easy\n1:Normal\n2:Hard</DropDownList>\
+             <ShowAsHex>1</ShowAsHex>",
+        );
+        let out = import(&xml, "witcher2.exe", "The Witcher 2").unwrap();
+        let orens = out.table.cheats.iter().find(|c| c.name == "Orens").unwrap();
+
+        let labels: Vec<&str> = orens
+            .action
+            .choices()
+            .iter()
+            .map(|c| c.label.as_str())
+            .collect();
+        assert_eq!(labels, ["Easy", "Normal", "Hard"]);
+        assert!(orens.action.shows_hex());
+        assert_eq!(orens.action.default_value(), Some(Number::Int(0)));
     }
 
     #[test]
