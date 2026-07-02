@@ -41,6 +41,7 @@ function applyTheme() {
     : "Nothing pinned yet";
   $("auto-update").classList.toggle("on", config.auto_update !== false);
   $("auto-attach").classList.toggle("on", config.auto_attach !== false);
+  drawDock();
 }
 
 async function checkForTables(manual) {
@@ -66,8 +67,16 @@ async function saveConfig(changes) {
     return toast(String(e), true);
   }
   applyTheme();
+  /* the pinned and favourite flags are worked out back there and come down
+     with the games list, which only refreshes every few seconds. without this
+     you have to leave the page and come back to see the star fill in */
+  for (const game of games) {
+    game.pinned = config.pinned.includes(game.key);
+    game.favourite = config.favourites.includes(game.key);
+  }
   drawn = "";
   draw();
+  if (open) drawGamePage();
 }
 
 function toggleIn(list, key) {
@@ -176,7 +185,7 @@ function ordered(list) {
 function signature(list) {
   return (
     list
-      .map((g) => `${g.key}${g.running}${g.has_table}${g.pinned}${art.has(g.app_id)}`)
+      .map((g) => `${g.key}${g.running}${g.has_table}${g.pinned}${g.favourite}${art.has(g.app_id)}`)
       .join("|") + `#${$("filter").value}#${attached ? attached.process : ""}`
   );
 }
@@ -365,8 +374,13 @@ function drawGamePage() {
   $("game-folder").disabled = !game.dir;
 
 
-  $("game-fav").classList.toggle("on", game.favourite);
-  $("game-pin").classList.toggle("on", game.pinned);
+  const fav = $("game-fav");
+  fav.classList.toggle("on", game.favourite);
+  fav.title = game.favourite ? "Remove from favourites" : "Add to favourites";
+
+  const pin = $("game-pin");
+  pin.classList.toggle("on", game.pinned);
+  pin.title = game.pinned ? "Unpin from the top of the library" : "Pin to the top of the library";
 
   const isAttached = attached && attached.process === game.exe;
   const attach = $("game-attach");
@@ -377,16 +391,16 @@ function drawGamePage() {
   const note = $("attach-note");
   if (game.guard) {
     note.hidden = false;
-    $("attach-note-title").textContent = "Off limits";
-    $("attach-note-body").textContent = `${game.name} ships ${game.guard}. Freeplay is for single player games, and attaching would risk your account.`;
+    $("attach-note-title").textContent = "Freeplay will not touch this one";
+    $("attach-note-body").textContent = `${game.name} ships with ${game.guard}. Freeplay is for single player only, and attaching to a game with anti-cheat can get your account banned.`;
   } else if (!game.running) {
     note.hidden = false;
-    $("attach-note-title").textContent = "Not running";
-    $("attach-note-body").textContent = "Press Play to start it, then attach. Freeplay reads memory from a live process.";
+    $("attach-note-title").textContent = "The game is not running";
+    $("attach-note-body").textContent = "Set up whatever you want now. Freeplay attaches on its own once the game is open and turns everything on for you.";
   } else if (!isAttached) {
     note.hidden = false;
-    $("attach-note-title").textContent = "Running, not attached";
-    $("attach-note-body").textContent = "Attach to see what this game offers.";
+    $("attach-note-title").textContent = "Running, not attached yet";
+    $("attach-note-body").textContent = "Attach and the cheats below start working.";
   } else {
     note.hidden = true;
   }
@@ -444,20 +458,29 @@ async function refreshCheats() {
   }
 
   $("no-table").hidden = rows.length > 0;
+  $("dock-empty").hidden = rows.length > 0;
+  const count = rows.length ? `${rows.length}` : "";
+  $("cheat-count").textContent = rows.length ? `${rows.length} in this table` : "";
+  $("dock-open-count").textContent = count;
 
-  const host = $("cheat-groups");
   const byCategory = new Map();
   for (const row of rows) {
     if (!byCategory.has(row.category)) byCategory.set(row.category, []);
     byCategory.get(row.category).push(row);
   }
 
+  /* the box is skipped on purpose. rebuilding it under someone mid-type would
+     eat what they were typing */
   const stamp = rows
-    .map((r) => `${r.id}${r.armed}${r.live}${r.state}${r.reason}`)
+    .map((r) => `${r.id}${r.armed}${r.live}${r.state}${r.reason}${r.editable}`)
     .join("|");
-  if (stamp === refreshCheats.drawn) return;
+  if (stamp === refreshCheats.drawn) {
+    for (const row of rows) liveValueInto(row);
+    return;
+  }
   refreshCheats.drawn = stamp;
 
+  const host = $("cheat-groups");
   host.innerHTML = "";
   for (const [category, items] of byCategory) {
     const group = document.createElement("div");
@@ -473,6 +496,17 @@ async function refreshCheats() {
     group.append(heading, grid);
     host.appendChild(group);
   }
+}
+
+/* what the game is holding right now, next to the box, without redrawing */
+function liveValueInto(row) {
+  const el = document.querySelector(`[data-live-for="${cssEscape(row.id)}"]`);
+  if (!el) return;
+  el.textContent = row.current ? `now ${row.current}` : "";
+}
+
+function cssEscape(text) {
+  return window.CSS && CSS.escape ? CSS.escape(text) : text.replace(/"/g, '\\"');
 }
 
 /* you can switch a cheat on whenever. whether it is actually doing anything is
@@ -502,23 +536,25 @@ function cheatCard(item, exe) {
     why.textContent = "On";
   } else if (item.armed && item.state === "broken") {
     why.classList.add("dead");
-    why.textContent = item.reason || "not found in this build";
+    why.textContent = item.reason || "not in this version of the game";
   } else if (item.armed && item.state === "wait") {
     why.classList.add("wait");
     why.textContent = item.hint || item.reason;
   } else if (item.armed) {
     why.classList.add("wait");
-    why.textContent = "Waiting for the game";
+    why.textContent = "Waiting for the game to get there";
   } else if (item.description) {
     why.textContent = item.description;
   } else if (item.does === "Script") {
-    why.textContent = "Hooks the game. Other cheats here need what it finds.";
+    why.textContent = "Finds the addresses the other cheats here need.";
   }
 
   main.append(name, why);
+  if (item.editable) main.appendChild(valueBox(item, exe));
 
   const toggle = document.createElement("button");
   toggle.className = "switch" + (item.armed ? " on" : "");
+  toggle.title = item.armed ? "Turn it off" : "Turn it on";
   toggle.addEventListener("click", async () => {
     try {
       await invoke("set_cheat", { exe, id: item.id, on: !item.armed });
@@ -531,6 +567,64 @@ function cheatCard(item, exe) {
 
   card.append(main, toggle);
   return card;
+}
+
+/* a dropdown if the table author listed the options, a plain box otherwise.
+   plenty of cheats are a number, not a switch: carry weight, game speed, how
+   much gold. freezing those at 999999 breaks the save */
+function valueBox(item, exe) {
+  const wrap = document.createElement("div");
+  wrap.className = "cheat-value";
+
+  const send = async (text, revert) => {
+    try {
+      await invoke("set_cheat_value", { exe, id: item.id, value: text });
+      item.value = text;
+    } catch (e) {
+      toast(String(e), true);
+      revert();
+    }
+  };
+
+  if (item.choices.length) {
+    const pick = document.createElement("select");
+    for (const choice of item.choices) {
+      const option = document.createElement("option");
+      option.value = choice.value;
+      option.textContent = choice.label;
+      pick.appendChild(option);
+    }
+    pick.value = item.value;
+    pick.addEventListener("change", () => send(pick.value, () => (pick.value = item.value)));
+    wrap.appendChild(pick);
+  } else {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.spellcheck = false;
+    input.value = item.value;
+    input.placeholder = item.hex ? "hex" : item.kind || "value";
+    input.addEventListener("change", () => send(input.value, () => (input.value = item.value)));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") input.blur();
+    });
+    wrap.appendChild(input);
+  }
+
+  const live = document.createElement("span");
+  live.className = "cheat-live";
+  live.dataset.liveFor = item.id;
+  live.textContent = item.current ? `now ${item.current}` : "";
+  wrap.appendChild(live);
+
+  if (!item.holds) {
+    const once = document.createElement("span");
+    once.className = "cheat-once";
+    once.textContent = "written once";
+    once.title = "the game is free to change it back";
+    wrap.appendChild(once);
+  }
+
+  return wrap;
 }
 
 /* ---------- finder ---------- */
@@ -548,7 +642,7 @@ function drawResults(results) {
   if (!results.length) return;
 
   if (results.length > 60) {
-    host.innerHTML = `<div class="placeholder">Too many to list. Change the value in game and narrow it down.</div>`;
+    host.innerHTML = `<div class="placeholder">Too many to show. Change the value in the game, then narrow it down.</div>`;
     return;
   }
 
@@ -590,7 +684,7 @@ function drawResults(results) {
 }
 
 async function startScan() {
-  if (!attached) return toast("Attach to a game first.", true);
+  if (!attached) return toast("Attach to a game first", true);
   $("scan-start").disabled = true;
   $("scan-status").textContent = "Scanning";
   try {
@@ -609,12 +703,12 @@ async function startScan() {
 }
 
 async function narrow(filter) {
-  if (!scanning) return toast("Run a first scan before narrowing.", true);
+  if (!scanning) return toast("Run the first scan before narrowing it down", true);
 
   let value = null;
   if (filter === "exact") {
     value = $("scan-value").value.trim();
-    if (!value) return toast("Type the value it shows now, then press it again.", true);
+    if (!value) return toast("Type what the game shows now, then press it again", true);
   }
 
   $("scan-status").textContent = "Scanning";
@@ -731,7 +825,7 @@ $("game-attach").addEventListener("click", () => {
   if (!game) return;
   if (attached && attached.process === game.exe) doDetach();
   else if (game.exe) doAttach(game.exe);
-  else toast("Could not work out which file to attach to.", true);
+  else toast("Could not work out which file to attach to", true);
 });
 
 $("game-fav").addEventListener("click", () => {
@@ -754,7 +848,7 @@ $("copy-report").addEventListener("click", async () => {
   try {
     const text = await invoke("diagnostics");
     await navigator.clipboard.writeText(text);
-    toast("Report copied, paste it into the issue");
+    toast("Copied. Paste it into the issue");
   } catch (e) {
     toast(String(e), true);
   }
@@ -777,8 +871,43 @@ function searchForTable() {
   invoke("find_table", { name: game.name }).catch((e) => toast(String(e), true));
 }
 
+/* dragging a file in is the quicker way, but nobody discovers it, so there is
+   a button for it too */
+async function pickTable() {
+  const game = gameFor(open);
+  try {
+    const note = await invoke("pick_table", { exe: game ? game.exe : null });
+    toast(note);
+    await loadGames(false);
+    refreshCheats.drawn = "";
+    await refreshCheats();
+  } catch (e) {
+    if (String(e)) toast(String(e), true);
+  }
+}
+
 $("game-find-table").addEventListener("click", searchForTable);
 $("no-table-find").addEventListener("click", searchForTable);
+$("game-import").addEventListener("click", pickTable);
+$("no-table-import").addEventListener("click", pickTable);
+$("import-table").addEventListener("click", pickTable);
+
+document.querySelectorAll("[data-open]").forEach((button) => {
+  button.addEventListener("click", () =>
+    invoke("open_url", { url: button.dataset.open }).catch((e) => toast(String(e), true))
+  );
+});
+
+/* ---------- the cheat dock ---------- */
+
+function drawDock() {
+  const shut = config.cheats_open === false;
+  $("cheat-dock").hidden = shut;
+  $("dock-open").hidden = !shut;
+}
+
+$("dock-close").addEventListener("click", () => saveConfig({ cheats_open: false }));
+$("dock-open").addEventListener("click", () => saveConfig({ cheats_open: true }));
 
 $("game-folder").addEventListener("click", () => {
   const game = gameFor(open);
@@ -802,7 +931,7 @@ if (window.__TAURI__.event) {
     document.body.classList.remove("dropping");
     const paths = (e.payload && e.payload.paths) || [];
     const table = paths.find((p) => p.toLowerCase().endsWith(".ct"));
-    if (!table) return toast("Drop a Cheat Engine .CT file", true);
+    if (!table) return toast("That is not a .CT file. Drop a Cheat Engine table", true);
     importTable(table);
   });
 }
@@ -816,8 +945,28 @@ $("open-log").addEventListener("click", async () => {
 });
 
 $("win-min").addEventListener("click", () => appWindow.minimize());
-$("win-max").addEventListener("click", () => appWindow.toggleMaximize());
+$("win-max").addEventListener("click", async () => {
+  await appWindow.toggleMaximize();
+  drawWindowState();
+});
 $("win-close").addEventListener("click", () => appWindow.close());
+
+/* the button showed a maximise square whether or not the window was already
+   maximised, so it looked like nothing happened */
+async function drawWindowState() {
+  let big = false;
+  try {
+    big = await appWindow.isMaximized();
+  } catch {
+    return;
+  }
+  document.body.classList.toggle("maximised", big);
+  $("win-max").title = big ? "Restore" : "Maximise";
+}
+
+/* dragging the title bar to the top edge maximises without going through the
+   button, so watch for it as well */
+window.addEventListener("resize", drawWindowState);
 
 $("filter").addEventListener("input", draw);
 $("refresh").addEventListener("click", () => loadGames(true));
@@ -834,9 +983,17 @@ $("scan-value").addEventListener("keydown", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  $("sheet").hidden = true;
-  $("name-sheet").hidden = true;
+  for (const id of ["sheet", "name-sheet", "export-sheet", "import-sheet"]) {
+    $(id).hidden = true;
+  }
 });
+
+/* clicking the dimmed area behind a sheet closes it, same as escape */
+for (const id of ["name-sheet", "export-sheet", "import-sheet"]) {
+  $(id).addEventListener("click", (e) => {
+    if (e.target === $(id)) $(id).hidden = true;
+  });
+}
 
 
 /* ---------- shared tables ---------- */
@@ -899,7 +1056,7 @@ async function loadShared(force = false) {
   host.innerHTML = "";
   $("shared-empty").hidden = rows.length > 0;
   $("shared-empty").textContent =
-    "Nothing shared for this game yet. If you have a table that works, send it.";
+    "Nobody has shared a table for this game yet. If yours works, share it and you will be the first.";
 
   for (const row of rows) host.appendChild(sharedRow(row));
 }
@@ -988,7 +1145,7 @@ async function rateShared(up) {
   const id = Number($("rate-ask").dataset.id);
   try {
     await invoke("rate_shared", { id, up });
-    toast(up ? "Thanks, that helps the next person" : "Noted, it will sink down the list");
+    toast(up ? "Thanks, that pushes it up the list for everyone else" : "Noted, it will sink down the list");
   } catch (e) {
     toast(String(e), true);
   }
@@ -1061,6 +1218,8 @@ $("name-go").addEventListener("click", async () => {
       host.appendChild(el);
     });
     host.dataset.phrase = words.join(" ");
+    host.dataset.name = name;
+    $("phrase-saved").textContent = "";
     showNameSheet("phrase");
   } catch (e) {
     $("name-why").textContent = String(e);
@@ -1084,7 +1243,20 @@ $("recover-go").addEventListener("click", async () => {
 
 $("phrase-copy").addEventListener("click", () => {
   navigator.clipboard.writeText($("phrase-words").dataset.phrase || "");
-  toast("Copied. Put it somewhere that is not this machine");
+  toast("Copied. Keep it somewhere that is not this machine");
+});
+
+$("phrase-save").addEventListener("click", async () => {
+  try {
+    const where = await invoke("save_phrase", {
+      name: $("phrase-words").dataset.name || "",
+      phrase: $("phrase-words").dataset.phrase || "",
+    });
+    $("phrase-saved").textContent = where;
+    toast("Saved. Keep a copy somewhere that is not this machine");
+  } catch (e) {
+    if (String(e)) toast(String(e), true);
+  }
 });
 
 $("phrase-done").addEventListener("click", async () => {
@@ -1092,10 +1264,137 @@ $("phrase-done").addEventListener("click", async () => {
   await drawWhoami();
 });
 
+/* ---------- moving to another machine ---------- */
+
+let exportPicks = new Set();
+
+async function openExport() {
+  let list = [];
+  try {
+    list = await invoke("profile_games");
+  } catch (e) {
+    return toast(String(e), true);
+  }
+
+  const who = $("whoami-state").textContent.includes("anonymously") ? null : true;
+  $("export-account").disabled = !who;
+  $("export-account").checked = false;
+
+  exportPicks = new Set(list.map((g) => g.exe));
+  const host = $("export-games");
+  host.innerHTML = "";
+
+  if (!list.length) {
+    host.innerHTML = '<p class="dim">No games have anything set on them yet.</p>';
+  }
+
+  for (const game of list) {
+    const row = document.createElement("label");
+    row.className = "check";
+
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = true;
+    box.addEventListener("change", () => {
+      if (box.checked) exportPicks.add(game.exe);
+      else exportPicks.delete(game.exe);
+    });
+    box.dataset.exe = game.exe;
+
+    const label = document.createElement("span");
+    const title = document.createElement("b");
+    title.textContent = game.name;
+    const sub = document.createElement("i");
+    const bits = [];
+    if (game.cheats) bits.push(`${game.cheats} on`);
+    if (game.values) bits.push(`${game.values} set`);
+    if (game.shared) bits.push("shared table");
+    sub.textContent = bits.join(", ");
+    label.append(title, sub);
+
+    row.append(box, label);
+    host.appendChild(row);
+  }
+
+  $("export-why").textContent = "";
+  $("export-sheet").hidden = false;
+}
+
+function setAllGames(on) {
+  exportPicks = new Set();
+  for (const box of document.querySelectorAll("#export-games input")) {
+    box.checked = on;
+    if (on) exportPicks.add(box.dataset.exe);
+  }
+}
+
+$("export-profile").addEventListener("click", openExport);
+$("export-close").addEventListener("click", () => ($("export-sheet").hidden = true));
+$("export-all").addEventListener("click", () => setAllGames(true));
+$("export-none").addEventListener("click", () => setAllGames(false));
+
+$("export-go").addEventListener("click", async () => {
+  $("export-why").textContent = "";
+  try {
+    const note = await invoke("export_profile", {
+      prefs: $("export-prefs").checked,
+      account: $("export-account").checked,
+      games: [...exportPicks],
+    });
+    $("export-sheet").hidden = true;
+    toast(note);
+  } catch (e) {
+    if (String(e)) $("export-why").textContent = String(e);
+  }
+});
+
+$("import-profile").addEventListener("click", async () => {
+  let peek = null;
+  try {
+    peek = await invoke("open_profile");
+  } catch (e) {
+    if (String(e)) toast(String(e), true);
+    return;
+  }
+
+  const bits = [];
+  if (peek.prefs) bits.push("your preferences");
+  if (peek.games) bits.push(`${peek.games} ${peek.games === 1 ? "game" : "games"}`);
+  if (peek.tables) bits.push(`${peek.tables} to download`);
+  $("import-summary").textContent = bits.length
+    ? `That file has ${bits.join(", ")}.`
+    : "That file is empty.";
+
+  $("import-needs-phrase").hidden = !peek.account;
+  $("import-phrase").value = "";
+  $("import-why").textContent = peek.account
+    ? `It was exported by ${peek.account}.`
+    : "";
+  $("import-sheet").hidden = false;
+});
+
+$("import-close").addEventListener("click", () => ($("import-sheet").hidden = true));
+$("import-cancel").addEventListener("click", () => ($("import-sheet").hidden = true));
+
+$("import-go").addEventListener("click", async () => {
+  $("import-why").textContent = "Working";
+  try {
+    const note = await invoke("apply_profile", { phrase: $("import-phrase").value || null });
+    $("import-sheet").hidden = true;
+    toast(note);
+    config = await invoke("settings");
+    applyTheme();
+    await loadGames(true);
+    await drawWhoami();
+  } catch (e) {
+    $("import-why").textContent = String(e);
+  }
+});
+
 $("forget-name").addEventListener("click", async () => {
   try {
     await invoke("forget_name");
-    toast("Forgotten. Uploads go out anonymously now");
+    toast("Signed out. Uploads go out anonymously now");
     await drawWhoami();
   } catch (e) {
     toast(String(e), true);
@@ -1110,6 +1409,7 @@ async function start() {
   }
   applyTheme();
   drawWhoami();
+  drawWindowState();
   $("settings-path").textContent = "%APPDATA%\\freeplay\\settings.json";
   await loadGames();
   setInterval(loadGames, 5000);

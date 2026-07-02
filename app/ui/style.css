@@ -1180,3 +1180,167 @@ input::placeholder { color: var(--faint); }
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .sheet-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+/* ---------- window state ---------- */
+
+.win .when-big { display: none; }
+body.maximised .win .when-small { display: none; }
+body.maximised .win .when-big { display: block; }
+
+/* ---------- game page layout ---------- */
+
+/* cheats used to sit under everything else, which meant scrolling past the
+   hero and the shared list every time you wanted to flip a switch */
+.game-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 26px;
+  align-items: start;
+}
+
+.game-main { min-width: 0; }
+
+.cheat-dock {
+  position: sticky;
+  top: 0;
+  width: 340px;
+  max-height: calc(100vh - var(--titlebar) - 96px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+}
+
+.dock-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.dock-head h3 { margin: 0; font-size: 13px; font-weight: 620; }
+.dock-head .dim { flex: 1; font-size: 11.5px; }
+.dock-head .icon-btn { flex: none; }
+
+.dock-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+}
+.dock-scroll .group { margin-bottom: 18px; }
+.dock-scroll .group:last-child { margin-bottom: 0; }
+.dock-scroll .cheats { grid-template-columns: 1fr; gap: 8px; }
+.dock-empty { padding: 0 14px 14px; font-size: 12.5px; }
+
+.dock-open {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  color: var(--dim);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 560;
+  cursor: pointer;
+  writing-mode: vertical-rl;
+}
+.dock-open:hover { color: var(--text); border-color: var(--faint); }
+.dock-open svg { width: 14px; height: 14px; rotate: 90deg; }
+.dock-open b { color: var(--accent); }
+
+@media (max-width: 1180px) {
+  .game-layout { grid-template-columns: minmax(0, 1fr); }
+  .cheat-dock { position: static; width: auto; max-height: none; }
+  .dock-scroll { max-height: 420px; }
+  .dock-open { writing-mode: horizontal-tb; width: max-content; }
+  .dock-open svg { rotate: none; }
+}
+
+/* ---------- a cheat that takes a number ---------- */
+
+.cheat-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.cheat-value input, .cheat-value select {
+  width: 108px;
+  height: 27px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+.cheat-value select { width: auto; min-width: 108px; }
+.cheat-value input:focus, .cheat-value select:focus {
+  outline: none;
+  border-color: var(--accent-line);
+}
+.cheat-live { font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.cheat-once {
+  font-size: 10px;
+  font-weight: 620;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.game-actions .spacer { flex: 1; }
+
+/* ---------- profile sheets ---------- */
+
+.sheet-card.wide { width: 520px; }
+
+.check {
+  display: flex;
+  gap: 11px;
+  padding: 10px 11px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.check:hover { border-color: var(--line); }
+.check input { margin-top: 2px; accent-color: var(--accent); }
+.check span { display: flex; flex-direction: column; gap: 2px; }
+.check b { font-size: 13px; font-weight: 560; }
+.check i { font-style: normal; font-size: 11.5px; color: var(--faint); line-height: 1.5; }
+
+.check-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 560;
+}
+.check-head div { display: flex; gap: 12px; }
+
+.export-games { max-height: 260px; overflow-y: auto; }
+
+.sheet-card textarea {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.about-links { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 20px; }
+.setting-actions { display: flex; gap: 9px; }
+.blank-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; }

@@ -15,7 +15,10 @@
   <div class="titlebar-fill" data-tauri-drag-region></div>
   <div class="window-buttons">
     <button id="win-min" class="win" title="Minimise"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
-    <button id="win-max" class="win" title="Maximise"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg></button>
+    <button id="win-max" class="win" title="Maximise">
+      <svg class="when-small" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg>
+      <svg class="when-big" viewBox="0 0 12 12"><rect x="2.5" y="4" width="5.5" height="5.5" rx="1"/><path d="M4.5 3.5V2.5h5v5h-1"/></svg>
+    </button>
     <button id="win-close" class="win danger" title="Close"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg></button>
   </div>
 </div>
@@ -98,6 +101,9 @@
         Library
       </button>
 
+      <div class="game-layout">
+      <div class="game-main">
+
       <div class="game-hero">
         <div class="game-hero-art"><img id="game-hero-img" alt=""></div>
         <div id="game-cover" class="game-cover"><img id="game-cover-img" alt=""><span id="game-cover-initials" class="initials"></span></div>
@@ -108,12 +114,14 @@
           <div class="game-actions">
             <button id="game-play" class="primary">Play</button>
             <button id="game-attach" class="ghost">Attach</button>
-            <button id="game-fav" class="icon-toggle" title="Favourite">
+            <button id="game-import" class="ghost" title="Convert a Cheat Engine .CT file for this game">Import a table</button>
+            <button id="game-find-table" class="ghost" title="Look for a Cheat Engine table for this game">Search online</button>
+            <button id="game-folder" class="ghost" title="Open the install folder">Folder</button>
+            <span class="spacer"></span>
+            <button id="game-fav" class="icon-toggle" title="Add to favourites">
               <svg viewBox="0 0 20 20"><path d="M10 2.8l2.3 4.6 5.1.7-3.7 3.6.9 5.1L10 14.4l-4.6 2.4.9-5.1L2.6 8.1l5.1-.7z"/></svg>
             </button>
-            <button id="game-find-table" class="ghost" title="Search the community for a Cheat Engine table">Find a table</button>
-            <button id="game-folder" class="ghost" title="Open the install folder">Folder</button>
-            <button id="game-pin" class="icon-toggle" title="Pin to the top">
+            <button id="game-pin" class="icon-toggle" title="Pin to the top of the library">
               <svg viewBox="0 0 20 20"><path d="M12.5 2.5l5 5-2.2.6-3.3 3.3-.4 3.4-5.4-5.4 3.4-.4 3.3-3.3z"/><path d="M6.2 13.8l-3.4 3.4"/></svg>
             </button>
           </div>
@@ -149,28 +157,48 @@
 
       <div id="shared" class="shared">
         <div class="section-head">
-          <h3>Shared by other people</h3>
+          <h3>Tables people have shared</h3>
           <div class="shared-tools">
             <select id="shared-sort" class="filter"></select>
             <button id="shared-refresh" class="ghost">Refresh</button>
-            <button id="shared-share" class="ghost" title="Send this game's table to everybody else">Share mine</button>
+            <button id="shared-share" class="ghost" title="Publish your table for this game so other people can use it">Share yours</button>
           </div>
         </div>
         <div id="shared-list" class="shared-list"></div>
-        <p id="shared-empty" class="dim" hidden>Nothing shared for this game yet. If you have a table that works, send it.</p>
+        <p id="shared-empty" class="dim" hidden>Nobody has shared a table for this game yet. If yours works, share it and you will be the first.</p>
       </div>
-
-      <div id="cheat-groups"></div>
 
       <div id="no-table" class="blank" hidden>
-        <h3>No cheats for this game yet</h3>
-        <p>Nobody has written down where this game keeps its numbers. Two ways to fix that.</p>
-        <p class="dim">Drop a Cheat Engine <b>.CT</b> file anywhere on this window and Freeplay will convert it, scripts included. Or find the value yourself: search for something you can see on screen and narrow it down.</p>
+        <h3>No cheat table for this game</h3>
+        <p>A table says where the game keeps its numbers. There are three ways to get one.</p>
+        <p class="dim">Import a Cheat Engine <b>.CT</b> file and Freeplay converts it, scripts included. You can also drop one anywhere on this window. Or find the value yourself while the game runs.</p>
         <div class="blank-actions">
-          <button id="no-table-find" class="ghost">Search for a table</button>
-          <button class="primary" data-goto="finder">Find a value</button>
+          <button id="no-table-import" class="primary">Import a .CT file</button>
+          <button id="no-table-find" class="ghost">Search online</button>
+          <button class="ghost" data-goto="finder">Find it yourself</button>
         </div>
       </div>
+
+      </div><!-- game-main -->
+
+      <aside id="cheat-dock" class="cheat-dock">
+        <div class="dock-head">
+          <h3>Cheats</h3>
+          <span id="cheat-count" class="dim"></span>
+          <button id="dock-close" class="icon-btn" title="Hide the cheats">
+            <svg viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></svg>
+          </button>
+        </div>
+        <div id="cheat-groups" class="dock-scroll"></div>
+        <p id="dock-empty" class="dim dock-empty" hidden>Nothing here yet. Import a table and the cheats show up.</p>
+      </aside>
+
+      <button id="dock-open" class="dock-open" title="Show the cheats" hidden>
+        <svg viewBox="0 0 16 16"><path d="M10 3.5L5.5 8 10 12.5"/></svg>
+        <span>Cheats</span>
+        <b id="dock-open-count"></b>
+      </button>
+      </div><!-- game-layout -->
     </section>
 
     <!-- finder --------------------------------------------------------- -->
@@ -264,22 +292,22 @@
         </div>
         <div class="setting-actions">
           <button id="claim-name" class="ghost">Claim a name</button>
-          <button id="forget-name" class="ghost" hidden>Forget it</button>
+          <button id="forget-name" class="ghost" hidden>Sign out</button>
         </div>
       </div>
 
       <div class="setting">
         <div class="setting-label">
           <strong>Attach when a game starts</strong>
-          <span>Switch cheats on whenever you like, even with the game closed. Freeplay attaches on its own when the game turns up and holds them on as soon as you are far enough in for them to work.</span>
+          <span>Turn cheats on whenever you like, even with the game closed. Freeplay attaches by itself when the game appears and switches them on as soon as they can work.</span>
         </div>
         <button id="auto-attach" class="switch"></button>
       </div>
 
       <div class="setting">
         <div class="setting-label">
-          <strong>Get new cheat tables automatically</strong>
-          <span>Checks the Freeplay repository on start and downloads tables people have published. No account, nothing sent about you. Turn it off and Freeplay never touches the network.</span>
+          <strong>Download new tables automatically</strong>
+          <span>Checks for published tables on start. No account, and nothing about you is sent. Turn it off and Freeplay never touches the network.</span>
         </div>
         <button id="auto-update" class="switch"></button>
       </div>
@@ -289,7 +317,21 @@
           <strong>Cheat tables</strong>
           <span id="tables-state">Checking</span>
         </div>
-        <button id="update-now" class="ghost">Check now</button>
+        <div class="setting-actions">
+          <button id="import-table" class="ghost">Import a .CT file</button>
+          <button id="update-now" class="ghost">Check now</button>
+        </div>
+      </div>
+
+      <div class="setting">
+        <div class="setting-label">
+          <strong>Move to another machine</strong>
+          <span>Save your games, the cheats you had on and the numbers you set to one file, then load it wherever you like.</span>
+        </div>
+        <div class="setting-actions">
+          <button id="export-profile" class="ghost">Export</button>
+          <button id="import-profile" class="ghost">Import</button>
+        </div>
       </div>
 
       <div class="setting">
@@ -309,11 +351,13 @@
 
       <div class="setting">
         <div class="setting-label">
-          <strong>Something not working</strong>
+          <strong>Something went wrong</strong>
           <span>Copies what Freeplay tried and what came back, ready to paste into an issue.</span>
         </div>
-        <button id="copy-report" class="ghost">Copy report</button>
-        <button id="open-log" class="ghost">Open log</button>
+        <div class="setting-actions">
+          <button id="copy-report" class="ghost">Copy report</button>
+          <button id="open-log" class="ghost">Open log</button>
+        </div>
       </div>
     </section>
 
@@ -321,13 +365,15 @@
     <section id="view-about" class="view" hidden>
       <div class="prose">
         <h2>Freeplay</h2>
-        <p class="lead">A game trainer for Windows. Free, open source, no account.</p>
-        <p>Find your installed games, attach to one, and turn on cheats. New cheat tables arrive by themselves. If nobody has written one for your game yet, search its memory and make one, or drop a Cheat Engine .CT file on this window.</p>
-        <p>The only thing it sends is a request for the table list. No account, no telemetry, and you can turn that off too.</p>
-        <p>Refuses to attach to anything running an anti-cheat, so it is single player only.</p>
+        <p class="lead">A game trainer for Windows. Free, open source, no account needed.</p>
+        <p>It finds your installed games, attaches to one and turns on cheats. Tables other people have published arrive on their own. If nobody has written one for your game, import a Cheat Engine .CT file or search the game's memory and make one.</p>
+        <p>The only request it makes is for the table list, and you can turn that off. No telemetry.</p>
+        <p>It will not attach to anything running an anti-cheat, so it is single player only.</p>
         <p class="dim" id="about-version"></p>
         <div class="about-links">
-          <a class="ghost" href="https://github.com/antaresjay/freeplay" target="_blank" rel="noreferrer">Source on GitHub</a>
+          <button class="ghost" data-open="https://github.com/antaresjay/freeplay">Source on GitHub</button>
+          <button class="ghost" data-open="https://github.com/antaresjay/freeplay/issues">Report a problem</button>
+          <button class="ghost" data-open="https://github.com/antaresjay/freeplay-tables">Published tables</button>
         </div>
       </div>
     </section>
@@ -375,12 +421,69 @@
     </div>
 
     <div id="name-phrase" hidden>
-      <p>Write these down. They are the only way back if this machine dies, and there is no reset.</p>
+      <p>These seventeen words are your account. They are the only way back if this machine dies, and there is no reset.</p>
       <div id="phrase-words" class="phrase"></div>
+      <p id="phrase-saved" class="dim"></p>
       <div class="sheet-actions">
         <button id="phrase-copy" class="ghost">Copy</button>
-        <button id="phrase-done" class="primary">I have written them down</button>
+        <button id="phrase-save" class="primary">Save to a file</button>
+        <button id="phrase-done" class="ghost">Done</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="export-sheet" class="sheet" hidden>
+  <div class="sheet-card wide">
+    <header>
+      <h2>Export your profile</h2>
+      <button id="export-close" class="icon-btn"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg></button>
+    </header>
+    <p class="dim">Pick what goes in the file. Tables are not copied, only the id they were published under, so importing pulls the same one back down.</p>
+
+    <label class="check">
+      <input type="checkbox" id="export-prefs" checked>
+      <span><b>Preferences</b><i>Theme, accent, pins and favourites.</i></span>
+    </label>
+
+    <label class="check">
+      <input type="checkbox" id="export-account">
+      <span><b>Your account</b><i>The key behind your name, so you can publish from the other machine. Anyone who reads the file can publish as you.</i></span>
+    </label>
+
+    <div class="check-head">
+      <b>Games</b>
+      <div>
+        <button id="export-all" class="link-btn">All</button>
+        <button id="export-none" class="link-btn">None</button>
+      </div>
+    </div>
+    <div id="export-games" class="export-games"></div>
+
+    <div class="sheet-actions">
+      <span id="export-why" class="dim"></span>
+      <button id="export-go" class="primary">Save the file</button>
+    </div>
+  </div>
+</div>
+
+<div id="import-sheet" class="sheet" hidden>
+  <div class="sheet-card">
+    <header>
+      <h2>Import a profile</h2>
+      <button id="import-close" class="icon-btn"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg></button>
+    </header>
+    <p id="import-summary" class="dim"></p>
+
+    <div id="import-needs-phrase" hidden>
+      <p>This file carries an account. Type the recovery words to take it, or skip and import only the game settings.</p>
+      <textarea id="import-phrase" rows="3" placeholder="the seventeen words" spellcheck="false"></textarea>
+    </div>
+
+    <p id="import-why" class="dim"></p>
+    <div class="sheet-actions">
+      <button id="import-cancel" class="ghost">Cancel</button>
+      <button id="import-go" class="primary">Import</button>
     </div>
   </div>
 </div>
