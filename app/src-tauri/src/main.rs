@@ -18,7 +18,9 @@ use freeplay_table::Table;
 use serde::Serialize;
 
 mod community;
+mod dialog;
 mod log;
+mod profile;
 mod settings;
 mod shared;
 mod ui_contract;
@@ -44,6 +46,8 @@ struct App {
     // reparsing every time is real work for nothing
     tables: Mutex<Option<Vec<Table>>>,
     settings: Mutex<Settings>,
+    // a profile that has been opened and shown to you, waiting on the yes
+    pending: Mutex<Option<profile::Profile>>,
 }
 
 #[derive(Serialize)]
@@ -114,6 +118,25 @@ struct CheatRow {
     // actually doing something right now
     live: bool,
     does: String,
+    // takes a number rather than being a plain switch
+    editable: bool,
+    // i32, f32 and so on, for the placeholder
+    kind: String,
+    // what is in the box
+    value: String,
+    // what the game is holding at this instant, only once attached
+    current: String,
+    // "0:Off" style options if the table author gave any
+    choices: Vec<ChoiceRow>,
+    hex: bool,
+    // holds the number against the game writing it back
+    holds: bool,
+}
+
+#[derive(Serialize)]
+struct ChoiceRow {
+    value: String,
+    label: String,
 }
 
 #[derive(Serialize)]
@@ -482,6 +505,248 @@ fn forget_name() -> Result<(), String> {
     shared::forget()
 }
 
+/* ---------- moving to another machine ---------- */
+
+#[derive(Serialize)]
+struct ProfileGame {
+    exe: String,
+    name: String,
+    cheats: usize,
+    values: usize,
+    shared: bool,
+}
+
+// what the export sheet lists. a game is worth offering if freeplay is holding
+// anything for it, installed or not
+#[tauri::command]
+fn profile_games(state: tauri::State<'_, App>) -> Vec<ProfileGame> {
+    let names = table_names(&state);
+    let settings = state.settings.lock().unwrap();
+
+    profile::known(&settings)
+        .into_iter()
+        .map(|exe| {
+            let armed = settings.armed.get(&exe).map(Vec::len).unwrap_or_default();
+            let values = settings
+                .values
+                .get(&exe)
+                .map(HashMap::len)
+                .unwrap_or_default();
+            ProfileGame {
+                name: names
+                    .get(&exe)
+                    .cloned()
+                    .unwrap_or_else(|| exe.trim_end_matches(".exe").to_string()),
+                cheats: armed,
+                values,
+                shared: settings.grabbed.contains_key(&exe),
+                exe,
+            }
+        })
+        .filter(|game| game.cheats > 0 || game.values > 0 || game.shared)
+        .collect()
+}
+
+fn table_names(state: &tauri::State<'_, App>) -> HashMap<String, String> {
+    tables(state)
+        .into_iter()
+        .map(|t| (t.game.exe.to_lowercase(), t.game.name))
+        .collect()
+}
+
+fn now() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    format!("{seconds}")
+}
+
+#[tauri::command]
+fn export_profile(
+    state: tauri::State<'_, App>,
+    prefs: bool,
+    account: bool,
+    games: Vec<String>,
+) -> Result<String, String> {
+    let names = table_names(&state);
+    // only the name. the words are typed on the far side, so the file is safe
+    // to keep in a drive somebody else can read
+    let who = account.then(|| shared::me().map(|w| w.name)).flatten();
+
+    let made = {
+        let settings = state.settings.lock().unwrap();
+        profile::build(&settings, &games, prefs, who, &names, now())
+    };
+
+    if made.prefs.is_none() && made.games.is_empty() && made.account.is_none() {
+        return Err("nothing was picked, so there is nothing to save".into());
+    }
+
+    let Some(path) = dialog::save(&dialog::Ask {
+        title: "Save your Freeplay profile",
+        kinds: dialog::PROFILES,
+        suggested: "freeplay-profile.freeplay",
+        extension: "freeplay",
+    }) else {
+        return Err(String::new());
+    };
+
+    let text = serde_json::to_string_pretty(&made).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| format!("could not write it: {e}"))?;
+
+    let count = made.games.len();
+    Ok(format!(
+        "Saved {count} {} to {}",
+        if count == 1 { "game" } else { "games" },
+        path.display()
+    ))
+}
+
+#[derive(Serialize)]
+struct Peek {
+    games: usize,
+    prefs: bool,
+    account: Option<String>,
+    tables: usize,
+}
+
+// read it and describe it, but change nothing until the answer comes back
+#[tauri::command]
+fn open_profile(state: tauri::State<'_, App>) -> Result<Peek, String> {
+    let Some(path) = dialog::open(&dialog::Ask {
+        title: "Open a Freeplay profile",
+        kinds: dialog::PROFILES,
+        suggested: "",
+        extension: "freeplay",
+    }) else {
+        return Err(String::new());
+    };
+
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("could not read it: {e}"))?;
+    let found = profile::parse(&text)?;
+
+    let peek = Peek {
+        games: found.games.len(),
+        prefs: found.prefs.is_some(),
+        account: found.account.clone(),
+        tables: found.games.iter().filter(|g| g.table.is_some()).count(),
+    };
+    *state.pending.lock().unwrap() = Some(found);
+    Ok(peek)
+}
+
+#[tauri::command]
+async fn apply_profile(
+    state: tauri::State<'_, App>,
+    phrase: Option<String>,
+) -> Result<String, String> {
+    let found = state
+        .pending
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or("open a profile first")?;
+
+    let applied = {
+        let mut settings = state.settings.lock().unwrap();
+        let applied = profile::apply(&found, &mut settings);
+        settings::save(&settings)?;
+        applied
+    };
+
+    let mut notes = Vec::new();
+    if applied.prefs {
+        notes.push("preferences".to_string());
+    }
+    if applied.games > 0 {
+        notes.push(format!(
+            "{} {}",
+            applied.games,
+            if applied.games == 1 { "game" } else { "games" }
+        ));
+    }
+
+    // the words rebuild the key, so a stolen profile is still only a list of
+    // games
+    match (found.account.as_deref(), phrase.as_deref()) {
+        (Some(name), Some(words)) if !words.trim().is_empty() => {
+            match shared::recover(name, words) {
+                Ok(name) => notes.push(format!("signed in as {name}")),
+                Err(e) => notes.push(format!("but the account did not come back: {e}")),
+            }
+        }
+        (Some(_), _) => notes.push("account skipped".to_string()),
+        _ => {}
+    }
+
+    let install_id = state.settings.lock().unwrap().install_id.clone();
+    let mut pulled = 0usize;
+    for id in applied.tables {
+        match shared::install(id, &install_id, &synced_dir()) {
+            Ok(_) => pulled += 1,
+            Err(e) => tracing::warn!("could not fetch table {id}: {e}"),
+        }
+    }
+    if pulled > 0 {
+        notes.push(format!(
+            "{pulled} {} downloaded",
+            if pulled == 1 { "table" } else { "tables" }
+        ));
+    }
+
+    forget_tables(&state);
+    Ok(if notes.is_empty() {
+        "Nothing in that file to import".to_string()
+    } else {
+        format!("Imported {}", notes.join(", "))
+    })
+}
+
+// the recovery words, saved where the user says. copying them out of a box and
+// into a text file by hand is how people end up not writing them down at all
+#[tauri::command]
+fn save_phrase(name: String, phrase: String) -> Result<String, String> {
+    let Some(path) = dialog::save(&dialog::Ask {
+        title: "Save your recovery words",
+        kinds: dialog::TEXT,
+        suggested: &format!("freeplay-{}-recovery.txt", name.to_lowercase()),
+        extension: "txt",
+    }) else {
+        return Err(String::new());
+    };
+
+    let text = format!(
+        "Freeplay recovery words for {name}\r\n\r\n{phrase}\r\n\r\n\
+         These words are the account. Anybody who has them can publish as {name},\r\n\
+         and without them the name cannot be got back. There is no reset.\r\n"
+    );
+    std::fs::write(&path, text).map_err(|e| format!("could not write it: {e}"))?;
+    Ok(format!("Saved to {}", path.display()))
+}
+
+// the file picker for a .CT, for anybody who does not think to drag one in
+#[tauri::command]
+fn pick_table(state: tauri::State<'_, App>, exe: Option<String>) -> Result<String, String> {
+    let Some(path) = dialog::open(&dialog::Ask {
+        title: "Open a Cheat Engine table",
+        kinds: dialog::TABLES,
+        suggested: "",
+        extension: "CT",
+    }) else {
+        return Err(String::new());
+    };
+    import_table(state, path.display().to_string(), exe)
+}
+
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("that is not a link".into());
+    }
+    freeplay_library::launch::show_url(&url)
+}
+
 // opens the install folder
 #[tauri::command]
 fn open_folder(dir: String) -> Result<(), String> {
@@ -708,6 +973,12 @@ fn attach(state: tauri::State<'_, App>, exe: String) -> Result<Attached, String>
     if let Some(table) = table {
         let mut session = Session::new(Arc::clone(&shared), table);
         session.start();
+        // numbers before arming, or the first write goes out with the old one
+        for (id, text) in values_for(&state, &exe) {
+            if let Err(e) = session.choose(&id, &text) {
+                tracing::warn!("dropping the saved value for {id}: {e}");
+            }
+        }
         session.arm_all(&armed_for(&state, &exe));
         *state.session.lock().unwrap() = Some(session);
     }
@@ -744,8 +1015,48 @@ fn tear_down(state: &tauri::State<'_, App>) {
     *state.search.lock().unwrap() = None;
 }
 
+// everything except the four fields that need a live process, so the same
+// shape comes back whether the game is running or not
+fn cheat_row(cheat: &freeplay_table::schema::Cheat, typed: Option<&String>) -> CheatRow {
+    CheatRow {
+        id: cheat.id.clone(),
+        name: cheat.name.clone(),
+        category: cheat.category.label().to_string(),
+        description: cheat.description.clone(),
+        hint: cheat.hint.clone(),
+        state: "idle".into(),
+        reason: String::new(),
+        armed: false,
+        live: false,
+        does: cheat.action.label().to_string(),
+        editable: cheat.action.takes_a_number(),
+        kind: cheat
+            .action
+            .kind()
+            .map(|k| k.name().to_string())
+            .unwrap_or_default(),
+        value: typed
+            .cloned()
+            .or_else(|| cheat.action.default_value().map(|v| v.to_string()))
+            .unwrap_or_default(),
+        current: String::new(),
+        choices: cheat
+            .action
+            .choices()
+            .iter()
+            .map(|c| ChoiceRow {
+                value: c.value.to_string(),
+                label: c.label.clone(),
+            })
+            .collect(),
+        hex: cheat.action.shows_hex(),
+        holds: cheat.action.holds(),
+    }
+}
+
 #[tauri::command]
 fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
+    let typed = values_for(&state, &exe);
     let guard = state.session.lock().unwrap();
     let attached = guard.as_ref().filter(|s| s.table().matches_process(&exe));
 
@@ -757,25 +1068,28 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
             .cheats
             .iter()
             .map(|cheat| {
-                let state = session.state_of(cheat, &symbols);
                 let live = session.is_on(&cheat.id);
-                let (label, reason) = match &state {
+                let (label, reason) = match session.state_of(cheat, &symbols) {
                     CheatState::Ready { .. } => ("ready", String::new()),
-                    CheatState::Unavailable { reason } => ("wait", reason.clone()),
-                    CheatState::Broken { reason } => ("broken", reason.clone()),
+                    CheatState::Unavailable { reason } => ("wait", reason),
+                    CheatState::Broken { reason } => ("broken", reason),
                 };
-                CheatRow {
-                    id: cheat.id.clone(),
-                    name: cheat.name.clone(),
-                    category: cheat.category.label().to_string(),
-                    description: cheat.description.clone(),
-                    hint: cheat.hint.clone(),
-                    state: if live { "on".into() } else { label.to_string() },
-                    reason,
-                    armed: session.is_armed(&cheat.id),
-                    live,
-                    does: cheat.action.label().to_string(),
+
+                let mut row = cheat_row(cheat, typed.get(&cheat.id));
+                row.state = if live { "on".into() } else { label.to_string() };
+                row.reason = reason;
+                row.armed = session.is_armed(&cheat.id);
+                row.live = live;
+                if row.editable {
+                    row.current = session
+                        .live_value(&cheat.id)
+                        .map(|v| v.to_string())
+                        .unwrap_or_default();
+                    if row.value.is_empty() {
+                        row.value = row.current.clone();
+                    }
                 }
+                row
             })
             .collect();
     }
@@ -789,19 +1103,69 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
     table
         .cheats
         .iter()
-        .map(|cheat| CheatRow {
-            id: cheat.id.clone(),
-            name: cheat.name.clone(),
-            category: cheat.category.label().to_string(),
-            description: cheat.description.clone(),
-            hint: cheat.hint.clone(),
-            state: "idle".into(),
-            reason: String::new(),
-            armed: armed.contains(&cheat.id),
-            live: false,
-            does: cheat.action.label().to_string(),
+        .map(|cheat| {
+            let mut row = cheat_row(cheat, typed.get(&cheat.id));
+            row.armed = armed.contains(&cheat.id);
+            row
         })
         .collect()
+}
+
+fn values_for(state: &tauri::State<'_, App>, exe: &str) -> HashMap<String, String> {
+    state
+        .settings
+        .lock()
+        .unwrap()
+        .values
+        .get(&exe.to_lowercase())
+        .cloned()
+        .unwrap_or_default()
+}
+
+// numbers are kept whether or not the game is up, same as what is armed. type
+// one in with the game closed and it is waiting when you launch
+#[tauri::command]
+fn set_cheat_value(
+    state: tauri::State<'_, App>,
+    exe: String,
+    id: String,
+    value: String,
+) -> Result<String, String> {
+    let text = value.trim().to_string();
+
+    {
+        let guard = state.session.lock().unwrap();
+        if let Some(session) = guard.as_ref().filter(|s| s.table().matches_process(&exe)) {
+            session.choose(&id, &text).map_err(|e| e.to_string())?;
+        } else {
+            // no session to check it against, so check it here rather than
+            // finding out it was rubbish the next time the game starts
+            let table = tables(&state)
+                .into_iter()
+                .find(|t| t.matches_process(&exe))
+                .ok_or("there is no table for that game")?;
+            let cheat = table
+                .cheats
+                .iter()
+                .find(|c| c.id == id)
+                .ok_or_else(|| format!("no cheat called {id}"))?;
+            let kind = cheat
+                .action
+                .kind()
+                .ok_or_else(|| format!("{} does not take a number", cheat.name))?;
+            kind.parse(&text)
+                .ok_or_else(|| format!("{text:?} is not a {kind}"))?;
+        }
+    }
+
+    let mut settings = state.settings.lock().unwrap();
+    settings
+        .values
+        .entry(exe.to_lowercase())
+        .or_default()
+        .insert(id, text.clone());
+    let _ = settings::save(&settings);
+    Ok(text)
 }
 
 fn armed_for(state: &tauri::State<'_, App>, exe: &str) -> Vec<String> {
@@ -1098,6 +1462,13 @@ fn main() {
             recover_name,
             forget_name,
             open_folder,
+            open_url,
+            pick_table,
+            profile_games,
+            export_profile,
+            open_profile,
+            apply_profile,
+            save_phrase,
             update_tables,
             launch_game,
             list_processes,
@@ -1105,6 +1476,7 @@ fn main() {
             detach,
             cheats,
             set_cheat,
+            set_cheat_value,
             scan_start,
             scan_next,
             write_value,
