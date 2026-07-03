@@ -168,10 +168,24 @@ fn synced_dir() -> PathBuf {
     freeplay_sync::cache_dir(&settings::path())
 }
 
-// both folders. a downloaded table wins, it is the newer one
+// tables converted from a .CT on this machine. next to the exe is where the
+// bundled ones live and that folder is inside program files once installed,
+// so writing an import there fails on anybody's machine but a developer's
+fn mine_dir() -> PathBuf {
+    settings::path()
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("mine")
+}
+
+// three folders, most personal first. one you converted yourself beats one
+// that was downloaded, which beats one that shipped with freeplay
 fn load_tables() -> Vec<Table> {
-    let mut tables = Table::load_dir(synced_dir());
-    for table in Table::load_dir(tables_dir()) {
+    let mut tables = Table::load_dir(mine_dir());
+    for table in Table::load_dir(synced_dir())
+        .into_iter()
+        .chain(Table::load_dir(tables_dir()))
+    {
         if !tables.iter().any(|t| t.matches_process(&table.game.exe)) {
             tables.push(table);
         }
@@ -410,7 +424,7 @@ fn import_table(
         ));
     }
 
-    let dir = tables_dir();
+    let dir = mine_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("could not make {}: {e}", dir.display()))?;
     let destination = dir.join(format!("{}.toml", exe.trim_end_matches(".exe")));
 
@@ -650,15 +664,20 @@ struct Peek {
     tables: usize,
 }
 
-// read it and describe it, but change nothing until the answer comes back
+// read it and describe it, but change nothing until the answer comes back. a
+// path arrives when one was dropped on the window, otherwise ask for it
 #[tauri::command]
-fn open_profile(state: tauri::State<'_, App>) -> Result<Peek, String> {
-    let Some(path) = dialog::open(&dialog::Ask {
-        title: "Open a Freeplay profile",
-        kinds: dialog::PROFILES,
-        suggested: "",
-        extension: "freeplay",
-    }) else {
+fn open_profile(state: tauri::State<'_, App>, path: Option<String>) -> Result<Peek, String> {
+    let picked = match path {
+        Some(given) => Some(PathBuf::from(given)),
+        None => dialog::open(&dialog::Ask {
+            title: "Open a Freeplay profile",
+            kinds: dialog::PROFILES,
+            suggested: "",
+            extension: "freeplay",
+        }),
+    };
+    let Some(path) = picked else {
         return Err(String::new());
     };
 

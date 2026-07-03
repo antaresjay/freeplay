@@ -959,8 +959,10 @@ if (window.__TAURI__.event) {
     document.body.classList.remove("dropping");
     const paths = (e.payload && e.payload.paths) || [];
     const table = paths.find((p) => p.toLowerCase().endsWith(".ct"));
-    if (!table) return toast("That is not a .CT file. Drop a Cheat Engine table", true);
-    importTable(table);
+    if (table) return importTable(table);
+    const carried = paths.find((p) => p.toLowerCase().endsWith(".freeplay"));
+    if (carried) return dropProfile(carried);
+    toast("Drop a Cheat Engine .CT file or a Freeplay profile", true);
   });
 }
 
@@ -1305,9 +1307,18 @@ async function openExport() {
     return toast(String(e), true);
   }
 
-  const who = $("whoami-state").textContent.includes("anonymously") ? null : true;
-  $("export-account").disabled = !who;
-  $("export-account").checked = false;
+  let who = null;
+  try {
+    who = await invoke("whoami");
+  } catch {
+    // no name, so there is nothing to carry over
+  }
+  const box = $("export-account");
+  box.disabled = !who;
+  box.checked = false;
+  box.closest(".check").querySelector("i").textContent = who
+    ? `Carries the name ${who.name}. The import asks for your recovery words, so the file on its own cannot publish as you.`
+    : "You have not claimed a name yet.";
 
   exportPicks = new Set(list.map((g) => g.exe));
   const host = $("export-games");
@@ -1377,10 +1388,10 @@ $("export-go").addEventListener("click", async () => {
   }
 });
 
-$("import-profile").addEventListener("click", async () => {
+async function openImport(path) {
   let peek = null;
   try {
-    peek = await invoke("open_profile");
+    peek = await invoke("open_profile", { path: path || null });
   } catch (e) {
     if (String(e)) toast(String(e), true);
     return;
@@ -1400,7 +1411,10 @@ $("import-profile").addEventListener("click", async () => {
     ? `It was exported by ${peek.account}.`
     : "";
   $("import-sheet").hidden = false;
-});
+}
+
+const dropProfile = (path) => openImport(path);
+$("import-profile").addEventListener("click", () => openImport());
 
 $("import-close").addEventListener("click", () => ($("import-sheet").hidden = true));
 $("import-cancel").addEventListener("click", () => ($("import-sheet").hidden = true));
