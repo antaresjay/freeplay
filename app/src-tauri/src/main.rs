@@ -847,6 +847,19 @@ async fn update_tables(state: tauri::State<'_, App>) -> Result<String, String> {
     Ok(report.summary())
 }
 
+// what is on disk, without going near the network. the check on start already
+// runs on its own thread, and the settings page asking for a second one meant
+// two requests every launch
+#[tauri::command]
+fn table_count(state: tauri::State<'_, App>) -> String {
+    let held = tables(&state);
+    match held.len() {
+        0 => "None yet".into(),
+        1 => "1 table".into(),
+        n => format!("{n} tables"),
+    }
+}
+
 #[tauri::command]
 fn open_log() -> Result<(), String> {
     let file = log::path();
@@ -1521,6 +1534,7 @@ fn main() {
             save_settings,
             diagnostics,
             open_log,
+            table_count,
             import_table,
             find_table,
             shared_tables,

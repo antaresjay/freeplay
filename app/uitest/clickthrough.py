@@ -111,6 +111,7 @@ window.__TAURI__ = {
         case "pick_table": return "23 cheats imported, 0 skipped";
         case "open_url": return null;
         case "version": return "Version 0.1.0 for 64-bit Windows";
+        case "table_count": return "3 tables";
         case "update_tables": return "3 tables, up to date";
         case "attach":
           return {process:"witcher2.exe", pid:1234, game:"The Witcher 2",
@@ -279,7 +280,7 @@ PROBE = r"""
   settingsNav.click();
   await settle(200);
   note(visible("claim-name"), "settings offers to claim a name");
-  note(document.getElementById("tables-state").textContent !== "Checking",
+  note(document.getElementById("tables-state").textContent.includes("3 tables"),
        "the table count settles instead of sitting on Checking");
 
   // filtering everything away used to leave a blank page

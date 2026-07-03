@@ -55,11 +55,13 @@ async function drawVersion() {
 /* it used to say "Checking" until you pressed the button yourself, which read
    as though something was stuck */
 async function countTables() {
-  if (config.auto_update === false) {
-    $("tables-state").textContent = "Turned off, running on what is on disk";
-    return;
+  try {
+    const held = await invoke("table_count");
+    $("tables-state").textContent =
+      config.auto_update === false ? `${held}, checking turned off` : held;
+  } catch (e) {
+    $("tables-state").textContent = String(e);
   }
-  await checkForTables(false);
 }
 
 async function checkForTables(manual) {
@@ -67,10 +69,10 @@ async function checkForTables(manual) {
   label.textContent = "Checking";
   try {
     const note = await invoke("update_tables");
-    label.textContent = note;
     if (manual) toast(note);
     await loadGames(false);
     await refreshCheats();
+    await countTables();
   } catch (e) {
     label.textContent = String(e);
     if (manual) toast(String(e), true);
