@@ -142,3 +142,36 @@ fn what_it_produces_is_a_table_freeplay_will_load() {
     let round = freeplay_table::Table::parse(&text).expect("should reparse");
     assert_eq!(round.cheats.len(), 23);
 }
+
+// this table is already published under this fingerprint. making values
+// editable must not change what the table does, and so must not fork every
+// copy people have already downloaded
+#[test]
+fn making_the_values_editable_did_not_fork_the_published_table() {
+    let imported = witcher();
+    let found = freeplay_table::fingerprint::fingerprint(&imported.table);
+    assert!(
+        found.starts_with("3ab6833698e5"),
+        "the published copy is 3ab6833698e5, this one is {found}"
+    );
+}
+
+// the point of the whole change: an experience multiplier is a number the
+// player picks, not something to hold at 9999
+#[test]
+fn a_multiplier_is_left_for_the_player_and_a_maximum_is_not() {
+    let imported = witcher();
+    let by_name = |want: &str| {
+        imported
+            .table
+            .cheats
+            .iter()
+            .find(|c| c.name == want)
+            .unwrap_or_else(|| panic!("no cheat called {want}"))
+    };
+
+    assert!(by_name("Multiplier").action.takes_a_number());
+    assert_eq!(by_name("Multiplier").action.default_value(), None);
+    assert_eq!(by_name("Orens").action.default_value(), None);
+    assert!(by_name("Max Vitality").action.default_value().is_some());
+}
