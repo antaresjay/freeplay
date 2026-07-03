@@ -5,6 +5,7 @@
 //! one list.
 
 pub mod art;
+pub mod build;
 pub mod launch;
 pub mod play;
 pub mod vdf;
