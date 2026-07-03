@@ -110,6 +110,8 @@ window.__TAURI__ = {
         case "save_phrase": return "Saved to D:/words.txt";
         case "pick_table": return "23 cheats imported, 0 skipped";
         case "open_url": return null;
+        case "version": return "Version 0.1.0 for 64-bit Windows";
+        case "update_tables": return "3 tables, up to date";
         case "attach":
           return {process:"witcher2.exe", pid:1234, game:"The Witcher 2",
                   table:false, arch:"32-bit"};
@@ -277,6 +279,26 @@ PROBE = r"""
   settingsNav.click();
   await settle(200);
   note(visible("claim-name"), "settings offers to claim a name");
+  note(document.getElementById("tables-state").textContent !== "Checking",
+       "the table count settles instead of sitting on Checking");
+
+  // filtering everything away used to leave a blank page
+  const libraryNav = [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "library");
+  libraryNav.click();
+  document.getElementById("filter").value = "zzzznothing";
+  document.getElementById("filter").dispatchEvent(new Event("input"));
+  await settle(250);
+  note(visible("library-empty"), "filtering to nothing says so");
+  note(document.querySelector("#library-empty h3").textContent.includes("Nothing matches"),
+       "and says it is the filter, not a missing library");
+  document.getElementById("filter").value = "";
+  document.getElementById("filter").dispatchEvent(new Event("input"));
+  await settle(250);
+  note(!visible("library-empty"), "clearing the filter brings them back");
+
+  const settingsAgain = [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "settings");
+  settingsAgain.click();
+  await settle(200);
 
   document.getElementById("claim-name").click();
   await settle(200);
@@ -344,6 +366,8 @@ PROBE = r"""
   await settle(200);
   const link = document.querySelector("#view-about [data-open]");
   note(!!link, "about lists a source link");
+  note(document.getElementById("about-version").textContent.includes("0.1.0"),
+       "about says which version this is");
   link.click();
   await settle(200);
   note(window.__calls.includes("open_url"), "the source link actually opens something");

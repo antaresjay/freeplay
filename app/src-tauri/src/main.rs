@@ -196,6 +196,36 @@ fn table_for(exe: &str) -> Option<Table> {
     load_tables().into_iter().find(|t| t.matches_process(exe))
 }
 
+// the version stamped into the game's exe. a table is written against one
+// build and quietly stops working on the next, so every share and every vote
+// carries the build it was judged on
+fn build_of(state: &tauri::State<'_, App>, exe: &str) -> String {
+    let wanted = exe.to_lowercase();
+    library(state, false)
+        .into_iter()
+        .find(|game| {
+            game.main_exe()
+                .is_some_and(|found| found.to_lowercase() == wanted)
+        })
+        .and_then(|game| game.executables.first().cloned())
+        .and_then(|path| freeplay_library::build::of(&path))
+        .unwrap_or_default()
+}
+
+// what this game is called in the library beats what the table calls itself. a
+// .CT converted from witcher2.CT calls the game "witcher2"
+fn nice_name(state: &tauri::State<'_, App>, exe: &str, fallback: &str) -> String {
+    let wanted = exe.to_lowercase();
+    library(state, false)
+        .into_iter()
+        .find(|game| {
+            game.main_exe()
+                .is_some_and(|found| found.to_lowercase() == wanted)
+        })
+        .map(|game| game.name)
+        .unwrap_or_else(|| fallback.to_string())
+}
+
 // names in a game's install folder, two deep. anti-cheats drop their loader
 // next to the exe or one folder down, so that is far enough
 fn folder_names(dir: &Path, depth: usize, out: &mut Vec<String>) {
@@ -365,8 +395,9 @@ fn import_table(
         }
     });
     let title = stem.trim_end_matches(".exe").trim_end_matches(".EXE");
+    let title = nice_name(&state, &exe, title);
 
-    let imported = freeplay_table::cheatengine::import(&xml, &exe, title)?;
+    let imported = freeplay_table::cheatengine::import(&xml, &exe, &title)?;
     if imported.table.cheats.is_empty() {
         for skip in &imported.skipped {
             tracing::info!("import skipped {:?}: {}", skip.name, skip.why);
@@ -410,7 +441,8 @@ async fn shared_tables(
         .iter()
         .map(freeplay_table::fingerprint::fingerprint)
         .collect();
-    shared::list(&exe, "", &sort, &have)
+    let build = build_of(&state, &exe);
+    shared::list(&exe, &build, &sort, &have)
 }
 
 #[tauri::command]
@@ -437,9 +469,15 @@ async fn install_shared(state: tauri::State<'_, App>, id: i64) -> Result<String,
 }
 
 #[tauri::command]
-async fn rate_shared(state: tauri::State<'_, App>, id: i64, up: bool) -> Result<(), String> {
+async fn rate_shared(
+    state: tauri::State<'_, App>,
+    id: i64,
+    up: bool,
+    exe: String,
+) -> Result<(), String> {
     let install_id = state.settings.lock().unwrap().install_id.clone();
-    shared::rate(id, up, &install_id, "")?;
+    let build = build_of(&state, &exe);
+    shared::rate(id, up, &install_id, &build)?;
 
     let mut settings = state.settings.lock().unwrap();
     if !settings.rated.contains(&id) {
@@ -471,7 +509,8 @@ async fn share_table(
         .ok_or("there is no table for that game to share")?;
 
     let toml = toml::to_string_pretty(&table).map_err(|e| e.to_string())?;
-    let (id, already) = shared::share(&table, &toml, anonymous, "")?;
+    let build = build_of(&state, &exe);
+    let (id, already) = shared::share(&table, &toml, anonymous, &build)?;
 
     Ok(if already {
         format!("somebody already shared that one, it is number {id}")
@@ -737,6 +776,20 @@ fn pick_table(state: tauri::State<'_, App>, exe: Option<String>) -> Result<Strin
         return Err(String::new());
     };
     import_table(state, path.display().to_string(), exe)
+}
+
+// the about page had a blank line where this was meant to go
+#[tauri::command]
+fn version() -> String {
+    format!(
+        "Version {} for {}",
+        env!("CARGO_PKG_VERSION"),
+        if cfg!(target_pointer_width = "64") {
+            "64-bit Windows"
+        } else {
+            "32-bit Windows"
+        }
+    )
 }
 
 #[tauri::command]
@@ -1463,6 +1516,7 @@ fn main() {
             forget_name,
             open_folder,
             open_url,
+            version,
             pick_table,
             profile_games,
             export_profile,

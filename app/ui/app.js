@@ -44,6 +44,24 @@ function applyTheme() {
   drawDock();
 }
 
+async function drawVersion() {
+  try {
+    $("about-version").textContent = await invoke("version");
+  } catch {
+    // the about page just goes without it
+  }
+}
+
+/* it used to say "Checking" until you pressed the button yourself, which read
+   as though something was stuck */
+async function countTables() {
+  if (config.auto_update === false) {
+    $("tables-state").textContent = "Turned off, running on what is on disk";
+    return;
+  }
+  await checkForTables(false);
+}
+
 async function checkForTables(manual) {
   const label = $("tables-state");
   label.textContent = "Checking";
@@ -252,7 +270,17 @@ function drawGrids(list) {
   $("pinned-wrap").hidden = !pinned.length;
   fill($("pinned-grid"), pinned);
   fill($("grid"), rest);
-  $("library-empty").hidden = games.length > 0;
+
+  const blank = $("library-empty");
+  blank.hidden = shown.length > 0;
+  const filtered = needle && games.length > 0;
+  blank.querySelector("h3").textContent = filtered
+    ? "Nothing matches that"
+    : "No games found";
+  blank.querySelector("p").textContent = filtered
+    ? `No installed game has "${$("filter").value.trim()}" in its name.`
+    : "Steam, Epic and GOG are all checked. If yours is installed somewhere unusual, attach to it by process instead.";
+  $("empty-processes").hidden = !!filtered;
 }
 
 function fill(host, list) {
@@ -1144,7 +1172,8 @@ async function checkRatePrompt() {
 async function rateShared(up) {
   const id = Number($("rate-ask").dataset.id);
   try {
-    await invoke("rate_shared", { id, up });
+    const game = gameFor(open);
+    await invoke("rate_shared", { id, up, exe: game ? game.exe : "" });
     toast(up ? "Thanks, that pushes it up the list for everyone else" : "Noted, it will sink down the list");
   } catch (e) {
     toast(String(e), true);
@@ -1410,6 +1439,8 @@ async function start() {
   applyTheme();
   drawWhoami();
   drawWindowState();
+  drawVersion();
+  countTables();
   $("settings-path").textContent = "%APPDATA%\\freeplay\\settings.json";
   await loadGames();
   setInterval(loadGames, 5000);
