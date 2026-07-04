@@ -178,14 +178,26 @@ fn mine_dir() -> PathBuf {
         .join("mine")
 }
 
-// three folders, most personal first. one you converted yourself beats one
-// that was downloaded, which beats one that shipped with freeplay
+// three folders can each hold a table for the same game, and the one you
+// picked most recently is the one you meant. ranking by folder instead meant
+// an imported .CT shadowed every table you downloaded afterwards, so pressing
+// "use this" said it worked and changed nothing
 fn load_tables() -> Vec<Table> {
-    let mut tables = Table::load_dir(mine_dir());
-    for table in Table::load_dir(synced_dir())
-        .into_iter()
-        .chain(Table::load_dir(tables_dir()))
-    {
+    let mut found: Vec<(std::time::SystemTime, Table)> = Vec::new();
+
+    for dir in [mine_dir(), synced_dir(), tables_dir()] {
+        for (path, table) in Table::load_dir_with_paths(&dir) {
+            let touched = std::fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            found.push((touched, table));
+        }
+    }
+
+    found.sort_by_key(|(touched, _)| std::cmp::Reverse(*touched));
+
+    let mut tables: Vec<Table> = Vec::new();
+    for (_, table) in found {
         if !tables.iter().any(|t| t.matches_process(&table.game.exe)) {
             tables.push(table);
         }
