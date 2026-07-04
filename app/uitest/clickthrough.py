@@ -65,7 +65,7 @@ const SORTS = [
 const SHARED = [
   {id:7, game:"The Witcher 2", by:"aSwedishMagyar", cheats:23, up:9, down:1,
    downloads:140, built_for:"3.5.0.1", added:1786142235, standing:"", installed:false},
-  {id:8, game:"The Witcher 2", by:"", cheats:11, up:0, down:0,
+  {id:8, game:"The Witcher 2", by:"aSwedishMagyar", cheats:11, up:0, down:0,
    downloads:0, built_for:"", added:1786142235, standing:"", installed:true}
 ];
 
@@ -97,8 +97,8 @@ window.__TAURI__ = {
         case "using": return [7, false];
         case "rate_shared": return null;
         case "share_table": return "shared, it is number 9";
-        case "whoami": return null;
-        case "claim_name": return PHRASE;
+        case "whoami": return window.__claimed ? {name: window.__claimed} : null;
+        case "claim_name": window.__claimed = args.name; return PHRASE;
         case "list_processes": return [{pid:1234, name:"witcher2.exe"}];
         case "set_cheat_value": return "5000";
         case "profile_games": return [
@@ -110,6 +110,7 @@ window.__TAURI__ = {
         case "save_phrase": return "Saved to D:/words.txt";
         case "pick_table": return "23 cheats imported, 0 skipped";
         case "open_url": return null;
+        case "remove_table": return "Removed. What you had switched on for it is forgotten too";
         case "version": return "Version 0.1.0 for 64-bit Windows";
         case "table_count": return "3 tables";
         case "update_tables": return "3 tables, up to date";
@@ -204,16 +205,47 @@ PROBE = r"""
     await settle(250);
     note(window.__calls.includes("set_cheat_value"), "typing a number saves it");
 
-    // the panel the cheats live in
-    note(visible("cheat-dock"), "cheats sit in their own panel");
+    // cheats own the wide column, the shared list folds away at the side
+    note(visible("cheats-panel"), "cheats sit in the main column");
+    note(document.querySelectorAll("#cheat-groups .cheat").length === 4,
+         "and every one of them is there");
+    note(visible("shared"), "the shared tables sit in their own panel");
     note(!visible("dock-open"), "the reopen tab is hidden while the panel is open");
     document.getElementById("dock-close").click();
     await settle(300);
-    note(!visible("cheat-dock"), "the panel folds away");
+    note(!visible("shared"), "the shared panel folds away");
     note(visible("dock-open"), "and leaves a tab to bring it back");
+    note(document.getElementById("dock-open-count").textContent === "2",
+         "the tab says how many are on offer");
     document.getElementById("dock-open").click();
     await settle(300);
-    note(visible("cheat-dock"), "the tab brings it back");
+    note(visible("shared"), "the tab brings it back");
+    note(visible("cheats-panel"), "and the cheats never moved");
+
+    // nothing should be rebuilt when nothing changed
+    const first = document.querySelector("#cheat-groups .cheat");
+    await settle(1800);
+    note(document.querySelector("#cheat-groups .cheat") === first,
+         "polling does not rebuild the cards underneath you");
+
+    // flipping a switch patches the one card instead of the whole list
+    const before = [...document.querySelectorAll("#cheat-groups .cheat")];
+    document.querySelectorAll("#cheat-groups .switch")[2].click();
+    await settle(400);
+    const after = [...document.querySelectorAll("#cheat-groups .cheat")];
+    note(before.every((card, at) => card === after[at]),
+         "and neither does flipping a switch");
+
+    // getting rid of a downloaded table
+    const remove = [...document.querySelectorAll("#shared-list button")]
+      .find(b => b.textContent === "Remove");
+    note(!!remove, "an installed table can be removed");
+    if (remove) {
+      remove.click();
+      await settle(400);
+      note(window.__calls.includes("remove_table"), "removing it deletes the file");
+    }
+    note(visible("remove-table"), "and there is a way to remove one that was never shared");
 
     // pinning without having to leave the page and come back
     const pin = document.getElementById("game-pin");
@@ -318,7 +350,7 @@ PROBE = r"""
   // saving the words rather than copying them by hand
   document.getElementById("claim-name").click();
   await settle(200);
-  document.getElementById("name-input").value = "someoneElse";
+  document.getElementById("name-input").value = "aSwedishMagyar";
   document.getElementById("name-go").click();
   await settle(400);
   document.getElementById("phrase-save").click();
@@ -380,6 +412,13 @@ PROBE = r"""
   document.getElementById("win-max").click();
   await settle(200);
   note(!document.body.classList.contains("maximised"), "restoring swaps it back");
+
+  // our own upload, back on the game page, should say so
+  const railAgain = document.querySelectorAll("#library-rail .rail-game");
+  railAgain[0].click();
+  await settle(500);
+  note(document.querySelector("#shared-list .mine") !== null,
+       "a table you uploaded yourself says (you)");
 
   for (const item of document.querySelectorAll(".nav-item")) {
     const target = item.dataset.view;

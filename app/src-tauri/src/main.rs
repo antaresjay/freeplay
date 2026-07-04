@@ -482,6 +482,57 @@ async fn install_shared(state: tauri::State<'_, App>, id: i64) -> Result<String,
     ))
 }
 
+// getting a table was one click, getting rid of it meant knowing which folder
+// in appdata to go and delete out of
+#[tauri::command]
+fn remove_table(state: tauri::State<'_, App>, exe: String) -> Result<String, String> {
+    let stem = exe.to_lowercase();
+    let stem = stem.trim_end_matches(".exe");
+    let mut gone = 0usize;
+
+    for dir in [mine_dir(), synced_dir()] {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            // match on what the table says it is for, not the file name, since
+            // nothing forces the two to agree
+            let matches = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|text| Table::parse(&text).ok())
+                .is_some_and(|table| table.matches_process(&exe));
+
+            if matches || path.file_stem().and_then(|s| s.to_str()) == Some(stem) {
+                std::fs::remove_file(&path)
+                    .map_err(|e| format!("could not delete {}: {e}", path.display()))?;
+                gone += 1;
+            }
+        }
+    }
+
+    if gone == 0 {
+        // the only copy left is one that shipped with freeplay, and that one
+        // is not ours to delete
+        return Err("that table came bundled with Freeplay, so there is nothing to remove".into());
+    }
+
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.grabbed.remove(&exe.to_lowercase());
+        settings.armed.remove(&exe.to_lowercase());
+        settings.values.remove(&exe.to_lowercase());
+        let _ = settings::save(&settings);
+    }
+    forget_tables(&state);
+    tracing::info!("removed the table for {exe}");
+
+    Ok("Removed. What you had switched on for it is forgotten too".to_string())
+}
+
 #[tauri::command]
 async fn rate_shared(
     state: tauri::State<'_, App>,
@@ -1540,6 +1591,7 @@ fn main() {
             shared_tables,
             sort_options,
             install_shared,
+            remove_table,
             rate_shared,
             using,
             share_table,

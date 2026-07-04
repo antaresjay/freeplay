@@ -155,17 +155,13 @@
         </div>
       </div>
 
-      <div id="shared" class="shared">
+      <div id="cheats-panel">
         <div class="section-head">
-          <h3>Tables people have shared</h3>
-          <div class="shared-tools">
-            <select id="shared-sort" class="filter"></select>
-            <button id="shared-refresh" class="ghost">Refresh</button>
-            <button id="shared-share" class="ghost" title="Publish your table for this game so other people can use it">Share yours</button>
-          </div>
+          <h3>Cheats</h3>
+          <span id="cheat-count" class="dim"></span>
+          <button id="remove-table" class="ghost" title="Delete this table from your machine" hidden>Remove table</button>
         </div>
-        <div id="shared-list" class="shared-list"></div>
-        <p id="shared-empty" class="dim" hidden>Nobody has shared a table for this game yet. If yours works, share it and you will be the first.</p>
+        <div id="cheat-groups"></div>
       </div>
 
       <div id="no-table" class="blank" hidden>
@@ -181,21 +177,29 @@
 
       </div><!-- game-main -->
 
-      <aside id="cheat-dock" class="cheat-dock">
+      <aside id="shared" class="shared-dock">
         <div class="dock-head">
-          <h3>Cheats</h3>
-          <span id="cheat-count" class="dim"></span>
-          <button id="dock-close" class="icon-btn" title="Hide the cheats">
+          <h3>Shared tables</h3>
+          <button id="dock-close" class="icon-btn" title="Hide the shared tables">
             <svg viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></svg>
           </button>
         </div>
-        <div id="cheat-groups" class="dock-scroll"></div>
-        <p id="dock-empty" class="dim dock-empty" hidden>Nothing here yet. Import a table and the cheats show up.</p>
+        <div class="shared-tools">
+          <select id="shared-sort" class="filter"></select>
+          <button id="shared-refresh" class="icon-btn" title="Look again">
+            <svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.7-4"/><path d="M12.2 1.2v3h-3"/></svg>
+          </button>
+        </div>
+        <div id="shared-list" class="dock-scroll"></div>
+        <p id="shared-empty" class="dim dock-empty" hidden>Nobody has shared a table for this game yet. If yours works, share it and you will be the first.</p>
+        <div class="dock-foot">
+          <button id="shared-share" class="ghost" title="Publish your table for this game so other people can use it">Share yours</button>
+        </div>
       </aside>
 
-      <button id="dock-open" class="dock-open" title="Show the cheats" hidden>
+      <button id="dock-open" class="dock-open" title="Show the shared tables" hidden>
         <svg viewBox="0 0 16 16"><path d="M10 3.5L5.5 8 10 12.5"/></svg>
-        <span>Cheats</span>
+        <span>Shared tables</span>
         <b id="dock-open-count"></b>
       </button>
       </div><!-- game-layout -->

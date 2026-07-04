@@ -8,6 +8,7 @@ let scanning = false;
 let open = null; // key of the game whose page is showing
 let drawn = "";
 let config = { theme: "system", accent: "amber", pinned: [], favourites: [] };
+let me = null; // the name we publish under, if any
 
 /* art is read off disk and served over its own protocol, so ask once */
 const art = new Map();
@@ -435,7 +436,6 @@ function drawGamePage() {
     note.hidden = true;
   }
 
-  refreshCheats.drawn = "";
   refreshCheats();
   loadShared();
   checkRatePrompt();
@@ -460,7 +460,6 @@ async function doAttach(exe) {
   }
   drawn = "";
   draw();
-  refreshCheats.drawn = "";
   await refreshCheats();
 }
 
@@ -488,10 +487,11 @@ async function refreshCheats() {
   }
 
   $("no-table").hidden = rows.length > 0;
-  $("dock-empty").hidden = rows.length > 0;
-  const count = rows.length ? `${rows.length}` : "";
-  $("cheat-count").textContent = rows.length ? `${rows.length} in this table` : "";
-  $("dock-open-count").textContent = count;
+  $("cheats-panel").hidden = rows.length === 0;
+  $("remove-table").hidden = rows.length === 0;
+  $("cheat-count").textContent = rows.length
+    ? `${rows.length} in this table`
+    : "";
 
   const byCategory = new Map();
   for (const row of rows) {
@@ -499,44 +499,78 @@ async function refreshCheats() {
     byCategory.get(row.category).push(row);
   }
 
-  /* the box is skipped on purpose. rebuilding it under someone mid-type would
-     eat what they were typing */
-  const stamp = rows
-    .map((r) => `${r.id}${r.armed}${r.live}${r.state}${r.reason}${r.editable}`)
-    .join("|");
-  if (stamp === refreshCheats.drawn) {
-    for (const row of rows) liveValueInto(row);
+  /* this runs every second and a half. throwing the list away and building it
+     again wiped hover, killed focus and made the whole panel blink, so the
+     cards are only built when the table itself changes and patched otherwise.
+     the value box is never touched here, or it would eat what you are typing */
+  const shape = game.exe + rows.map((r) => r.id + r.category).join("|");
+  if (shape !== refreshCheats.shape) {
+    refreshCheats.shape = shape;
+    refreshCheats.cards = new Map();
+
+    const host = $("cheat-groups");
+    host.innerHTML = "";
+    for (const [category, items] of byCategory) {
+      const group = document.createElement("div");
+      group.className = "group";
+
+      const heading = document.createElement("h3");
+      heading.textContent = category;
+
+      const grid = document.createElement("div");
+      grid.className = "cheats";
+      for (const item of items) {
+        const card = cheatCard(item, game.exe);
+        refreshCheats.cards.set(item.id, card);
+        grid.appendChild(card);
+      }
+
+      group.append(heading, grid);
+      host.appendChild(group);
+    }
     return;
   }
-  refreshCheats.drawn = stamp;
 
-  const host = $("cheat-groups");
-  host.innerHTML = "";
-  for (const [category, items] of byCategory) {
-    const group = document.createElement("div");
-    group.className = "group";
+  for (const row of rows) patchCard(refreshCheats.cards.get(row.id), row);
+}
 
-    const heading = document.createElement("h3");
-    heading.textContent = category;
+function patchCard(card, item) {
+  if (!card) return;
 
-    const grid = document.createElement("div");
-    grid.className = "cheats";
-    for (const item of items) grid.appendChild(cheatCard(item, game.exe));
+  const wanted = "cheat" + (item.armed ? " armed" : "") + (item.live ? " on" : "");
+  if (card.className !== wanted) card.className = wanted;
 
-    group.append(heading, grid);
-    host.appendChild(group);
+  const why = card.querySelector(".cheat-why");
+  const [text, tone] = whyFor(item);
+  if (why.textContent !== text) why.textContent = text;
+  const toned = "cheat-why" + (tone ? " " + tone : "");
+  if (why.className !== toned) why.className = toned;
+
+  const toggle = card.querySelector(".switch");
+  const on = "switch" + (item.armed ? " on" : "");
+  if (toggle.className !== on) {
+    toggle.className = on;
+    toggle.title = item.armed ? "Turn it off" : "Turn it on";
+  }
+
+  const live = card.querySelector(".cheat-live");
+  if (live) {
+    const now = item.current ? `now ${item.current}` : "";
+    if (live.textContent !== now) live.textContent = now;
   }
 }
 
-/* what the game is holding right now, next to the box, without redrawing */
-function liveValueInto(row) {
-  const el = document.querySelector(`[data-live-for="${cssEscape(row.id)}"]`);
-  if (!el) return;
-  el.textContent = row.current ? `now ${row.current}` : "";
-}
-
-function cssEscape(text) {
-  return window.CSS && CSS.escape ? CSS.escape(text) : text.replace(/"/g, '\\"');
+/* the line under a cheat's name, and what colour it is */
+function whyFor(item) {
+  if (item.live) return ["On", "live"];
+  if (item.armed && item.state === "broken") {
+    return [item.reason || "not in this version of the game", "dead"];
+  }
+  if (item.armed && item.state === "wait") return [item.hint || item.reason, "wait"];
+  if (item.armed) return ["Waiting for the game to get there", "wait"];
+  if (item.description) return [item.description, ""];
+  if (item.does === "Script") return ["Finds the addresses the other cheats here need.", ""];
+  return ["", ""];
 }
 
 /* you can switch a cheat on whenever. whether it is actually doing anything is
@@ -558,26 +592,10 @@ function cheatCard(item, exe) {
   tag.textContent = item.does || "";
   name.appendChild(tag);
 
+  const [line, tone] = whyFor(item);
   const why = document.createElement("div");
-  why.className = "cheat-why";
-
-  if (item.live) {
-    why.classList.add("live");
-    why.textContent = "On";
-  } else if (item.armed && item.state === "broken") {
-    why.classList.add("dead");
-    why.textContent = item.reason || "not in this version of the game";
-  } else if (item.armed && item.state === "wait") {
-    why.classList.add("wait");
-    why.textContent = item.hint || item.reason;
-  } else if (item.armed) {
-    why.classList.add("wait");
-    why.textContent = "Waiting for the game to get there";
-  } else if (item.description) {
-    why.textContent = item.description;
-  } else if (item.does === "Script") {
-    why.textContent = "Finds the addresses the other cheats here need.";
-  }
+  why.className = "cheat-why" + (tone ? " " + tone : "");
+  why.textContent = line;
 
   main.append(name, why);
   if (item.editable) main.appendChild(valueBox(item, exe));
@@ -588,7 +606,8 @@ function cheatCard(item, exe) {
   toggle.addEventListener("click", async () => {
     try {
       await invoke("set_cheat", { exe, id: item.id, on: !item.armed });
-      refreshCheats.drawn = "";
+      item.armed = !item.armed;
+      patchCard(card, item);
       await refreshCheats();
     } catch (e) {
       toast(String(e), true);
@@ -909,7 +928,6 @@ async function pickTable() {
     const note = await invoke("pick_table", { exe: game ? game.exe : null });
     toast(note);
     await loadGames(false);
-    refreshCheats.drawn = "";
     await refreshCheats();
   } catch (e) {
     if (String(e)) toast(String(e), true);
@@ -931,13 +949,13 @@ document.querySelectorAll("[data-open]").forEach((button) => {
 /* ---------- the cheat dock ---------- */
 
 function drawDock() {
-  const shut = config.cheats_open === false;
-  $("cheat-dock").hidden = shut;
+  const shut = config.shared_open === false;
+  $("shared").hidden = shut;
   $("dock-open").hidden = !shut;
 }
 
-$("dock-close").addEventListener("click", () => saveConfig({ cheats_open: false }));
-$("dock-open").addEventListener("click", () => saveConfig({ cheats_open: true }));
+$("dock-close").addEventListener("click", () => saveConfig({ shared_open: false }));
+$("dock-open").addEventListener("click", () => saveConfig({ shared_open: true }));
 
 $("game-folder").addEventListener("click", () => {
   const game = gameFor(open);
@@ -1089,6 +1107,7 @@ async function loadShared(force = false) {
   $("shared-empty").hidden = rows.length > 0;
   $("shared-empty").textContent =
     "Nobody has shared a table for this game yet. If yours works, share it and you will be the first.";
+  $("dock-open-count").textContent = rows.length ? String(rows.length) : "";
 
   for (const row of rows) host.appendChild(sharedRow(row));
 }
@@ -1102,7 +1121,15 @@ function sharedRow(row) {
 
   const title = document.createElement("div");
   title.className = "shared-name";
-  title.textContent = row.by ? row.game + " by " + row.by : row.game;
+  title.textContent = row.by ? "by " + row.by : "shared anonymously";
+
+  /* your own upload coming back at you looks like a stranger's otherwise */
+  if (row.by && me && row.by.toLowerCase() === me.toLowerCase()) {
+    const yours = document.createElement("span");
+    yours.className = "mine";
+    yours.textContent = " (you)";
+    title.appendChild(yours);
+  }
   if (row.by) {
     const tick = document.createElement("span");
     tick.className = "verified";
@@ -1123,6 +1150,9 @@ function sharedRow(row) {
 
   main.append(title, facts);
 
+  const actions = document.createElement("div");
+  actions.className = "row-actions";
+
   const button = document.createElement("button");
   button.className = row.installed ? "ghost" : "primary";
   button.textContent = row.installed ? "Installed" : "Use this";
@@ -1133,7 +1163,6 @@ function sharedRow(row) {
     try {
       toast(await invoke("install_shared", { id: row.id }));
       await loadGames(false);
-      refreshCheats.drawn = "";
       await refreshCheats();
       await loadShared(true);
       await checkRatePrompt();
@@ -1143,10 +1172,37 @@ function sharedRow(row) {
       button.textContent = "Use this";
     }
   });
+  actions.appendChild(button);
 
-  card.append(main, button);
+  if (row.installed) {
+    const drop = document.createElement("button");
+    drop.className = "ghost";
+    drop.textContent = "Remove";
+    drop.title = "Delete it from this machine";
+    drop.addEventListener("click", () => removeTable());
+    actions.appendChild(drop);
+  }
+
+  card.append(main, actions);
   return card;
 }
+
+/* downloading a table was one click and getting rid of it was editing a folder
+   by hand, which is not a thing anybody should have to know about */
+async function removeTable() {
+  const game = gameFor(open);
+  if (!game || !game.exe) return;
+  try {
+    toast(await invoke("remove_table", { exe: game.exe }));
+    await loadGames(false);
+    await refreshCheats();
+    await loadShared(true);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+$("remove-table").addEventListener("click", removeTable);
 
 /* asked once per table, and only once the game has actually been attached,
    because before that nobody knows whether it worked */
@@ -1211,6 +1267,9 @@ async function drawWhoami() {
   } catch {
     // stays anonymous
   }
+  const changed = me !== (who ? who.name : null);
+  me = who ? who.name : null;
+  if (changed && open) loadShared(true);
   $("whoami-state").textContent = who
     ? "Uploads go out as " + who.name + "."
     : "Uploads go out anonymously.";
@@ -1453,7 +1512,7 @@ async function start() {
     // defaults are already in place
   }
   applyTheme();
-  drawWhoami();
+  await drawWhoami();
   drawWindowState();
   drawVersion();
   countTables();

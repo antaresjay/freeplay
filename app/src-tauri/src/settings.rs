@@ -30,9 +30,9 @@ pub struct Settings {
     // float that was typed as 1.5 comes back as 1.5
     #[serde(default)]
     pub values: HashMap<String, HashMap<String, String>>,
-    // the cheat panel on the game page, open or folded away
+    // the shared tables panel on the game page, open or folded away
     #[serde(default = "yes")]
-    pub cheats_open: bool,
+    pub shared_open: bool,
     // random, made once. it stops one person voting twice and is not tied to
     // the machine or to any name
     #[serde(default)]
@@ -60,7 +60,7 @@ impl Default for Settings {
             auto_attach: true,
             armed: HashMap::new(),
             values: HashMap::new(),
-            cheats_open: true,
+            shared_open: true,
             install_id: String::new(),
             grabbed: HashMap::new(),
             rated: Vec::new(),
