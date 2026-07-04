@@ -155,13 +155,21 @@
         </div>
       </div>
 
+      <div id="guarded-note" class="blank stern" hidden>
+        <h3>Freeplay does not do multiplayer games</h3>
+        <p><b id="guarded-name"></b> ships with <b id="guarded-which"></b>, so this is where Freeplay stops. There is no table to import and nothing to attach to.</p>
+        <p class="dim">Cheating in a game other people are playing ruins their evening, not just yours, and it is the quickest way to lose the account you paid for. Freeplay is for single player, for a second run through something you already finished properly.</p>
+      </div>
+
       <div id="cheats-panel">
         <div class="section-head">
           <h3>Cheats</h3>
           <span id="cheat-count" class="dim"></span>
+          <input id="cheat-filter" class="filter" type="search" placeholder="Search cheats" autocomplete="off">
           <button id="remove-table" class="ghost" title="Delete this table from your machine" hidden>Remove table</button>
         </div>
         <div id="cheat-groups"></div>
+        <p id="cheat-none" class="dim" hidden>Nothing in this table matches that.</p>
       </div>
 
       <div id="no-table" class="blank" hidden>
@@ -189,6 +197,9 @@
           <button id="shared-refresh" class="icon-btn" title="Look again">
             <svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.7-4"/><path d="M12.2 1.2v3h-3"/></svg>
           </button>
+        </div>
+        <div class="shared-tools">
+          <input id="shared-search" class="filter" type="search" placeholder="Search by who shared it" autocomplete="off">
         </div>
         <div id="shared-list" class="dock-scroll"></div>
         <p id="shared-empty" class="dim dock-empty" hidden>Nobody has shared a table for this game yet. If yours works, share it and you will be the first.</p>
@@ -263,6 +274,9 @@
     <section id="view-settings" class="view" hidden>
       <div class="section-head"><h2>Settings</h2></div>
 
+      <h3 class="shelf">Look</h3>
+      <div class="settings-grid">
+
       <div class="setting">
         <div class="setting-label">
           <strong>Theme</strong>
@@ -288,6 +302,11 @@
           <button data-accent="lime" style="--swatch:#a3e635" title="Lime"></button>
         </div>
       </div>
+
+      </div>
+
+      <h3 class="shelf">Games and tables</h3>
+      <div class="settings-grid">
 
       <div class="setting">
         <div class="setting-label">
@@ -346,6 +365,11 @@
         <button id="clear-pins" class="ghost">Clear</button>
       </div>
 
+      </div>
+
+      <h3 class="shelf">If something goes wrong</h3>
+      <div class="settings-grid">
+
       <div class="setting">
         <div class="setting-label">
           <strong>Settings file</strong>
@@ -362,6 +386,8 @@
           <button id="copy-report" class="ghost">Copy report</button>
           <button id="open-log" class="ghost">Open log</button>
         </div>
+      </div>
+
       </div>
     </section>
 

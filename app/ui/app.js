@@ -9,6 +9,7 @@ let open = null; // key of the game whose page is showing
 let drawn = "";
 let config = { theme: "system", accent: "amber", pinned: [], favourites: [] };
 let me = null; // the name we publish under, if any
+let sharedFor = null; // the exe the shared list on screen belongs to
 
 /* art is read off disk and served over its own protocol, so ask once */
 const art = new Map();
@@ -360,6 +361,17 @@ function fact(label, value, live = false) {
 function drawGamePage() {
   const game = gameFor(open);
   if (!game) return;
+
+  /* a different game means everything below is about to be replaced. wipe it
+     now and put skeletons up, or the old table sits there looking current
+     until the next answer lands */
+  if (drawGamePage.showing !== open) {
+    drawGamePage.showing = open;
+    refreshCheats.shape = null;
+    sharedFor = null;
+    $("cheat-filter").value = "";
+    skeletons();
+  }
   const images = artFor(game) || {};
 
   const hero = $("game-hero-img");
@@ -419,11 +431,26 @@ function drawGamePage() {
   attach.disabled = !!game.guard || (!game.running && !isAttached);
   $("game-play").disabled = !!game.guard;
 
+  /* offering to import a table for a game we refuse to attach to is telling
+     somebody to go and get banned */
+  const guarded = !!game.guard;
+  $("guarded-note").hidden = !guarded;
+  $("guarded-name").textContent = game.name;
+  $("guarded-which").textContent = game.guard || "";
+  $("shared").hidden = guarded || config.shared_open === false;
+  $("dock-open").hidden = guarded || config.shared_open !== false;
+  document.querySelector(".game-layout").classList.toggle("alone", guarded);
+  $("game-import").hidden = guarded;
+  $("game-find-table").hidden = guarded;
+  if (guarded) {
+    $("cheats-panel").hidden = true;
+    $("no-table").hidden = true;
+    $("rate-ask").hidden = true;
+  }
+
   const note = $("attach-note");
   if (game.guard) {
-    note.hidden = false;
-    $("attach-note-title").textContent = "Freeplay will not touch this one";
-    $("attach-note-body").textContent = `${game.name} ships with ${game.guard}. Freeplay is for single player only, and attaching to a game with anti-cheat can get your account banned.`;
+    note.hidden = true;
   } else if (!game.running) {
     note.hidden = false;
     $("attach-note-title").textContent = "The game is not running";
@@ -479,12 +506,22 @@ async function refreshCheats() {
   const game = gameFor(open);
   if (!game || !game.exe || $("view-game").hidden) return;
 
+  // nothing is on offer for a game we refuse to attach to, and the empty
+  // state would otherwise reappear here after the page hid it
+  if (game.guard) return;
+
+  /* this polls on a timer and is also called when you open a page, so two of
+     them are in flight the moment you switch games. without this the slower
+     one lands last and paints the game you just left */
+  const asked = open;
+
   let rows = [];
   try {
     rows = await invoke("cheats", { exe: game.exe });
   } catch {
     return;
   }
+  if (open !== asked) return;
 
   $("no-table").hidden = rows.length > 0;
   $("cheats-panel").hidden = rows.length === 0;
@@ -528,6 +565,7 @@ async function refreshCheats() {
       group.append(heading, grid);
       host.appendChild(group);
     }
+    applyCheatFilter();
     return;
   }
 
@@ -572,6 +610,62 @@ function whyFor(item) {
   if (item.does === "Script") return ["Finds the addresses the other cheats here need.", ""];
   return ["", ""];
 }
+
+/* placeholder cards while the real ones are on their way. cheaper than a
+   spinner, and the page does not jump when the answer lands */
+function skeletons() {
+  const host = $("cheat-groups");
+  host.innerHTML = "";
+  $("cheats-panel").hidden = false;
+  $("no-table").hidden = true;
+  $("cheat-none").hidden = true;
+  $("cheat-count").textContent = "";
+  $("remove-table").hidden = true;
+
+  const grid = document.createElement("div");
+  grid.className = "cheats";
+  for (let n = 0; n < 6; n++) {
+    const bone = document.createElement("div");
+    bone.className = "cheat bone";
+    const main = document.createElement("div");
+    main.className = "cheat-main";
+    const wide = document.createElement("span");
+    wide.className = "bar wide";
+    const thin = document.createElement("span");
+    thin.className = "bar";
+    main.append(wide, thin);
+    bone.appendChild(main);
+    grid.appendChild(bone);
+  }
+  host.appendChild(grid);
+}
+
+/* typing filters what is already on screen. debounced, or every keystroke
+   walks the whole list */
+let filterTimer = null;
+function filterCheats() {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(applyCheatFilter, 180);
+}
+
+function applyCheatFilter() {
+  const needle = $("cheat-filter").value.trim().toLowerCase();
+  let shown = 0;
+
+  for (const card of document.querySelectorAll("#cheat-groups .cheat")) {
+    const name = (card.querySelector(".cheat-name") || {}).textContent || "";
+    const hit = !needle || name.toLowerCase().includes(needle);
+    card.hidden = !hit;
+    if (hit) shown++;
+  }
+  // a category with nothing left in it should not keep its heading
+  for (const group of document.querySelectorAll("#cheat-groups .group")) {
+    group.hidden = ![...group.querySelectorAll(".cheat")].some((c) => !c.hidden);
+  }
+  $("cheat-none").hidden = shown > 0 || !needle;
+}
+
+$("cheat-filter").addEventListener("input", filterCheats);
 
 /* you can switch a cheat on whenever. whether it is actually doing anything is
    a separate thing the card says underneath, since the pointer most of them
@@ -1049,7 +1143,6 @@ for (const id of ["name-sheet", "export-sheet", "import-sheet"]) {
 /* ---------- shared tables ---------- */
 
 let sharedSorts = [];
-let sharedFor = null;
 
 async function loadSortOptions() {
   if (sharedSorts.length) return;
@@ -1103,6 +1196,7 @@ async function loadShared(force = false) {
 
   if (sharedFor !== game.exe) return;
 
+  sharedRows = rows;
   host.innerHTML = "";
   $("shared-empty").hidden = rows.length > 0;
   $("shared-empty").textContent =
@@ -1110,7 +1204,41 @@ async function loadShared(force = false) {
   $("dock-open-count").textContent = rows.length ? String(rows.length) : "";
 
   for (const row of rows) host.appendChild(sharedRow(row));
+  applySharedFilter();
 }
+
+let sharedRows = [];
+let sharedTimer = null;
+
+function filterShared() {
+  clearTimeout(sharedTimer);
+  sharedTimer = setTimeout(applySharedFilter, 180);
+}
+
+function applySharedFilter() {
+  const needle = $("shared-search").value.trim().toLowerCase();
+  const cards = [...document.querySelectorAll("#shared-list .shared-row")];
+  let shown = 0;
+
+  cards.forEach((card, at) => {
+    const row = sharedRows[at];
+    const hit =
+      !needle ||
+      (row && ((row.by || "").toLowerCase().includes(needle) ||
+               (row.built_for || "").toLowerCase().includes(needle)));
+    card.hidden = !hit;
+    if (hit) shown++;
+  });
+
+  if (needle && !shown && cards.length) {
+    $("shared-empty").hidden = false;
+    $("shared-empty").textContent = "Nobody matching that has shared one.";
+  } else if (cards.length) {
+    $("shared-empty").hidden = true;
+  }
+}
+
+$("shared-search").addEventListener("input", filterShared);
 
 function sharedRow(row) {
   const card = document.createElement("div");
