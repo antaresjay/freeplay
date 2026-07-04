@@ -88,6 +88,15 @@ impl Table {
     // everything in a folder, skipping what will not parse so one bad file
     // does not hide the rest. .CT files count, so dropping one in is enough
     pub fn load_dir(dir: impl AsRef<Path>) -> Vec<Self> {
+        Self::load_dir_with_paths(dir)
+            .into_iter()
+            .map(|(_, table)| table)
+            .collect()
+    }
+
+    // the file each one came from, for anybody who has to decide between two
+    // tables for the same game
+    pub fn load_dir_with_paths(dir: impl AsRef<Path>) -> Vec<(std::path::PathBuf, Self)> {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return Vec::new();
         };
@@ -103,7 +112,7 @@ impl Table {
                     _ => return None,
                 };
                 match loaded {
-                    Ok(table) => Some(table),
+                    Ok(table) => Some((path, table)),
                     Err(e) => {
                         tracing::warn!("skipping table: {e}");
                         None
