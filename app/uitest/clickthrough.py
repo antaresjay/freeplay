@@ -55,6 +55,12 @@ const CHEATS = [
    choices:[{value:"0",label:"Easy"},{value:"1",label:"Normal"},{value:"2",label:"Hard"}]}
 ];
 
+const OTHER_CHEATS = [
+  {id:"chapters", name:"Unlock Chapters", category:"Game", description:"", hint:"",
+   state:"idle", reason:"", armed:false, live:false, does:"Value", ...plain,
+   editable:true, kind:"i32", value:"12"}
+];
+
 const SORTS = [
   {key:"best", label:"Best match"},
   {key:"votes", label:"Most liked"},
@@ -89,7 +95,18 @@ window.__TAURI__ = {
           return SETTINGS;
         case "list_games": return GAMES;
         case "game_art": return {cover:null, hero:null, logo:null};
-        case "cheats": return CHEATS;
+        case "cheats":
+          // the witcher answers slowly on purpose. switching away mid flight
+          // used to paint the game you had just left
+          if (args.exe === "witcher2.exe") {
+            await new Promise(r => setTimeout(r, 400));
+            return CHEATS;
+          }
+          if (args.exe === "Detroit.exe") {
+            await new Promise(r => setTimeout(r, 300));
+            return OTHER_CHEATS;
+          }
+          return [];
         case "set_cheat": return null;
         case "sort_options": return SORTS;
         case "shared_tables": return SHARED;
@@ -154,8 +171,11 @@ PROBE = r"""
   note(visible("view-library"), "library view is showing");
 
   if (cards.length) {
-    cards[0].click();
-    await settle(300);
+    // pinned games are drawn first, so the first card in the document is not
+    // the first game in the list
+    const witcher = [...cards].find(c => c.textContent.includes("Witcher")) || cards[0];
+    witcher.click();
+    await settle(700);
     note(visible("view-game"), "clicking a card opens the game page");
     note(!visible("view-library"), "library is hidden once the game page opens");
     const name = (document.getElementById("game-name") || {}).textContent || "";
@@ -236,6 +256,21 @@ PROBE = r"""
     note(before.every((card, at) => card === after[at]),
          "and neither does flipping a switch");
 
+    // searching the shared list
+    document.getElementById("shared-search").value = "aSwedishMagyar";
+    document.getElementById("shared-search").dispatchEvent(new Event("input"));
+    await settle(300);
+    note([...document.querySelectorAll("#shared-list .shared-row")].every(r => !r.hidden),
+         "searching for who shared it keeps the matches");
+    document.getElementById("shared-search").value = "nobody";
+    document.getElementById("shared-search").dispatchEvent(new Event("input"));
+    await settle(300);
+    note([...document.querySelectorAll("#shared-list .shared-row")].every(r => r.hidden),
+         "and hides the rest");
+    document.getElementById("shared-search").value = "";
+    document.getElementById("shared-search").dispatchEvent(new Event("input"));
+    await settle(300);
+
     // getting rid of a downloaded table
     const remove = [...document.querySelectorAll("#shared-list button")]
       .find(b => b.textContent === "Remove");
@@ -300,6 +335,53 @@ PROBE = r"""
 
   const rail = document.querySelectorAll("#library-rail .rail-game");
   note(rail.length >= 1, "side rail rendered (" + rail.length + ")");
+
+  // switching straight from one game to another must not leave the first
+  // one's cheats on screen. the witcher stub answers slowly to force it
+  rail[0].click();
+  await settle(600);
+  const witcherCheats = document.querySelectorAll("#cheat-groups .cheat:not(.bone)").length;
+  note(witcherCheats === 4, "the first game's cheats are up (" + witcherCheats + ")");
+
+  const detroit = [...rail].find(r => r.textContent.includes("Detroit"));
+  detroit.click();
+  await settle(150);
+  note(document.querySelectorAll("#cheat-groups .bone").length > 0,
+       "switching puts placeholders up straight away");
+  await settle(900);
+  const names = [...document.querySelectorAll("#cheat-groups .cheat-name")]
+    .map(n => n.textContent);
+  note(names.length === 1 && names[0].startsWith("Unlock Chapters"),
+       "and the new game's cheats replace them (" + JSON.stringify(names) + ")");
+
+  // searching within a table
+  document.getElementById("cheat-filter").value = "zzz";
+  document.getElementById("cheat-filter").dispatchEvent(new Event("input"));
+  await settle(120);
+  note(!document.querySelector("#cheat-groups .cheat").hidden,
+       "the search waits before it runs");
+  await settle(300);
+  note(document.querySelector("#cheat-groups .cheat").hidden, "then it filters");
+  note(visible("cheat-none"), "and says when nothing matches");
+  document.getElementById("cheat-filter").value = "unlock";
+  document.getElementById("cheat-filter").dispatchEvent(new Event("input"));
+  await settle(300);
+  note(!document.querySelector("#cheat-groups .cheat").hidden, "a match comes back");
+
+  // a game with an anti-cheat is refused outright
+  const finals = [...rail].find(r => r.textContent.includes("FINALS"));
+  finals.click();
+  await settle(500);
+  note(visible("guarded-note"), "an anti-cheat game says Freeplay will not do it");
+  note(!visible("no-table"), "and does not offer to import a table");
+  note(!visible("cheats-panel"), "and shows no cheats panel");
+  note(!visible("shared"), "and no shared tables");
+  note(!visible("dock-open"), "and no tab to bring them back");
+  note(document.getElementById("game-import").hidden, "the import button is gone");
+  note(document.getElementById("game-find-table").hidden, "so is search online");
+  note(document.getElementById("guarded-note").textContent.toLowerCase().includes("multiplayer"),
+       "and it says why");
+
   if (rail.length) {
     rail[rail.length - 1].click();
     await settle(300);
@@ -312,6 +394,8 @@ PROBE = r"""
   settingsNav.click();
   await settle(200);
   note(visible("claim-name"), "settings offers to claim a name");
+  note(document.querySelectorAll("#view-settings .settings-grid").length >= 3,
+       "settings is grouped rather than one long column");
   note(document.getElementById("tables-state").textContent.includes("3 tables"),
        "the table count settles instead of sitting on Checking");
 
@@ -471,7 +555,7 @@ def main():
     url = "file:///" + page_path.replace("\\", "/")
     run = subprocess.run(
         [browser, "--headless", "--disable-gpu", "--allow-file-access-from-files",
-         "--virtual-time-budget=25000", "--dump-dom", url],
+         "--virtual-time-budget=40000", "--dump-dom", url],
         capture_output=True, text=True, timeout=180)
 
     found = re.search(r'<pre id="probe-results">(.*?)</pre>', run.stdout, re.S)
