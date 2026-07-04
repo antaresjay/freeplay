@@ -1,22 +1,21 @@
-//! Cover art, taken from what the store already put on disk.
+//! cover art, out of whatever the store already put on disk
 //!
-//! Steam downloads box art for everything in your library and leaves it in
-//! `appcache/librarycache`. There is no reason to go and fetch our own copy of
-//! a picture that is already sitting there, and doing it this way means the
-//! interface has art before the network is even awake.
+//! steam downloads box art for your whole library into appcache/librarycache.
+//! no reason to fetch our own copy of a picture already sitting there, and it
+//! means the grid has art before the network is even awake.
 
 use std::path::{Path, PathBuf};
 
 use crate::{InstalledGame, Store};
 
-/// The images Steam keeps per game. Any of them can be missing.
+// what steam keeps per game. any of them can be missing
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Art {
-    /// Portrait box art, 600x900. The one worth building a grid around.
+    // portrait box art, the one worth building a grid around
     pub cover: Option<PathBuf>,
-    /// Wide banner that sits behind the title on the store page.
+    // wide banner that sits behind the title
     pub hero: Option<PathBuf>,
-    /// Transparent wordmark meant to be drawn over the hero.
+    // transparent wordmark, drawn over the hero
     pub logo: Option<PathBuf>,
 }
 
@@ -26,18 +25,42 @@ impl Art {
     }
 }
 
-/// Older Steam clients wrote `<appid>_library_600x900.jpg` straight into the
-/// cache folder. Newer ones give each game its own directory. Both still exist
-/// on machines that have been upgraded rather than reinstalled.
-fn pick(cache: &Path, app_id: &str, stem: &str) -> Option<PathBuf> {
-    for ext in ["jpg", "png"] {
-        let nested = cache.join(app_id).join(format!("{stem}.{ext}"));
-        if nested.is_file() {
-            return Some(nested);
+// steam has changed where this lives twice. oldest wrote
+// `<appid>_library_600x900.jpg` flat into the cache folder, then each game got
+// its own directory, and now every asset sits in a directory named after its
+// content hash with the real name inside. a machine that has been upgraded
+// rather than reinstalled has all three at once
+fn pick(cache: &Path, app_id: &str, stems: &[&str]) -> Option<PathBuf> {
+    for stem in stems {
+        for ext in ["jpg", "png"] {
+            let name = format!("{stem}.{ext}");
+
+            let flat = cache.join(format!("{app_id}_{name}"));
+            if flat.is_file() {
+                return Some(flat);
+            }
+            let nested = cache.join(app_id).join(&name);
+            if nested.is_file() {
+                return Some(nested);
+            }
+            if let Some(found) = under_a_hash(&cache.join(app_id), &name) {
+                return Some(found);
+            }
         }
-        let flat = cache.join(format!("{app_id}_{stem}.{ext}"));
-        if flat.is_file() {
-            return Some(flat);
+    }
+    None
+}
+
+// one level down, in whatever the folder happens to be called
+fn under_a_hash(dir: &Path, name: &str) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        let candidate = entry.path().join(name);
+        if candidate.is_file() {
+            return Some(candidate);
         }
     }
     None
@@ -45,13 +68,23 @@ fn pick(cache: &Path, app_id: &str, stem: &str) -> Option<PathBuf> {
 
 fn in_cache(cache: &Path, app_id: &str) -> Art {
     Art {
-        cover: pick(cache, app_id, "library_600x900").or_else(|| pick(cache, app_id, "header")),
-        hero: pick(cache, app_id, "library_hero"),
-        logo: pick(cache, app_id, "logo"),
+        // library_capsule is what the portrait is called these days
+        cover: pick(
+            cache,
+            app_id,
+            &[
+                "library_600x900",
+                "library_capsule",
+                "header",
+                "library_header",
+            ],
+        ),
+        hero: pick(cache, app_id, &["library_hero"]),
+        logo: pick(cache, app_id, &["logo"]),
     }
 }
 
-/// Art for one Steam app id.
+// art for one steam app id
 #[cfg(windows)]
 pub fn steam(app_id: &str) -> Art {
     let Some(root) = crate::steam::root() else {
@@ -126,6 +159,51 @@ mod tests {
             .cover
             .unwrap()
             .ends_with("header.jpg"));
+
+        std::fs::remove_dir_all(&cache).unwrap();
+    }
+
+    // the layout that made THE FINALS and NBA 2K26 show two grey letters
+    // instead of a cover: every asset in a folder named after its content hash
+    #[test]
+    fn reads_the_content_hash_layout() {
+        let cache = scratch("hashed");
+        touch(
+            &cache
+                .join("2073850")
+                .join("6d9cfdeaea9f822d8f4af42d8f0dbd08")
+                .join("library_capsule.jpg"),
+        );
+        touch(
+            &cache
+                .join("2073850")
+                .join("f145688cf8e5b9e7b17cc4430b489a27")
+                .join("library_hero.jpg"),
+        );
+        touch(&cache.join("2073850").join("logo.png"));
+
+        let art = in_cache(&cache, "2073850");
+        assert!(
+            art.cover.is_some(),
+            "the capsule is what the portrait is called now"
+        );
+        assert!(art.hero.is_some());
+        assert!(art.logo.is_some());
+
+        std::fs::remove_dir_all(&cache).unwrap();
+    }
+
+    #[test]
+    fn the_blurred_hero_is_not_the_hero() {
+        let cache = scratch("blur");
+        touch(
+            &cache
+                .join("2073850")
+                .join("f145688c")
+                .join("library_hero_blur.jpg"),
+        );
+
+        assert_eq!(in_cache(&cache, "2073850").hero, None);
 
         std::fs::remove_dir_all(&cache).unwrap();
     }
