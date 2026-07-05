@@ -26,6 +26,8 @@ function toast(message, bad = false) {
 
 const gameFor = (key) => games.find((g) => g.key === key);
 
+const many = (n, one, more) => `${n} ${n === 1 ? one : more || one + "s"}`;
+
 /* ---------- settings ---------- */
 
 function applyTheme() {
@@ -222,7 +224,7 @@ function draw() {
   drawGrids(list);
 
   const live = list.filter((g) => g.running).length;
-  $("library-count").textContent = `${list.length} games, ${live} running`;
+  $("library-count").textContent = `${many(list.length, "game")}, ${live} running`;
   $("idle-banner").hidden = live > 0 || !list.length;
 }
 
@@ -268,10 +270,16 @@ function drawGrids(list) {
   const needle = $("filter").value.trim().toLowerCase();
   const shown = list.filter((g) => !needle || g.name.toLowerCase().includes(needle));
 
-  const pinned = shown.filter((g) => g.pinned);
-  const rest = shown.filter((g) => !g.pinned);
+  /* starring a game filled in the star and did nothing else, which is not a
+     feature, it is a button that lies */
+  const favourite = shown.filter((g) => g.favourite);
+  const pinned = shown.filter((g) => g.pinned && !g.favourite);
+  const rest = shown.filter((g) => !g.pinned && !g.favourite);
 
+  $("fav-wrap").hidden = !favourite.length;
   $("pinned-wrap").hidden = !pinned.length;
+  $("rest-shelf").hidden = !rest.length || !(favourite.length || pinned.length);
+  fill($("fav-grid"), favourite);
   fill($("pinned-grid"), pinned);
   fill($("grid"), rest);
 
@@ -305,6 +313,7 @@ function card(game) {
   if (game.guard) badges.appendChild(badge("Anti-cheat", "guarded"));
   else if (game.running) badges.appendChild(badge("Running", "live"));
   if (game.has_table) badges.appendChild(badge("Table", "spare"));
+  if (game.favourite) badges.appendChild(badge("Favourite", "fav"));
   box.appendChild(badges);
 
   const overlay = document.createElement("div");
@@ -370,14 +379,16 @@ function drawGamePage() {
     refreshCheats.shape = null;
     sharedFor = null;
     $("cheat-filter").value = "";
+    $("shared-search").value = "";
     skeletons();
   }
   const images = artFor(game) || {};
 
   const hero = $("game-hero-img");
   hero.src = images.hero || "";
-  hero.hidden = !hero.src;
-  document.querySelector(".game-hero").classList.toggle("no-art", !hero.src);
+  // an empty src reads back as this page's own url, so test the value we set
+  hero.hidden = !images.hero;
+  document.querySelector(".game-hero").classList.toggle("no-art", !images.hero);
 
   const cover = $("game-cover-img");
   cover.src = images.cover || "";
@@ -477,6 +488,9 @@ async function doAttach(exe) {
     toast(String(e), true);
     return;
   }
+  // attaching starts a new process with a new address space, and the backend
+  // drops the old search, so nothing already on the finder still means anything
+  resetScan();
 
   const known = games.find((g) => g.exe === exe);
   if (known) open = known.key;
@@ -491,7 +505,11 @@ async function doAttach(exe) {
 }
 
 async function doDetach() {
-  await invoke("detach");
+  try {
+    await invoke("detach");
+  } catch (e) {
+    return toast(String(e), true);
+  }
   attached = null;
   scanning = false;
   resetScan();
@@ -504,11 +522,21 @@ async function doDetach() {
 
 async function refreshCheats() {
   const game = gameFor(open);
-  if (!game || !game.exe || $("view-game").hidden) return;
+  if (!game || $("view-game").hidden) return;
 
   // nothing is on offer for a game we refuse to attach to, and the empty
   // state would otherwise reappear here after the page hid it
   if (game.guard) return;
+
+  // no executable means nothing to look a table up by. say so rather than
+  // leaving the placeholders pulsing for ever
+  if (!game.exe) {
+    refreshCheats.shape = null;
+    $("cheat-groups").innerHTML = "";
+    $("cheats-panel").hidden = true;
+    $("no-table").hidden = false;
+    return;
+  }
 
   /* this polls on a timer and is also called when you open a page, so two of
      them are in flight the moment you switch games. without this the slower
@@ -526,9 +554,7 @@ async function refreshCheats() {
   $("no-table").hidden = rows.length > 0;
   $("cheats-panel").hidden = rows.length === 0;
   $("remove-table").hidden = rows.length === 0;
-  $("cheat-count").textContent = rows.length
-    ? `${rows.length} in this table`
-    : "";
+  $("cheat-count").textContent = rows.length ? `${many(rows.length, "cheat")}` : "";
 
   const byCategory = new Map();
   for (const row of rows) {
@@ -808,11 +834,14 @@ function drawResults(results) {
     const write = document.createElement("button");
     write.className = "ghost";
     write.textContent = "Write";
+    // the type the scan actually ran under, not whatever the dropdown says
+    // now. changing it after a scan used to write the wrong width
+    const kind = $("scan-type").value;
     write.addEventListener("click", async () => {
       try {
         await invoke("write_value", {
           address: hit.address,
-          kind: $("scan-type").value,
+          kind,
           value: input.value,
         });
         toast(`Wrote ${input.value} to ${hit.address}`);
@@ -845,8 +874,13 @@ async function startScan() {
   }
 }
 
+let narrowing = false;
+
 async function narrow(filter) {
   if (!scanning) return toast("Run the first scan before narrowing it down", true);
+  // a double click was quietly running two rounds and throwing away addresses
+  // the user never meant to discard
+  if (narrowing) return;
 
   let value = null;
   if (filter === "exact") {
@@ -854,12 +888,23 @@ async function narrow(filter) {
     if (!value) return toast("Type what the game shows now, then press it again", true);
   }
 
+  const was = $("scan-status").innerHTML;
+  narrowing = true;
+  chipsEnabled(false);
   $("scan-status").textContent = "Scanning";
   try {
     setScanStatus(await invoke("scan_next", { filter, value }));
   } catch (e) {
     toast(String(e), true);
+    $("scan-status").innerHTML = was;
+  } finally {
+    narrowing = false;
+    chipsEnabled(true);
   }
+}
+
+function chipsEnabled(on) {
+  for (const chip of document.querySelectorAll(".chip")) chip.disabled = !on;
 }
 
 function resetScan() {
@@ -873,7 +918,12 @@ function resetScan() {
 /* ---------- process sheet ---------- */
 
 async function openProcesses() {
-  const list = await invoke("list_processes");
+  let list = [];
+  try {
+    list = await invoke("list_processes");
+  } catch (e) {
+    return toast(String(e), true);
+  }
   const host = $("process-list");
 
   const render = () => {
@@ -903,6 +953,12 @@ async function openProcesses() {
 
 /* ---------- views ---------- */
 
+function currentView() {
+  return ["library", "game", "finder", "settings", "about"].find(
+    (id) => !$(`view-${id}`).hidden
+  ) || "library";
+}
+
 function showView(name) {
   if (name === "game" && !open) name = "library";
 
@@ -926,12 +982,22 @@ function showView(name) {
 
 document.querySelectorAll(".nav-item").forEach((item) => {
   item.addEventListener("click", () => {
-    if (item.dataset.view === "library") open = null;
+    leaveGame();
     showView(item.dataset.view);
     drawn = "";
     draw();
   });
 });
+
+/* nothing outside the game page belongs to a game. leaving it set meant a .CT
+   imported from Settings was filed under the last game you looked at, and the
+   five second tick kept asking the service about it from every other view */
+function leaveGame() {
+  open = null;
+  drawGamePage.showing = null;
+  sharedFor = null;
+  $("rate-ask").hidden = true;
+}
 document.querySelectorAll("[data-goto]").forEach((button) => {
   button.addEventListener("click", () => showView(button.dataset.goto));
 });
@@ -946,7 +1012,7 @@ document.querySelectorAll("#accent-pick button").forEach((button) => {
 });
 
 $("back").addEventListener("click", () => {
-  open = null;
+  leaveGame();
   showView("library");
   drawn = "";
   draw();
@@ -1063,9 +1129,10 @@ if (window.__TAURI__.event) {
   const { listen } = window.__TAURI__.event;
   listen("tables-updated", async (e) => {
     toast(String(e.payload));
-    $("tables-state").textContent = String(e.payload);
     await loadGames(false);
     await refreshCheats();
+    await countTables();
+    await loadShared(true);
   });
   listen("tauri://drag-enter", () => document.body.classList.add("dropping"));
   listen("tauri://drag-leave", () => document.body.classList.remove("dropping"));
@@ -1113,7 +1180,11 @@ async function drawWindowState() {
 window.addEventListener("resize", drawWindowState);
 
 $("filter").addEventListener("input", draw);
-$("refresh").addEventListener("click", () => loadGames(true));
+$("refresh").addEventListener("click", () => {
+  // rescanning should give the art another go too
+  art.clear();
+  loadGames(true);
+});
 $("scan-start").addEventListener("click", startScan);
 $("scan-reset").addEventListener("click", resetScan);
 $("show-processes").addEventListener("click", openProcesses);
@@ -1125,19 +1196,27 @@ $("sheet").addEventListener("click", (e) => {
 $("scan-value").addEventListener("keydown", (e) => {
   if (e.key === "Enter") (scanning ? narrow("exact") : startScan());
 });
+/* the recovery words are the only copy of an account that has already been
+   written to disk by the time they are on screen, so this one sheet does not
+   close by being dismissed */
+const showingPhrase = () => !$("name-sheet").hidden && !$("name-phrase").hidden;
+
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  for (const id of ["sheet", "name-sheet", "export-sheet", "import-sheet"]) {
-    $(id).hidden = true;
-  }
+  $("sheet").hidden = true;
+  $("export-sheet").hidden = true;
+  $("import-sheet").hidden = true;
+  if (!showingPhrase()) $("name-sheet").hidden = true;
 });
 
 /* clicking the dimmed area behind a sheet closes it, same as escape */
-for (const id of ["name-sheet", "export-sheet", "import-sheet"]) {
+["name-sheet", "export-sheet", "import-sheet"].forEach((id) => {
   $(id).addEventListener("click", (e) => {
-    if (e.target === $(id)) $(id).hidden = true;
+    if (e.target !== $(id)) return;
+    if (id === "name-sheet" && showingPhrase()) return;
+    $(id).hidden = true;
   });
-}
+});
 
 
 /* ---------- shared tables ---------- */
@@ -1166,9 +1245,9 @@ function when(seconds) {
   const days = Math.floor((Date.now() / 1000 - seconds) / 86400);
   if (days <= 0) return "today";
   if (days === 1) return "yesterday";
-  if (days < 30) return days + " days ago";
-  if (days < 365) return Math.floor(days / 30) + " months ago";
-  return Math.floor(days / 365) + " years ago";
+  if (days < 30) return many(days, "day") + " ago";
+  if (days < 365) return many(Math.floor(days / 30), "month") + " ago";
+  return many(Math.floor(days / 365), "year") + " ago";
 }
 
 async function loadShared(force = false) {
@@ -1188,6 +1267,9 @@ async function loadShared(force = false) {
       sort: $("shared-sort").value || "best",
     });
   } catch (e) {
+    if (sharedFor !== game.exe) return;
+    // let go of the game, or one bad reply means this never asks again
+    sharedFor = null;
     host.innerHTML = "";
     $("shared-empty").hidden = false;
     $("shared-empty").textContent = String(e);
@@ -1268,13 +1350,14 @@ function sharedRow(row) {
 
   const facts = document.createElement("div");
   facts.className = "shared-facts";
-  const bits = [row.cheats + " cheats"];
+  const bits = [many(row.cheats, "cheat")];
   bits.push(row.up || row.down ? row.up + " up, " + row.down + " down" : "no votes yet");
-  if (row.downloads) bits.push(row.downloads + " downloads");
+  if (row.downloads) bits.push(many(row.downloads, "download"));
   if (row.built_for) bits.push("checked on " + row.built_for);
   const added = when(row.added);
   if (added) bits.push(added);
   facts.textContent = bits.join("  .  ");
+  if (row.standing) card.title = row.standing;
 
   main.append(title, facts);
 
@@ -1325,6 +1408,7 @@ async function removeTable() {
     await loadGames(false);
     await refreshCheats();
     await loadShared(true);
+    await checkRatePrompt();
   } catch (e) {
     toast(String(e), true);
   }
@@ -1340,12 +1424,16 @@ async function checkRatePrompt() {
   ask.hidden = true;
   if (!game || !game.exe) return;
 
+  const asked = open;
   let held = null;
   try {
     held = await invoke("using", { exe: game.exe });
   } catch {
     return;
   }
+  // same race as the cheat list: this can land after you have moved on, and
+  // voting on the wrong table helps nobody
+  if (open !== asked) return;
   if (!held) return;
 
   const id = held[0];
@@ -1378,11 +1466,20 @@ $("shared-sort").addEventListener("change", () => loadShared(true));
 $("shared-share").addEventListener("click", async () => {
   const game = gameFor(open);
   if (!game) return;
+  const button = $("shared-share");
+  button.disabled = true;
   try {
-    toast(await invoke("share_table", { exe: game.exe, anonymous: false }));
+    toast(
+      await invoke("share_table", {
+        exe: game.exe,
+        anonymous: !!me && $("share-anon").checked,
+      })
+    );
     await loadShared(true);
   } catch (e) {
     toast(String(e), true);
+  } finally {
+    button.disabled = false;
   }
 });
 
@@ -1397,6 +1494,8 @@ async function drawWhoami() {
   }
   const changed = me !== (who ? who.name : null);
   me = who ? who.name : null;
+  $("share-anon-row").hidden = !me;
+  if (!me) $("share-anon").checked = false;
   if (changed && open) loadShared(true);
   $("whoami-state").textContent = who
     ? "Uploads go out as " + who.name + "."
@@ -1410,6 +1509,17 @@ function showNameSheet(step) {
   $("name-pick").hidden = step !== "pick";
   $("name-recover").hidden = step !== "recover";
   $("name-phrase").hidden = step !== "phrase";
+
+  const words = {
+    pick: ["Claim a name", "Nobody else can publish under it once it is yours. No password, no email."],
+    recover: ["Get your name back", "Type the words you wrote down when you claimed it."],
+    phrase: ["Write these down", "This is the only copy. There is no reset and no way to see them again."],
+  }[step];
+  $("name-title").textContent = words[0];
+  $("name-blurb").textContent = words[1];
+
+  const focus = { pick: "name-input", recover: "recover-name", phrase: "phrase-save" }[step];
+  setTimeout(() => $(focus).focus(), 0);
 }
 
 $("claim-name").addEventListener("click", () => {
@@ -1418,6 +1528,20 @@ $("claim-name").addEventListener("click", () => {
   showNameSheet("pick");
   $("name-input").focus();
 });
+
+/* every one of these looks like a form and none of them took the return key */
+function submitOn(field, button) {
+  $(field).addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    e.preventDefault();
+    $(button).click();
+  });
+}
+
+submitOn("name-input", "name-go");
+submitOn("recover-name", "recover-go");
+submitOn("recover-phrase", "recover-go");
+submitOn("import-phrase", "import-go");
 
 $("name-cancel").addEventListener("click", () => ($("name-sheet").hidden = true));
 $("name-recover-go").addEventListener("click", () => showNameSheet("recover"));
@@ -1547,6 +1671,7 @@ async function openExport() {
 
   $("export-why").textContent = "";
   $("export-sheet").hidden = false;
+  $("export-go").focus();
 }
 
 function setAllGames(on) {
@@ -1564,6 +1689,7 @@ $("export-none").addEventListener("click", () => setAllGames(false));
 
 $("export-go").addEventListener("click", async () => {
   $("export-why").textContent = "";
+  $("export-go").disabled = true;
   try {
     const note = await invoke("export_profile", {
       prefs: $("export-prefs").checked,
@@ -1574,6 +1700,8 @@ $("export-go").addEventListener("click", async () => {
     toast(note);
   } catch (e) {
     if (String(e)) $("export-why").textContent = String(e);
+  } finally {
+    $("export-go").disabled = false;
   }
 });
 
@@ -1588,8 +1716,8 @@ async function openImport(path) {
 
   const bits = [];
   if (peek.prefs) bits.push("your preferences");
-  if (peek.games) bits.push(`${peek.games} ${peek.games === 1 ? "game" : "games"}`);
-  if (peek.tables) bits.push(`${peek.tables} to download`);
+  if (peek.games) bits.push(many(peek.games, "game"));
+  if (peek.tables) bits.push(many(peek.tables, "table") + " to download");
   $("import-summary").textContent = bits.length
     ? `That file has ${bits.join(", ")}.`
     : "That file is empty.";
@@ -1600,6 +1728,7 @@ async function openImport(path) {
     ? `It was exported by ${peek.account}.`
     : "";
   $("import-sheet").hidden = false;
+  (peek.account ? $("import-phrase") : $("import-go")).focus();
 }
 
 const dropProfile = (path) => openImport(path);
@@ -1610,6 +1739,7 @@ $("import-cancel").addEventListener("click", () => ($("import-sheet").hidden = t
 
 $("import-go").addEventListener("click", async () => {
   $("import-why").textContent = "Working";
+  $("import-go").disabled = true;
   try {
     const note = await invoke("apply_profile", { phrase: $("import-phrase").value || null });
     $("import-sheet").hidden = true;
@@ -1620,6 +1750,8 @@ $("import-go").addEventListener("click", async () => {
     await drawWhoami();
   } catch (e) {
     $("import-why").textContent = String(e);
+  } finally {
+    $("import-go").disabled = false;
   }
 });
 
@@ -1636,8 +1768,8 @@ $("forget-name").addEventListener("click", async () => {
 async function start() {
   try {
     config = await invoke("settings");
-  } catch {
-    // defaults are already in place
+  } catch (e) {
+    toast("Could not read your settings: " + e, true);
   }
   applyTheme();
   await drawWhoami();
@@ -1660,6 +1792,10 @@ async function start() {
     });
     listen("detached", () => {
       attached = null;
+      // the backend threw the search away with the process, so the addresses
+      // on the finder are pointing at memory that no longer exists
+      resetScan();
+      showView(currentView());
       drawn = "";
       draw();
       if (open) drawGamePage();

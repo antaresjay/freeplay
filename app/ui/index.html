@@ -79,12 +79,17 @@
         <input id="filter" class="filter" type="search" placeholder="Filter" autocomplete="off">
       </div>
 
+      <div id="fav-wrap" hidden>
+        <h3 class="shelf">Favourites</h3>
+        <div id="fav-grid" class="grid"></div>
+      </div>
+
       <div id="pinned-wrap" hidden>
         <h3 class="shelf">Pinned</h3>
         <div id="pinned-grid" class="grid"></div>
-        <h3 class="shelf">Everything else</h3>
       </div>
 
+      <h3 id="rest-shelf" class="shelf" hidden>Everything else</h3>
       <div id="grid" class="grid"></div>
 
       <div id="library-empty" class="blank" hidden>
@@ -205,6 +210,10 @@
         <p id="shared-empty" class="dim dock-empty" hidden>Nobody has shared a table for this game yet. If yours works, share it and you will be the first.</p>
         <div class="dock-foot">
           <button id="shared-share" class="ghost" title="Publish your table for this game so other people can use it">Share yours</button>
+          <label id="share-anon-row" class="tick" hidden>
+            <input type="checkbox" id="share-anon">
+            <span>Leave my name off it</span>
+          </label>
         </div>
       </aside>
 

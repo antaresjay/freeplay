@@ -1420,3 +1420,8 @@ body.maximised .win .when-big { display: block; }
 #cheats-panel .section-head .filter { width: 190px; }
 #cheat-none { margin-top: 4px; }
 .shared-dock .shared-tools + .shared-tools { padding-top: 8px; }
+
+.badge.fav { background: var(--accent); color: #23180a; }
+
+.tick { display: flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 12px; color: var(--faint); cursor: pointer; }
+.tick input { accent-color: var(--accent); }
