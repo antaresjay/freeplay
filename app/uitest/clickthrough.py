@@ -34,6 +34,9 @@ const GAMES = [
   {key:"steam:1222140", name:"Detroit Become Human", store:"Steam", exe:"Detroit.exe",
    dir:"D:/games/detroit", app_id:"1222140", running:false, has_table:false,
    guard:null, minutes:1065, last_played:1783896512, pinned:true, favourite:false},
+  {key:"gog:noexe", name:"Some GOG Game", store:"GOG", exe:null,
+   dir:"D:/games/gog", app_id:null, running:false, has_table:false,
+   guard:null, minutes:null, last_played:null, pinned:false, favourite:false},
   {key:"steam:2073850", name:"THE FINALS", store:"Steam", exe:"Discovery.exe",
    dir:"D:/games/finals", app_id:"2073850", running:false, has_table:false,
    guard:"easyanticheat", minutes:73451, last_played:1786142235, pinned:false, favourite:false}
@@ -83,7 +86,10 @@ window.__calls = [];
    that answered with a fixed object hid the bug where pinning a game did not
    show up until you left the page */
 let SETTINGS = {theme:"dark", accent:"amber", pinned:["steam:1222140"],
-                favourites:[], cheats_open:true};
+                favourites:[], shared_open:true,
+                armed:{"witcher2.exe":["vitality"]},
+                values:{"witcher2.exe":{"orens":"5000"}},
+                grabbed:{"witcher2.exe":7}};
 window.__TAURI__ = {
   core: {
     invoke: async (cmd, args) => {
@@ -91,7 +97,15 @@ window.__TAURI__ = {
       switch (cmd) {
         case "settings": return SETTINGS;
         case "save_settings":
-          SETTINGS = {...SETTINGS, ...args.next};
+          // the real one keeps everything the front end does not own, so it
+          // has to be spelled out here rather than merged blindly
+          SETTINGS = {
+            ...SETTINGS,
+            theme: args.next.theme, accent: args.next.accent,
+            pinned: args.next.pinned, favourites: args.next.favourites,
+            auto_update: args.next.auto_update, auto_attach: args.next.auto_attach,
+            shared_open: args.next.shared_open,
+          };
           return SETTINGS;
         case "list_games": return GAMES;
         case "game_art": return {cover:null, hero:null, logo:null};
@@ -295,6 +309,13 @@ PROBE = r"""
     fav.click();
     await settle(300);
     note(fav.classList.contains("on"), "the star fills in straight away");
+    document.getElementById("back").click();
+    await settle(300);
+    note(visible("fav-wrap"), "and the game gets a favourites shelf of its own");
+    note(document.querySelectorAll("#fav-grid .card").length === 1,
+         "with the game in it");
+    document.querySelector("#fav-grid .card").click();
+    await settle(700);
 
     document.getElementById("game-import").click();
     await settle(250);
@@ -368,6 +389,14 @@ PROBE = r"""
   await settle(300);
   note(!document.querySelector("#cheat-groups .cheat").hidden, "a match comes back");
 
+  // a game we cannot find an executable for
+  const gog = [...rail].find(r => r.textContent.includes("GOG"));
+  gog.click();
+  await settle(600);
+  note(document.querySelectorAll("#cheat-groups .bone").length === 0,
+       "a game with no executable does not sit on placeholders");
+  note(visible("no-table"), "it says there is no table instead");
+
   // a game with an anti-cheat is refused outright
   const finals = [...rail].find(r => r.textContent.includes("FINALS"));
   finals.click();
@@ -394,6 +423,17 @@ PROBE = r"""
   settingsNav.click();
   await settle(200);
   note(visible("claim-name"), "settings offers to claim a name");
+
+  // changing a preference must not take anything else with it
+  document.querySelector("#accent-pick button[data-accent=cyan]").click();
+  await settle(300);
+  const kept = window.__TAURI__.core;
+  note(!!SETTINGS.armed && SETTINGS.armed["witcher2.exe"].length === 1,
+       "changing a preference keeps what you had armed");
+  note(!!SETTINGS.values && SETTINGS.values["witcher2.exe"].orens === "5000",
+       "and the numbers you typed");
+  note(!!SETTINGS.grabbed && SETTINGS.grabbed["witcher2.exe"] === 7,
+       "and which table you installed");
   note(document.querySelectorAll("#view-settings .settings-grid").length >= 3,
        "settings is grouped rather than one long column");
   note(document.getElementById("tables-state").textContent.includes("3 tables"),
@@ -431,12 +471,28 @@ PROBE = r"""
   await settle(200);
   note(!visible("name-sheet"), "the sheet closes once written down");
 
+  // nothing outside the game page belongs to a game
+  const before = window.__calls.length;
+  await settle(1700);
+  const asked = window.__calls.slice(before);
+  note(!asked.includes("shared_tables"),
+       "the shared table service is left alone from other views");
+
   // saving the words rather than copying them by hand
   document.getElementById("claim-name").click();
   await settle(200);
   document.getElementById("name-input").value = "aSwedishMagyar";
   document.getElementById("name-go").click();
   await settle(400);
+  document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape"}));
+  await settle(200);
+  note(visible("name-sheet"), "escape does not throw the recovery words away");
+  document.getElementById("name-sheet").click();
+  await settle(200);
+  note(visible("name-sheet"), "and neither does clicking outside it");
+  note(document.getElementById("name-title").textContent.includes("Write these down"),
+       "the sheet is titled for the step it is on");
+
   document.getElementById("phrase-save").click();
   await settle(300);
   note(window.__calls.includes("save_phrase"), "the phrase can be saved to a file");
@@ -510,6 +566,9 @@ PROBE = r"""
     await settle(200);
     note(visible("view-" + target), "nav opens " + target);
   }
+
+  note(!document.getElementById("library-count").textContent.includes("1 games"),
+       "counts read right at one");
 
   note(window.__errors.length === 0,
        "no uncaught errors" + (window.__errors.length ? ": " + window.__errors.join(" | ") : ""));
