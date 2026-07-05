@@ -623,6 +623,19 @@ fn forget_name() -> Result<(), String> {
 
 /* ---------- moving to another machine ---------- */
 
+#[cfg(windows)]
+fn owner_window(app: &tauri::AppHandle) -> isize {
+    app.get_webview_window("main")
+        .and_then(|w| w.hwnd().ok())
+        .map(|h| h.0 as isize)
+        .unwrap_or_default()
+}
+
+#[cfg(not(windows))]
+fn owner_window(_app: &tauri::AppHandle) -> isize {
+    0
+}
+
 #[derive(Serialize)]
 struct ProfileGame {
     exe: String,
@@ -680,6 +693,7 @@ fn now() -> String {
 
 #[tauri::command]
 fn export_profile(
+    app: tauri::AppHandle,
     state: tauri::State<'_, App>,
     prefs: bool,
     account: bool,
@@ -700,6 +714,7 @@ fn export_profile(
     }
 
     let Some(path) = dialog::save(&dialog::Ask {
+        owner: owner_window(&app),
         title: "Save your Freeplay profile",
         kinds: dialog::PROFILES,
         suggested: "freeplay-profile.freeplay",
@@ -730,10 +745,15 @@ struct Peek {
 // read it and describe it, but change nothing until the answer comes back. a
 // path arrives when one was dropped on the window, otherwise ask for it
 #[tauri::command]
-fn open_profile(state: tauri::State<'_, App>, path: Option<String>) -> Result<Peek, String> {
+fn open_profile(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, App>,
+    path: Option<String>,
+) -> Result<Peek, String> {
     let picked = match path {
         Some(given) => Some(PathBuf::from(given)),
         None => dialog::open(&dialog::Ask {
+            owner: owner_window(&app),
             title: "Open a Freeplay profile",
             kinds: dialog::PROFILES,
             suggested: "",
@@ -827,8 +847,9 @@ async fn apply_profile(
 // the recovery words, saved where the user says. copying them out of a box and
 // into a text file by hand is how people end up not writing them down at all
 #[tauri::command]
-fn save_phrase(name: String, phrase: String) -> Result<String, String> {
+fn save_phrase(app: tauri::AppHandle, name: String, phrase: String) -> Result<String, String> {
     let Some(path) = dialog::save(&dialog::Ask {
+        owner: owner_window(&app),
         title: "Save your recovery words",
         kinds: dialog::TEXT,
         suggested: &format!("freeplay-{}-recovery.txt", name.to_lowercase()),
@@ -848,8 +869,13 @@ fn save_phrase(name: String, phrase: String) -> Result<String, String> {
 
 // the file picker for a .CT, for anybody who does not think to drag one in
 #[tauri::command]
-fn pick_table(state: tauri::State<'_, App>, exe: Option<String>) -> Result<String, String> {
+fn pick_table(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, App>,
+    exe: Option<String>,
+) -> Result<String, String> {
     let Some(path) = dialog::open(&dialog::Ask {
+        owner: owner_window(&app),
         title: "Open a Cheat Engine table",
         kinds: dialog::TABLES,
         suggested: "",
@@ -932,13 +958,25 @@ fn open_log() -> Result<(), String> {
     freeplay_library::launch::show(&file)
 }
 
+// only the things the front end actually owns. it sends back a whole settings
+// object built from whatever it last read, and everything armed, typed or
+// downloaded since then lives in the same struct, so taking it wholesale threw
+// all of that away the first time anybody clicked a theme swatch
 #[tauri::command]
 fn save_settings(state: tauri::State<'_, App>, next: Settings) -> Result<Settings, String> {
-    let mut next = next;
-    next.tidy();
-    settings::save(&next)?;
-    *state.settings.lock().unwrap() = next.clone();
-    Ok(next)
+    let mut held = state.settings.lock().unwrap();
+
+    held.theme = next.theme;
+    held.accent = next.accent;
+    held.pinned = next.pinned;
+    held.favourites = next.favourites;
+    held.auto_update = next.auto_update;
+    held.auto_attach = next.auto_attach;
+    held.shared_open = next.shared_open;
+
+    held.tidy();
+    settings::save(&held)?;
+    Ok(held.clone())
 }
 
 // windows asks for two icons, a small one for the title bar and a big one for

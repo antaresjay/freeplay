@@ -5,6 +5,9 @@ use std::path::PathBuf;
 
 pub struct Ask<'a> {
     pub title: &'a str,
+    // the freeplay window, so the picker is owned by it rather than floating
+    // loose and ending up behind it
+    pub owner: isize,
     // pairs of what to call it and what to match, ("Cheat Engine table", "*.CT")
     pub kinds: &'a [(&'a str, &'a str)],
     pub suggested: &'a str,
@@ -16,6 +19,7 @@ mod windows_picker {
     use super::{Ask, PathBuf};
 
     use windows::core::{PCWSTR, PWSTR};
+    use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Controls::Dialogs::{
         GetOpenFileNameW, GetSaveFileNameW, OFN_FILEMUSTEXIST, OFN_HIDEREADONLY,
         OFN_OVERWRITEPROMPT, OFN_PATHMUSTEXIST, OPENFILENAMEW,
@@ -53,6 +57,7 @@ mod windows_picker {
 
         let mut args = OPENFILENAMEW {
             lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
+            hwndOwner: HWND(ask.owner as *mut std::ffi::c_void),
             lpstrFilter: PCWSTR(filter.as_ptr()),
             lpstrFile: PWSTR(buffer.as_mut_ptr()),
             nMaxFile: buffer.len() as u32,
