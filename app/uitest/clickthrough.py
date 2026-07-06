@@ -338,6 +338,46 @@ PROBE = r"""
     note(rows.length === 3, "shared tables listed (" + rows.length + ")");
     note(document.querySelectorAll("#shared-sort option").length === 4,
          "sort options filled in");
+
+    // the windows popup ignores the theme entirely, so we draw our own
+    const face = document.querySelector("#shared-sort").closest(".picker")
+      .querySelector(".picker-face");
+    note(!!face, "the sort list is drawn by us, not by windows");
+    note(face.textContent.includes("Best match"), "and shows what is chosen");
+    note(document.querySelectorAll(".picker-menu:not([hidden])").length === 0,
+         "with nothing open to start with");
+
+    face.click();
+    await settle(200);
+    const menu = document.querySelector(".picker-menu:not([hidden])");
+    note(!!menu, "clicking it opens the list");
+    note(menu.querySelectorAll(".picker-item").length === 4,
+         "with every option in it");
+    note(menu.querySelector(".picker-item.on").textContent === "Best match",
+         "and the current one marked");
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+    menu.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+    await settle(200);
+    note(document.querySelectorAll(".picker-menu:not([hidden])").length === 0,
+         "escape closes it");
+
+    face.click();
+    await settle(200);
+    const pickItems = document.querySelectorAll(".picker-menu:not([hidden]) .picker-item");
+    pickItems[2].click();
+    await settle(400);
+    note(document.getElementById("shared-sort").value === "downloads",
+         "choosing one sets the value behind it");
+    note(face.textContent.includes("Most used"), "and the face follows");
+    note(document.querySelectorAll(".picker-menu:not([hidden])").length === 0,
+         "and it closes on its own");
+
+    // put it back so the rest of the run is on best match
+    face.click();
+    await settle(150);
+    document.querySelectorAll(".picker-menu:not([hidden]) .picker-item")[0].click();
+    await settle(400);
     // authenticity and "does it work" are different claims and the badge
     // must not blur them
     const badge = document.querySelector("#shared-list .shared-row .verified");

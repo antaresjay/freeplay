@@ -26,6 +26,148 @@ function toast(message, bad = false) {
 
 const gameFor = (key) => games.find((g) => g.key === key);
 
+/* ---------- dropdowns ---------- */
+
+/* a native select opens an operating system menu that knows nothing about the
+   theme: grey highlight, square corners, its own font. this wraps one in a
+   list we draw ourselves and leaves the select in the page, so everything that
+   reads .value or listens for change carries on working */
+
+let openPicker = null;
+
+function enhanceSelect(select) {
+  if (select.picker) return select.picker.sync();
+
+  // the class on the select styles a text input, and putting it on the
+  // wrapper too would draw a second border round the face
+  const wrap = document.createElement("div");
+  wrap.className = "picker";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "picker-face";
+  const label = document.createElement("span");
+  const chevron = document.createElement("svg");
+  chevron.innerHTML = '<path d="M3.5 5.5L7 9l3.5-3.5"/>';
+  chevron.setAttribute("viewBox", "0 0 14 14");
+  chevron.setAttribute("class", "picker-chevron");
+  button.append(label, chevron);
+
+  const menu = document.createElement("div");
+  menu.className = "picker-menu";
+  menu.hidden = true;
+  // the menu is fixed to the viewport so a panel with its own scrollbar
+  // cannot clip it
+  document.body.appendChild(menu);
+
+  select.parentNode.insertBefore(wrap, select);
+  wrap.append(button, select);
+
+  const api = {
+    sync() {
+      const chosen = select.options[select.selectedIndex];
+      label.textContent = chosen ? chosen.textContent : "";
+    },
+    close() {
+      menu.hidden = true;
+      button.classList.remove("open");
+      if (openPicker === api) openPicker = null;
+    },
+    open() {
+      if (openPicker && openPicker !== api) openPicker.close();
+      openPicker = api;
+
+      menu.innerHTML = "";
+      [...select.options].forEach((option, at) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "picker-item" + (at === select.selectedIndex ? " on" : "");
+        item.textContent = option.textContent;
+        item.addEventListener("click", () => {
+          select.selectedIndex = at;
+          api.sync();
+          api.close();
+          button.focus();
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        menu.appendChild(item);
+      });
+
+      menu.hidden = false;
+      button.classList.add("open");
+      place();
+      const on = menu.querySelector(".picker-item.on") || menu.firstChild;
+      if (on) on.focus();
+    },
+  };
+
+  function place() {
+    const box = button.getBoundingClientRect();
+    const room = window.innerHeight - box.bottom;
+    const height = menu.offsetHeight;
+
+    menu.style.minWidth = `${box.width}px`;
+    menu.style.left = `${Math.min(box.left, window.innerWidth - menu.offsetWidth - 8)}px`;
+    // flip above when there is no room below, rather than running off screen
+    menu.style.top =
+      room < height + 12 && box.top > height + 12
+        ? `${box.top - height - 6}px`
+        : `${box.bottom + 6}px`;
+  }
+
+  button.addEventListener("click", () => (menu.hidden ? api.open() : api.close()));
+  button.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      api.open();
+    }
+  });
+
+  menu.addEventListener("keydown", (e) => {
+    const items = [...menu.querySelectorAll(".picker-item")];
+    const at = items.indexOf(document.activeElement);
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+      api.close();
+      button.focus();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      items[Math.min(at + 1, items.length - 1)].focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      items[Math.max(at - 1, 0)].focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      items[0].focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      items[items.length - 1].focus();
+    } else if (e.key === "Tab") {
+      api.close();
+    } else if (e.key.length === 1) {
+      // type the first letter to jump, the way the native one does
+      const found = items.find((i) =>
+        i.textContent.toLowerCase().startsWith(e.key.toLowerCase())
+      );
+      if (found) found.focus();
+    }
+  });
+
+  select.picker = api;
+  api.sync();
+  return api;
+}
+
+document.addEventListener("pointerdown", (e) => {
+  if (!openPicker) return;
+  if (e.target.closest(".picker") || e.target.closest(".picker-menu")) return;
+  openPicker.close();
+});
+window.addEventListener("resize", () => openPicker && openPicker.close());
+// scrolling the page underneath would leave the menu floating on its own
+document.addEventListener("scroll", () => openPicker && openPicker.close(), true);
+
 const many = (n, one, more) => `${n} ${n === 1 ? one : more || one + "s"}`;
 
 /* ---------- settings ---------- */
@@ -764,8 +906,15 @@ function valueBox(item, exe) {
       pick.appendChild(option);
     }
     pick.value = item.value;
-    pick.addEventListener("change", () => send(pick.value, () => (pick.value = item.value)));
+    pick.addEventListener("change", () => send(pick.value, () => reset(pick)));
     wrap.appendChild(pick);
+    // built and given its value first, so the face reads right straight away
+    setTimeout(() => enhanceSelect(pick), 0);
+
+    function reset(box) {
+      box.value = item.value;
+      if (box.picker) box.picker.sync();
+    }
   } else {
     const input = document.createElement("input");
     input.type = "text";
@@ -1238,6 +1387,7 @@ async function loadSortOptions() {
     el.textContent = option.label;
     box.appendChild(el);
   }
+  enhanceSelect(box);
 }
 
 function when(seconds) {
@@ -1794,6 +1944,7 @@ async function start() {
     toast("Could not read your settings: " + e, true);
   }
   applyTheme();
+  enhanceSelect($("scan-type"));
   await drawWhoami();
   drawWindowState();
   drawVersion();
