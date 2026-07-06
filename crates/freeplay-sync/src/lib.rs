@@ -13,6 +13,7 @@
 
 pub mod community;
 pub mod http;
+pub mod rank;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
