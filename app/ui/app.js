@@ -1324,14 +1324,22 @@ $("shared-search").addEventListener("input", filterShared);
 
 function sharedRow(row) {
   const card = document.createElement("div");
-  card.className = "shared-row" + (row.installed ? " have" : "");
+  card.className =
+    "shared-row" + (row.installed ? " have" : "") + (row.recommended ? " pick" : "");
 
   const main = document.createElement("div");
   main.className = "shared-main";
 
+  if (row.recommended) {
+    const star = document.createElement("div");
+    star.className = "pick-flag";
+    star.textContent = "Recommended";
+    main.appendChild(star);
+  }
+
   const title = document.createElement("div");
   title.className = "shared-name";
-  title.textContent = row.by ? "by " + row.by : "shared anonymously";
+  title.textContent = row.by ? row.by : "shared anonymously";
 
   /* your own upload coming back at you looks like a stranger's otherwise */
   if (row.by && me && row.by.toLowerCase() === me.toLowerCase()) {
@@ -1341,32 +1349,46 @@ function sharedRow(row) {
     title.appendChild(yours);
   }
   if (row.by) {
+    /* this says the name is registered to a key and nobody else can publish
+       under it. it says nothing at all about whether the table works, and the
+       old wording, "signed", read like it did */
     const tick = document.createElement("span");
     tick.className = "verified";
-    tick.textContent = "signed";
-    tick.title = "this name is registered to a key, nobody else can publish under it";
+    tick.textContent = "author verified";
+    tick.title =
+      "This name is registered to a key, so only its owner can publish under it. " +
+      "It is not a claim that the table works.";
     title.appendChild(tick);
   }
+
+  /* the version is what decides whether a table does anything at all, so it
+     goes above the counts rather than at the end of a run of full stops */
+  const fit = document.createElement("div");
+  fit.className = "shared-fit " + row.fit;
+  const mark = document.createElement("b");
+  mark.textContent = { same: "✓", older: "⚠", newer: "⚠" }[row.fit] || "?";
+  const said = document.createElement("span");
+  said.textContent = row.fit_note;
+  fit.append(mark, said);
 
   const facts = document.createElement("div");
   facts.className = "shared-facts";
   const bits = [many(row.cheats, "cheat")];
-  bits.push(row.up || row.down ? row.up + " up, " + row.down + " down" : "no votes yet");
   if (row.downloads) bits.push(many(row.downloads, "download"));
-  if (row.built_for) bits.push("checked on " + row.built_for);
+  if (row.up || row.down) bits.push(row.up + " up, " + row.down + " down");
   const added = when(row.added);
   if (added) bits.push(added);
   facts.textContent = bits.join("  .  ");
   if (row.standing) card.title = row.standing;
 
-  main.append(title, facts);
+  main.append(title, fit, facts);
 
   const actions = document.createElement("div");
   actions.className = "row-actions";
 
   const button = document.createElement("button");
   button.className = row.installed ? "ghost" : "primary";
-  button.textContent = row.installed ? "Installed" : "Use this";
+  button.textContent = row.installed ? "Installed" : "Use table";
   button.disabled = row.installed;
   button.addEventListener("click", async () => {
     button.disabled = true;
@@ -1380,7 +1402,7 @@ function sharedRow(row) {
     } catch (e) {
       toast(String(e), true);
       button.disabled = false;
-      button.textContent = "Use this";
+      button.textContent = "Use table";
     }
   });
   actions.appendChild(button);

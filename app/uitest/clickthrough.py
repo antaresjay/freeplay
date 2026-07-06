@@ -73,9 +73,18 @@ const SORTS = [
 
 const SHARED = [
   {id:7, game:"The Witcher 2", by:"aSwedishMagyar", cheats:23, up:9, down:1,
-   downloads:140, built_for:"3.5.0.1", added:1786142235, standing:"", installed:false},
+   downloads:140, built_for:"3.5.0.1", added:1786142235, standing:"",
+   installed:false, fit:"same", fit_note:"Tested on your version, 3.5.0.1",
+   recommended:true},
   {id:8, game:"The Witcher 2", by:"aSwedishMagyar", cheats:11, up:0, down:0,
-   downloads:0, built_for:"", added:1786142235, standing:"", installed:true}
+   downloads:0, built_for:"", added:1786142235, standing:"",
+   installed:true, fit:"unknown",
+   fit_note:"Nobody recorded which version this was tested on",
+   recommended:false},
+  {id:9, game:"The Witcher 2", by:"SomeoneElse", cheats:31, up:2, down:0,
+   downloads:89, built_for:"3.4.0.2", added:1786142235, standing:"",
+   installed:false, fit:"older", fit_note:"Tested on 3.4.0.2, you have 3.5.0.1",
+   recommended:false}
 ];
 
 const PHRASE = ["cold","burst","cash","camel","cargo","bread","cloth","clerk",
@@ -249,7 +258,7 @@ PROBE = r"""
     await settle(300);
     note(!visible("shared"), "the shared panel folds away");
     note(visible("dock-open"), "and leaves a tab to bring it back");
-    note(document.getElementById("dock-open-count").textContent === "2",
+    note(document.getElementById("dock-open-count").textContent === "3",
          "the tab says how many are on offer");
     document.getElementById("dock-open").click();
     await settle(300);
@@ -274,8 +283,11 @@ PROBE = r"""
     document.getElementById("shared-search").value = "aSwedishMagyar";
     document.getElementById("shared-search").dispatchEvent(new Event("input"));
     await settle(300);
-    note([...document.querySelectorAll("#shared-list .shared-row")].every(r => !r.hidden),
-         "searching for who shared it keeps the matches");
+    const matching = [...document.querySelectorAll("#shared-list .shared-row")]
+      .filter(r => !r.hidden);
+    note(matching.length === 2, "searching by who shared it keeps their tables");
+    note([...document.querySelectorAll("#shared-list .shared-row")].some(r => r.hidden),
+         "and drops everybody else");
     document.getElementById("shared-search").value = "nobody";
     document.getElementById("shared-search").dispatchEvent(new Event("input"));
     await settle(300);
@@ -323,11 +335,35 @@ PROBE = r"""
 
     // shared tables
     const rows = document.querySelectorAll("#shared-list .shared-row");
-    note(rows.length === 2, "shared tables listed (" + rows.length + ")");
+    note(rows.length === 3, "shared tables listed (" + rows.length + ")");
     note(document.querySelectorAll("#shared-sort option").length === 4,
          "sort options filled in");
-    note(document.querySelector("#shared-list .shared-row .verified") !== null,
-         "a signed name is marked as signed");
+    // authenticity and "does it work" are different claims and the badge
+    // must not blur them
+    const badge = document.querySelector("#shared-list .shared-row .verified");
+    note(badge !== null, "a registered name is marked");
+    note(badge.textContent === "author verified",
+         "the badge is about the author, not the table (" + badge.textContent + ")");
+    note(badge.title.toLowerCase().includes("not a claim that the table works"),
+         "and says so outright");
+
+    // which build it was tested on is what decides whether it does anything
+    const fits = [...document.querySelectorAll("#shared-list .shared-fit")];
+    note(fits.length === 3, "every row leads with its version compatibility");
+    note(fits[0].textContent.includes("Tested on your version"),
+         "a table for your build says so plainly");
+    note(fits[0].classList.contains("same"), "and is marked as a match");
+    note(fits[2].textContent.includes("you have 3.5.0.1"),
+         "one for another build says which build you are on");
+    note(fits[2].classList.contains("older"), "and is marked as a mismatch");
+
+    // the recommendation
+    const picks = document.querySelectorAll("#shared-list .shared-row.pick");
+    note(picks.length === 1, "exactly one table is recommended");
+    note(picks[0].querySelector(".pick-flag").textContent === "Recommended",
+         "and it says why it is at the top");
+    note(rows[0].classList.contains("pick"),
+         "the recommended one is the one you see first");
     note(document.querySelectorAll("#shared-list .shared-row.have").length === 1,
          "one is already installed");
 
@@ -335,9 +371,14 @@ PROBE = r"""
     note(blurb.includes("23 cheats"), "row shows the cheat count");
     note(blurb.includes("9 up"), "row shows votes");
     note(blurb.includes("140 downloads"), "row shows downloads");
-    note(blurb.includes("3.5.0.1"), "row shows the build");
+    note(!blurb.includes("3.5.0.1"),
+         "the version is not buried at the end of the counts any more");
 
     const use = [...document.querySelectorAll("#shared-list button")].find(b => !b.disabled);
+    note(use.textContent === "Use table", "the button says what it does");
+    note([...document.querySelectorAll("#shared-list button")]
+           .some(b => b.textContent === "Installed"),
+         "and one already on disk says Installed");
     use.click();
     await settle(400);
     note(window.__calls.includes("install_shared"), "using a shared table installs it");

@@ -4,7 +4,8 @@
 use std::path::PathBuf;
 
 use freeplay_id::Identity;
-use freeplay_sync::community::{Community, Listing, Live, Sort, ENDPOINT};
+use freeplay_sync::community::{Community, Live, Sort, ENDPOINT};
+use freeplay_sync::rank::Fit;
 use freeplay_table::Table;
 use serde::Serialize;
 
@@ -39,23 +40,47 @@ pub struct Shared {
     pub standing: String,
     // already sitting in the tables folder
     pub installed: bool,
+    // how the build it was checked against lines up with the one installed
+    // here: same, older, newer or unknown
+    pub fit: String,
+    pub fit_note: String,
+    // the one worth pointing at, if any
+    pub recommended: bool,
 }
 
 impl Shared {
-    fn from(row: Listing, installed: bool) -> Self {
+    fn from(row: freeplay_sync::rank::Scored, installed: bool, mine: &str) -> Self {
+        let fit = row.fit;
+        let listing = row.listing;
+
         Self {
-            standing: row.standing(),
-            id: row.id,
-            game: row.game,
-            by: row.submitted_by,
-            cheats: row.cheats,
-            up: row.up,
-            down: row.down,
-            downloads: row.downloads,
-            built_for: row.built_for,
-            added: row.created_at,
+            standing: listing.standing(),
+            fit_note: fit_note(fit, &listing.built_for, mine),
+            fit: fit.key().to_string(),
+            recommended: row.recommended,
+            id: listing.id,
+            game: listing.game,
+            by: listing.submitted_by,
+            cheats: listing.cheats,
+            up: listing.up,
+            down: listing.down,
+            downloads: listing.downloads,
+            built_for: listing.built_for,
+            added: listing.created_at,
             installed,
         }
+    }
+}
+
+// said in full, because "checked on 3.5.0.1" only means something if you
+// happen to know which build you are running
+fn fit_note(fit: Fit, theirs: &str, mine: &str) -> String {
+    match fit {
+        Fit::Same => format!("Tested on your version, {theirs}"),
+        Fit::Older => format!("Tested on {theirs}, you have {mine}"),
+        Fit::Newer => format!("Tested on {theirs}, newer than your {mine}"),
+        Fit::Unknown if !theirs.is_empty() => format!("Tested on {theirs}"),
+        Fit::Unknown => "Nobody recorded which version this was tested on".into(),
     }
 }
 
@@ -80,13 +105,37 @@ pub fn list(exe: &str, build: &str, sort: &str, have: &[String]) -> Result<Vec<S
     let wire = Live;
     let found = Community::new(&endpoint(), &wire).list_by(exe, build, sort)?;
 
-    Ok(found
+    // best match is worked out here rather than by the service, because this
+    // is the only machine that knows which build of the game is installed.
+    // the other orders are what the person asked for and are left alone
+    let ordered = if sort == Sort::Best {
+        freeplay_sync::rank::rank(found, build, now())
+    } else {
+        found
+            .into_iter()
+            .map(|listing| freeplay_sync::rank::Scored {
+                fit: freeplay_sync::rank::fit_of(&listing.built_for, build),
+                listing,
+                score: 0.0,
+                recommended: false,
+            })
+            .collect()
+    };
+
+    Ok(ordered
         .into_iter()
         .map(|row| {
-            let installed = have.contains(&row.fingerprint);
-            Shared::from(row, installed)
+            let installed = have.contains(&row.listing.fingerprint);
+            Shared::from(row, installed, build)
         })
         .collect())
+}
+
+fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or_default()
 }
 
 // what comes back has already been parsed and validated by the client before
