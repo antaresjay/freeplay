@@ -44,10 +44,9 @@ fn declared_ids(html: &str) -> HashSet<String> {
     between(html, "id=\"", "\"").into_iter().collect()
 }
 
-#[test]
-fn every_id_the_script_asks_for_exists_in_the_page() {
-    let html = read("index.html");
-    let js = read("app.js");
+fn ids_line_up(page: &str, script: &str) {
+    let html = read(page);
+    let js = read(script);
     let have = declared_ids(&html);
 
     let missing: Vec<String> = between(&js, "$(\"", "\")")
@@ -57,9 +56,29 @@ fn every_id_the_script_asks_for_exists_in_the_page() {
 
     assert!(
         missing.is_empty(),
-        "app.js looks up ids that index.html does not define: {missing:?}. \
+        "{script} looks up ids that {page} does not define: {missing:?}. \
          $() returns null for these and the next property access throws."
     );
+}
+
+#[test]
+fn every_id_the_script_asks_for_exists_in_the_page() {
+    ids_line_up("index.html", "app.js");
+}
+
+// the overlay is a second window with a page and a script of its own, and
+// nothing else in the suite would notice if it stopped loading
+#[test]
+fn the_overlay_page_and_its_script_agree_too() {
+    ids_line_up("overlay.html", "overlay.js");
+}
+
+#[test]
+fn the_overlay_loads_what_it_needs() {
+    let html = read("overlay.html");
+    for part in ["style.css", "overlay.css", "overlay.js"] {
+        assert!(html.contains(part), "overlay.html should load {part}");
+    }
 }
 
 #[test]
@@ -112,7 +131,7 @@ fn the_script_and_the_page_agree_on_which_views_exist() {
 
 #[test]
 fn commands_the_script_calls_are_all_registered() {
-    let js = read("app.js");
+    let js = read("app.js") + &read("overlay.js");
     let rust = include_str!("main.rs");
 
     let registered: HashSet<&str> = rust

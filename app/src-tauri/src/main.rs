@@ -19,7 +19,9 @@ use serde::Serialize;
 
 mod community;
 mod dialog;
+mod hotkey;
 mod log;
+mod overlay;
 mod profile;
 mod settings;
 mod shared;
@@ -48,6 +50,8 @@ struct App {
     settings: Mutex<Settings>,
     // a profile that has been opened and shown to you, waiting on the yes
     pending: Mutex<Option<profile::Profile>>,
+    // the overlay key, held open for as long as it is registered
+    hotkey: Mutex<Option<hotkey::Listener>>,
 }
 
 #[derive(Serialize)]
@@ -886,6 +890,138 @@ fn pick_table(
     import_table(state, path.display().to_string(), exe)
 }
 
+/* ---------- the overlay ---------- */
+
+#[derive(Serialize)]
+struct OverlayState {
+    on: bool,
+    key: String,
+    showing: bool,
+    // whatever well known program already uses that combination
+    clash: Option<String>,
+    // the game the overlay would be about, if any
+    game: Option<String>,
+}
+
+fn overlay_state(app: &tauri::AppHandle, state: &tauri::State<'_, App>) -> OverlayState {
+    let settings = state.settings.lock().unwrap();
+    OverlayState {
+        on: settings.overlay,
+        clash: hotkey::clash(&settings.overlay_key).map(str::to_string),
+        key: settings.overlay_key.clone(),
+        showing: overlay::showing(app),
+        game: state
+            .target
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|t| t.name().to_string()),
+    }
+}
+
+#[tauri::command]
+fn overlay_status(app: tauri::AppHandle, state: tauri::State<'_, App>) -> OverlayState {
+    overlay_state(&app, &state)
+}
+
+#[tauri::command]
+fn set_overlay(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, App>,
+    on: Option<bool>,
+    key: Option<String>,
+) -> Result<OverlayState, String> {
+    if let Some(text) = &key {
+        // refuse it here rather than finding out at the next launch that
+        // nothing opens the overlay any more
+        hotkey::parse(text)?;
+    }
+
+    {
+        let mut settings = state.settings.lock().unwrap();
+        if let Some(on) = on {
+            settings.overlay = on;
+        }
+        if let Some(text) = key {
+            settings.overlay_key = hotkey::spell(hotkey::parse(&text)?);
+        }
+        settings::save(&settings)?;
+    }
+
+    if !state.settings.lock().unwrap().overlay {
+        overlay::hide(&app);
+    }
+    rebind_hotkey(&app)?;
+    Ok(overlay_state(&app, &state))
+}
+
+#[tauri::command]
+fn toggle_overlay(app: tauri::AppHandle, state: tauri::State<'_, App>) -> Result<bool, String> {
+    let pid = state.target.lock().unwrap().as_ref().map(|t| t.pid());
+    overlay::toggle(&app, pid)
+}
+
+#[tauri::command]
+fn hide_overlay(app: tauri::AppHandle) {
+    overlay::hide(&app);
+}
+
+// what the overlay is looking at, so it can draw something before anything is
+// attached rather than a blank panel
+#[tauri::command]
+fn overlay_game(state: tauri::State<'_, App>) -> Option<Attached> {
+    let guard = state.target.lock().unwrap();
+    let target = guard.as_ref()?;
+    let exe = target.name().to_string();
+    let session = state.session.lock().unwrap();
+    let table = session.as_ref().filter(|s| s.table().matches_process(&exe));
+
+    Some(Attached {
+        game: table
+            .map(|s| s.table().game.name.clone())
+            .unwrap_or_else(|| exe.clone()),
+        table: table.is_some(),
+        arch: target.arch().label().to_string(),
+        pid: target.pid(),
+        process: exe,
+    })
+}
+
+// dropped and made again whenever the key or the on switch changes. holding
+// the registration open while it is turned off would keep the combination
+// away from whatever else wants it
+fn rebind_hotkey(app: &tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<App>();
+    let (wanted, text) = {
+        let settings = state.settings.lock().unwrap();
+        (settings.overlay, settings.overlay_key.clone())
+    };
+
+    *state.hotkey.lock().unwrap() = None;
+    if !wanted {
+        return Ok(());
+    }
+
+    let key = hotkey::parse(&text)?;
+    let (tell, heard) = std::sync::mpsc::channel();
+    let listener =
+        hotkey::listen(key, tell).map_err(|e| format!("{text} could not be set: {e}"))?;
+    *state.hotkey.lock().unwrap() = Some(listener);
+
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        // ends on its own when the listener is dropped and the sender goes
+        while heard.recv().is_ok() {
+            let state = handle.state::<App>();
+            let pid = state.target.lock().unwrap().as_ref().map(|t| t.pid());
+            if let Err(e) = overlay::toggle(&handle, pid) {
+                tracing::warn!("overlay: {e}");
+            }
+        }
+    });
+    Ok(())
+}
+
 // the about page had a blank line where this was meant to go
 #[tauri::command]
 fn version() -> String {
@@ -1464,6 +1600,8 @@ fn watch_for_games(handle: tauri::AppHandle) {
                 if !alive || !running.contains(&name) {
                     tracing::info!("{name} closed, letting go");
                     tear_down(&state);
+                    // the panel was pinned over a window that is gone
+                    overlay::hide(&handle);
                     let _ = handle.emit("detached", name);
                     continue;
                 }
@@ -1624,6 +1762,10 @@ fn main() {
                 });
             }
 
+            if let Err(e) = rebind_hotkey(app.handle()) {
+                tracing::warn!("overlay hotkey: {e}");
+            }
+
             let handle = app.handle().clone();
             std::thread::spawn(move || watch_for_games(handle));
             Ok(())
@@ -1652,6 +1794,11 @@ fn main() {
             open_folder,
             open_url,
             version,
+            overlay_status,
+            set_overlay,
+            toggle_overlay,
+            hide_overlay,
+            overlay_game,
             pick_table,
             profile_games,
             export_profile,
