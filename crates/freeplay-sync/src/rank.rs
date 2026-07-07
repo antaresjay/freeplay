@@ -62,7 +62,7 @@ pub struct Scored {
     pub recommended: bool,
 }
 
-/// Rank tables for the machine this is running on, best first.
+// rank tables for the machine this is running on, best first
 pub fn rank(rows: Vec<Listing>, mine: &str, now: i64) -> Vec<Scored> {
     let mut scored: Vec<Scored> = rows
         .into_iter()

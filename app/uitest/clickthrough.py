@@ -90,6 +90,7 @@ const SHARED = [
 const PHRASE = ["cold","burst","cash","camel","cargo","bread","cloth","clerk",
   "adopt","camel","bear","candy","chalk","bank","alloy","boot","column"];
 
+let OVERLAY = {on: false, key: "Ctrl+Shift+O"};
 window.__calls = [];
 /* save_settings hands back what it was given, same as the real one. a stub
    that answered with a fixed object hid the bug where pinning a game did not
@@ -150,6 +151,19 @@ window.__TAURI__ = {
         case "save_phrase": return "Saved to D:/words.txt";
         case "pick_table": return "23 cheats imported, 0 skipped";
         case "open_url": return null;
+        case "overlay_status":
+          return {on: OVERLAY.on, key: OVERLAY.key, showing: false,
+                  clash: OVERLAY.key === "Alt+Z" ? "the NVIDIA overlay" : null,
+                  game: "witcher2.exe"};
+        case "set_overlay":
+          if (args.on !== null && args.on !== undefined) OVERLAY.on = args.on;
+          if (args.key) OVERLAY.key = args.key;
+          return null;
+        case "toggle_overlay": return true;
+        case "hide_overlay": window.__hidden = true; return null;
+        case "overlay_game":
+          return {process:"witcher2.exe", pid:1234, game:"The Witcher 2",
+                  table:true, arch:"32-bit"};
         case "remove_table": return "Removed. What you had switched on for it is forgotten too";
         case "version": return "Version 0.1.0 for 64-bit Windows";
         case "table_count": return "3 tables";
@@ -504,6 +518,52 @@ PROBE = r"""
   settingsNav.click();
   await settle(200);
   note(visible("claim-name"), "settings offers to claim a name");
+
+  // the overlay, off until asked for
+  note(!document.getElementById("overlay-on").classList.contains("on"),
+       "the overlay starts off");
+  note(!visible("overlay-key-row"), "and its shortcut is not offered until it is on");
+
+  document.getElementById("overlay-on").click();
+  await settle(400);
+  note(document.getElementById("overlay-on").classList.contains("on"),
+       "turning it on sticks");
+  note(visible("overlay-key-row"), "and the shortcut appears");
+  note(document.getElementById("overlay-key").textContent === "Ctrl+Shift+O",
+       "with a default that treads on nothing");
+
+  // pressing keys rather than typing the name of a key
+  const cap = document.getElementById("overlay-key");
+  cap.click();
+  await settle(150);
+  note(cap.classList.contains("catching"), "clicking it waits for a key press");
+  cap.dispatchEvent(new KeyboardEvent("keydown", {key: "Shift", shiftKey: true, bubbles: true}));
+  await settle(100);
+  note(cap.classList.contains("catching"),
+       "a modifier on its own is not a shortcut, so it keeps waiting");
+
+  cap.dispatchEvent(new KeyboardEvent("keydown",
+    {key: "j", ctrlKey: true, altKey: true, bubbles: true}));
+  await settle(400);
+  note(cap.textContent === "Ctrl+Alt+J", "the combination you pressed is what it takes");
+
+  // a combination somebody else already owns is allowed but called out,
+  // because not everybody runs the program that owns it
+  cap.click();
+  await settle(150);
+  cap.dispatchEvent(new KeyboardEvent("keydown", {key: "z", altKey: true, bubbles: true}));
+  await settle(400);
+  note(document.getElementById("overlay-key-why").textContent.includes("NVIDIA"),
+       "a shortcut another program owns is called out");
+  note(document.getElementById("overlay-key-why").className === "warn",
+       "and marked as a problem");
+
+  document.getElementById("overlay-key-reset").click();
+  await settle(400);
+  note(document.getElementById("overlay-key").textContent === "Ctrl+Shift+O",
+       "reset puts the safe one back");
+  note(document.getElementById("overlay-key-why").className !== "warn",
+       "and the warning goes");
 
   // changing a preference must not take anything else with it
   document.querySelector("#accent-pick button[data-accent=cyan]").click();
