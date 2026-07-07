@@ -33,6 +33,11 @@ pub struct Settings {
     // the shared tables panel on the game page, open or folded away
     #[serde(default = "yes")]
     pub shared_open: bool,
+    // a panel over the game, brought up by a key while you are playing
+    #[serde(default)]
+    pub overlay: bool,
+    #[serde(default = "default_hotkey")]
+    pub overlay_key: String,
     // random, made once. it stops one person voting twice and is not tied to
     // the machine or to any name
     #[serde(default)]
@@ -49,6 +54,10 @@ fn yes() -> bool {
     true
 }
 
+fn default_hotkey() -> String {
+    crate::hotkey::DEFAULT.to_string()
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -61,6 +70,8 @@ impl Default for Settings {
             armed: HashMap::new(),
             values: HashMap::new(),
             shared_open: true,
+            overlay: false,
+            overlay_key: default_hotkey(),
             install_id: String::new(),
             grabbed: HashMap::new(),
             rated: Vec::new(),
@@ -80,6 +91,12 @@ impl Settings {
         }
         self.pinned.dedup();
         self.favourites.dedup();
+
+        // a hand edited hotkey that does not parse would leave the overlay
+        // with no way to open it
+        if crate::hotkey::parse(&self.overlay_key).is_err() {
+            self.overlay_key = default_hotkey();
+        }
 
         if self.install_id.len() != 32 || !self.install_id.chars().all(|c| c.is_ascii_hexdigit()) {
             let seed = std::time::SystemTime::now()
@@ -144,6 +161,31 @@ mod tests {
         };
         settings.tidy();
         assert_eq!(settings.install_id.len(), 32);
+    }
+
+    #[test]
+    fn a_hotkey_nobody_can_press_is_replaced() {
+        let mut settings = Settings {
+            overlay_key: "Wibble+Wobble".into(),
+            ..Default::default()
+        };
+        settings.tidy();
+        assert_eq!(settings.overlay_key, crate::hotkey::DEFAULT);
+    }
+
+    #[test]
+    fn a_hotkey_that_works_is_left_alone() {
+        let mut settings = Settings {
+            overlay_key: "Alt+F8".into(),
+            ..Default::default()
+        };
+        settings.tidy();
+        assert_eq!(settings.overlay_key, "Alt+F8");
+    }
+
+    #[test]
+    fn the_overlay_is_off_until_somebody_asks_for_it() {
+        assert!(!Settings::default().overlay);
     }
 
     #[test]
