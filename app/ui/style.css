@@ -1568,3 +1568,30 @@ body.maximised .win .when-big { display: block; }
 .cheat-value .picker { min-width: 118px; }
 .cheat-value .picker-face { height: 27px; font-size: 12.5px; padding: 0 8px 0 10px; }
 .finder-bar .picker-face { min-width: 92px; }
+
+/* ---------- the overlay shortcut ---------- */
+
+.keycap {
+  min-width: 132px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 620;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: border-color 0.14s, background 0.14s, color 0.14s;
+}
+.keycap:hover { border-color: var(--faint); }
+.keycap.catching {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.keycap:focus-visible { outline: none; border-color: var(--accent-line); }
+
+.setting-label span.warn { color: var(--warn); }

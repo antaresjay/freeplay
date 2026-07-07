@@ -1780,6 +1780,97 @@ $("phrase-done").addEventListener("click", async () => {
   await drawWhoami();
 });
 
+/* ---------- the overlay ---------- */
+
+async function drawOverlay() {
+  let state = null;
+  try {
+    state = await invoke("overlay_status");
+  } catch (e) {
+    return toast(String(e), true);
+  }
+
+  $("overlay-on").classList.toggle("on", state.on);
+  $("overlay-key").textContent = state.key;
+  $("overlay-key-row").hidden = !state.on;
+
+  const why = $("overlay-key-why");
+  if (state.clash) {
+    why.textContent = `${state.key} is already used by ${state.clash}. Pick another one.`;
+    why.className = "warn";
+  } else {
+    why.textContent = "Click the box, then press the keys you want.";
+    why.className = "";
+  }
+}
+
+$("overlay-on").addEventListener("click", async () => {
+  const on = !$("overlay-on").classList.contains("on");
+  try {
+    await invoke("set_overlay", { on, key: null });
+    toast(on ? "Overlay on. Press the shortcut while you play" : "Overlay off");
+  } catch (e) {
+    toast(String(e), true);
+  }
+  await drawOverlay();
+});
+
+/* the box listens for a real key press rather than asking anybody to type
+   "Ctrl+Shift+O" into a text field and spell it the way we happen to parse */
+let catching = false;
+
+$("overlay-key").addEventListener("click", () => {
+  catching = true;
+  $("overlay-key").classList.add("catching");
+  $("overlay-key").textContent = "Press the keys";
+  $("overlay-key").focus();
+});
+
+$("overlay-key").addEventListener("blur", () => {
+  if (!catching) return;
+  catching = false;
+  $("overlay-key").classList.remove("catching");
+  drawOverlay();
+});
+
+$("overlay-key").addEventListener("keydown", async (e) => {
+  if (!catching) return;
+  e.preventDefault();
+
+  if (e.key === "Escape") return $("overlay-key").blur();
+
+  // wait for the key itself, a modifier on its own is not a shortcut
+  const held = ["Control", "Shift", "Alt", "Meta"];
+  if (held.includes(e.key)) return;
+
+  const parts = [];
+  if (e.ctrlKey) parts.push("Ctrl");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+  if (e.metaKey) parts.push("Win");
+  parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+
+  catching = false;
+  $("overlay-key").classList.remove("catching");
+
+  try {
+    await invoke("set_overlay", { on: null, key: parts.join("+") });
+    toast("Shortcut set to " + parts.join("+"));
+  } catch (err) {
+    toast(String(err), true);
+  }
+  await drawOverlay();
+});
+
+$("overlay-key-reset").addEventListener("click", async () => {
+  try {
+    await invoke("set_overlay", { on: null, key: "Ctrl+Shift+O" });
+  } catch (e) {
+    toast(String(e), true);
+  }
+  await drawOverlay();
+});
+
 /* ---------- moving to another machine ---------- */
 
 let exportPicks = new Set();
@@ -1949,6 +2040,7 @@ async function start() {
   drawWindowState();
   drawVersion();
   countTables();
+  drawOverlay();
   $("settings-path").textContent = "%APPDATA%\\freeplay\\settings.json";
   await loadGames();
   setInterval(loadGames, 5000);

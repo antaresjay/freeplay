@@ -338,6 +338,25 @@
 
       <div class="setting">
         <div class="setting-label">
+          <strong>Overlay while you play</strong>
+          <span>A panel over the game for switching cheats on without alt tabbing. Works for windowed and borderless games. Exclusive fullscreen draws over everything, so nothing can sit on top of it.</span>
+        </div>
+        <button id="overlay-on" class="switch"></button>
+      </div>
+
+      <div class="setting" id="overlay-key-row">
+        <div class="setting-label">
+          <strong>Overlay shortcut</strong>
+          <span id="overlay-key-why">Press the keys you want while the box is focused.</span>
+        </div>
+        <div class="setting-actions">
+          <button id="overlay-key" class="keycap">Ctrl+Shift+O</button>
+          <button id="overlay-key-reset" class="ghost">Reset</button>
+        </div>
+      </div>
+
+      <div class="setting">
+        <div class="setting-label">
           <strong>Download new tables automatically</strong>
           <span>Checks for published tables on start. No account, and nothing about you is sent. Turn it off and Freeplay never touches the network.</span>
         </div>

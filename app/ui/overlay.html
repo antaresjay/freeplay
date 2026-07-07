@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-accent="amber">
+<head>
+<meta charset="utf-8">
+<title>Freeplay overlay</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="overlay.css">
+</head>
+<body class="overlay-body">
+
+<div class="ov">
+  <header class="ov-head" data-tauri-drag-region>
+    <img class="ov-mark" src="icon.png" alt="" data-tauri-drag-region>
+    <div class="ov-title" data-tauri-drag-region>
+      <b id="ov-game" data-tauri-drag-region>Not attached</b>
+      <span id="ov-sub" data-tauri-drag-region></span>
+    </div>
+    <button id="ov-close" class="icon-btn" title="Hide (press the shortcut again)">
+      <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+    </button>
+  </header>
+
+  <input id="ov-filter" class="ov-search" type="search" placeholder="Search cheats" autocomplete="off">
+
+  <div id="ov-list" class="ov-list"></div>
+
+  <p id="ov-empty" class="ov-empty" hidden></p>
+
+  <footer class="ov-foot">
+    <span id="ov-count"></span>
+    <span id="ov-key" class="ov-key"></span>
+  </footer>
+</div>
+
+<script src="overlay.js"></script>
+</body>
+</html>
