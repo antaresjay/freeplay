@@ -1136,6 +1136,24 @@ fn set_window_icons(window: &tauri::WebviewWindow) {
 #[cfg(not(windows))]
 fn set_window_icons(_window: &tauri::WebviewWindow) {}
 
+// the game is already up, so bring it back rather than starting a second copy
+#[tauri::command]
+fn focus_game(exe: String) -> Result<(), String> {
+    let wanted = exe.to_lowercase();
+    let pid = processes()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|p| p.name.to_lowercase() == wanted)
+        .map(|p| p.pid)
+        .ok_or("that game is not running any more")?;
+
+    if overlay::focus_game(pid) {
+        Ok(())
+    } else {
+        Err("windows would not bring that window forward".into())
+    }
+}
+
 #[tauri::command]
 async fn launch_game(state: tauri::State<'_, App>, key: String) -> Result<(), String> {
     let game = library(&state, false)
@@ -1934,6 +1952,7 @@ fn main() {
             save_phrase,
             update_tables,
             launch_game,
+            focus_game,
             list_processes,
             attach,
             detach,

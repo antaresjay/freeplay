@@ -77,7 +77,7 @@ pub struct Rect {
 // which process owns it. a game usually has several, so take the biggest
 // visible one rather than the first
 #[cfg(windows)]
-pub fn game_rect(pid: u32) -> Option<Rect> {
+fn main_window(pid: u32) -> Option<windows::Win32::Foundation::HWND> {
     use windows::core::BOOL;
     use windows::Win32::Foundation::{HWND, LPARAM, RECT, TRUE};
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -86,7 +86,7 @@ pub fn game_rect(pid: u32) -> Option<Rect> {
 
     struct Hunt {
         pid: u32,
-        best: Option<RECT>,
+        best: Option<HWND>,
         area: i64,
     }
 
@@ -106,7 +106,7 @@ pub fn game_rect(pid: u32) -> Option<Rect> {
         let area = (rect.right - rect.left) as i64 * (rect.bottom - rect.top) as i64;
         if area > hunt.area {
             hunt.area = area;
-            hunt.best = Some(rect);
+            hunt.best = Some(window);
         }
         TRUE
     }
@@ -119,15 +119,51 @@ pub fn game_rect(pid: u32) -> Option<Rect> {
     unsafe {
         let _ = EnumWindows(Some(look), LPARAM(&mut hunt as *mut Hunt as isize));
     }
+    hunt.best
+}
 
-    hunt.best.map(|rect| Rect {
+#[cfg(windows)]
+pub fn game_rect(pid: u32) -> Option<Rect> {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+
+    let window = main_window(pid)?;
+    let mut rect = RECT::default();
+    unsafe { GetWindowRect(window, &mut rect) }.ok()?;
+
+    Some(Rect {
         right: rect.right,
         top: rect.top,
         height: (rect.bottom - rect.top) as f64,
     })
 }
 
+// bring the game back to the front. clicking play on a game that is already
+// running used to start a second copy, or nothing at all
+#[cfg(windows)]
+pub fn focus_game(pid: u32) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE,
+    };
+
+    let Some(window) = main_window(pid) else {
+        return false;
+    };
+    unsafe {
+        // a minimised window will not come forward without this
+        if IsIconic(window).as_bool() {
+            let _ = ShowWindow(window, SW_RESTORE);
+        }
+        SetForegroundWindow(window).as_bool()
+    }
+}
+
 #[cfg(not(windows))]
 pub fn game_rect(_pid: u32) -> Option<Rect> {
     None
+}
+
+#[cfg(not(windows))]
+pub fn focus_game(_pid: u32) -> bool {
+    false
 }

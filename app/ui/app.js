@@ -582,7 +582,15 @@ function drawGamePage() {
   const attach = $("game-attach");
   attach.textContent = isAttached ? "Detach" : "Attach";
   attach.disabled = !!game.guard || (!game.running && !isAttached);
-  $("game-play").disabled = !!game.guard;
+
+  // it said Play with the game already running, which either starts a second
+  // copy or does nothing at all
+  const play = $("game-play");
+  play.textContent = game.running ? "Switch to game" : "Play";
+  play.title = game.running
+    ? "Bring the game back to the front"
+    : "Start it the way its store expects";
+  play.disabled = !!game.guard;
 
   /* offering to import a table for a game we refuse to attach to is telling
      somebody to go and get banned */
@@ -1172,8 +1180,12 @@ $("game-play").addEventListener("click", async () => {
   const game = gameFor(open);
   if (!game) return;
   try {
-    await invoke("launch_game", { key: game.key });
-    toast(`Starting ${game.name}`);
+    if (game.running) {
+      await invoke("focus_game", { exe: game.exe });
+    } else {
+      await invoke("launch_game", { key: game.key });
+      toast(`Starting ${game.name}`);
+    }
   } catch (e) {
     toast(String(e), true);
   }

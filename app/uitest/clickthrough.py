@@ -157,6 +157,7 @@ window.__TAURI__ = {
         case "save_phrase": return "Saved to D:/words.txt";
         case "pick_table": return "23 cheats imported, 0 skipped";
         case "open_url": return null;
+        case "focus_game": window.__focused = args.exe; return null;
         case "overlay_status":
           return {on: OVERLAY.on, key: OVERLAY.key, showing: false,
                   clash: OVERLAY.key === "Alt+Z" ? "the NVIDIA overlay" : null,
@@ -464,9 +465,14 @@ PROBE = r"""
     await settle(400);
     note(window.__calls.includes("install_shared"), "using a shared table installs it");
 
-    document.getElementById("game-play").click();
+    // the witcher is running in the stub, so this is not a play button
+    const play = document.getElementById("game-play");
+    note(play.textContent === "Switch to game",
+         "a running game does not offer to be started again");
+    play.click();
     await settle(300);
-    note(window.__calls.includes("launch_game"), "play button invokes launch_game");
+    note(window.__focused === "witcher2.exe",
+         "it brings the game forward instead");
   }
 
   const back = document.getElementById("back");
@@ -489,6 +495,8 @@ PROBE = r"""
   const detroit = [...rail].find(r => r.textContent.includes("Detroit"));
   detroit.click();
   await settle(150);
+  note(document.getElementById("game-play").textContent === "Play",
+       "a game that is not running still says play");
   note(document.querySelectorAll("#cheat-groups .bone").length > 0,
        "switching puts placeholders up straight away");
   await settle(900);
