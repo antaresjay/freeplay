@@ -60,6 +60,9 @@ pub struct Session {
     // numbers the player typed, over whatever the table suggests
     chosen: Arc<Mutex<HashMap<String, Scalar>>>,
     tried: Arc<Mutex<HashMap<String, Instant>>>,
+    // whether anything was ever switched on here. asking somebody whether a
+    // table worked when they never turned a cheat on is asking them to guess
+    used: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
@@ -74,6 +77,7 @@ impl Session {
             armed: Arc::new(Mutex::new(HashSet::new())),
             chosen: Arc::new(Mutex::new(HashMap::new())),
             tried: Arc::new(Mutex::new(HashMap::new())),
+            used: Arc::new(AtomicBool::new(false)),
             stop: Arc::new(AtomicBool::new(false)),
             worker: None,
         }
@@ -124,10 +128,16 @@ impl Session {
         ids
     }
 
+    // was anything ever armed in this session, this launch or a previous one
+    pub fn used(&self) -> bool {
+        self.used.load(Ordering::Relaxed)
+    }
+
     pub fn arm(&self, id: &str) -> Result<(), Error> {
         if self.table.cheat(id).is_none() {
             return Err(Error::NoSuchCheat(id.to_string()));
         }
+        self.used.store(true, Ordering::Relaxed);
 
         let mut wanted = vec![id.to_string()];
         if let Some(script) = self.provider_for(id) {
@@ -158,6 +168,7 @@ impl Session {
         for id in ids {
             if self.table.cheat(id).is_some() {
                 armed.insert(id.clone());
+                self.used.store(true, Ordering::Relaxed);
             }
         }
         drop(armed);
@@ -722,6 +733,34 @@ mod tests {
             mock.read_scalar(BASE + 0x100, ValueKind::I32).unwrap(),
             Scalar::I32(0)
         );
+    }
+
+    #[test]
+    fn a_session_nobody_touched_does_not_count_as_used() {
+        let (_, s) = session();
+        assert!(!s.used());
+    }
+
+    #[test]
+    fn arming_anything_counts_even_if_it_never_engages() {
+        let (_, s) = session();
+        s.arm("orphan").unwrap();
+        assert!(s.used(), "they tried, and that it failed is the answer");
+    }
+
+    #[test]
+    fn what_was_armed_last_launch_counts_too() {
+        let (_, s) = session();
+        s.arm_all(&["health".to_string()]);
+        assert!(s.used());
+    }
+
+    #[test]
+    fn disarming_does_not_undo_having_used_it() {
+        let (_, s) = session();
+        s.arm("health").unwrap();
+        s.disarm("health").unwrap();
+        assert!(s.used());
     }
 
     #[test]
