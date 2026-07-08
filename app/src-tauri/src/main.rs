@@ -52,6 +52,17 @@ struct App {
     pending: Mutex<Option<profile::Profile>>,
     // the overlay key, held open for as long as it is registered
     hotkey: Mutex<Option<hotkey::Listener>>,
+    // the shared table in play right now, so the question afterwards is about
+    // the one that was actually running and not whatever is installed by then
+    playing: Mutex<Option<Playing>>,
+}
+
+struct Playing {
+    id: i64,
+    exe: String,
+    game: String,
+    by: String,
+    started: std::time::Instant,
 }
 
 #[derive(Serialize)]
@@ -547,35 +558,6 @@ fn remove_table(state: tauri::State<'_, App>, exe: String) -> Result<String, Str
     tracing::info!("removed the table for {exe}");
 
     Ok("Removed. What you had switched on for it is forgotten too".to_string())
-}
-
-#[tauri::command]
-async fn rate_shared(
-    state: tauri::State<'_, App>,
-    id: i64,
-    up: bool,
-    exe: String,
-) -> Result<(), String> {
-    let install_id = state.settings.lock().unwrap().install_id.clone();
-    let build = build_of(&state, &exe);
-    shared::rate(id, up, &install_id, &build)?;
-
-    let mut settings = state.settings.lock().unwrap();
-    if !settings.rated.contains(&id) {
-        settings.rated.push(id);
-    }
-    let _ = settings::save(&settings);
-    Ok(())
-}
-
-// which shared table this game is using, and whether it has been rated yet
-#[tauri::command]
-fn using(state: tauri::State<'_, App>, exe: String) -> Option<(i64, bool)> {
-    let settings = state.settings.lock().unwrap();
-    settings
-        .grabbed
-        .get(&exe.to_lowercase())
-        .map(|id| (*id, settings.rated.contains(id)))
 }
 
 #[tauri::command]
@@ -1292,6 +1274,19 @@ fn attach(state: tauri::State<'_, App>, exe: String) -> Result<Attached, String>
         .map(|t| t.game.name.clone())
         .unwrap_or_else(|| exe.clone());
 
+    // taken now, because "use table" can change what is installed while this
+    // one is still the one running
+    *state.playing.lock().unwrap() = table.as_ref().and_then(|table| {
+        let settings = state.settings.lock().unwrap();
+        settings.grabbed.get(&exe.to_lowercase()).map(|id| Playing {
+            id: *id,
+            exe: exe.to_lowercase(),
+            game: table.game.name.clone(),
+            by: table.meta.submitted_by.clone(),
+            started: std::time::Instant::now(),
+        })
+    });
+
     if let Some(table) = table {
         let mut session = Session::new(Arc::clone(&shared), table);
         session.start();
@@ -1330,6 +1325,7 @@ fn detach(state: tauri::State<'_, App>) {
 
 fn tear_down(state: &tauri::State<'_, App>) {
     if let Some(mut session) = state.session.lock().unwrap().take() {
+        remember_the_sitting(state, &session);
         session.stop();
         session.disable_all();
     }
@@ -1488,6 +1484,136 @@ fn set_cheat_value(
         .insert(id, text.clone());
     let _ = settings::save(&settings);
     Ok(text)
+}
+
+// queued up to ask about later. asking while the game is up means almost
+// nobody ever sees the question
+fn remember_the_sitting(state: &tauri::State<'_, App>, session: &Session) {
+    let Some(playing) = state.playing.lock().unwrap().take() else {
+        return;
+    };
+    if !session.used() {
+        // they never switched anything on, so there is nothing to say
+        return;
+    }
+
+    let seconds = playing.started.elapsed().as_secs();
+    if seconds < settings::ENOUGH {
+        return;
+    }
+
+    let mut settings = state.settings.lock().unwrap();
+    if settings.rated.contains(&playing.id) {
+        return;
+    }
+    settings.played.retain(|p| p.id != playing.id);
+    settings.played.push(settings::Played {
+        id: playing.id,
+        exe: playing.exe,
+        game: playing.game,
+        by: playing.by,
+        seconds,
+        cheats: session.armed().len(),
+        at: now_seconds(),
+    });
+    settings.tidy();
+    let _ = settings::save(&settings);
+    tracing::info!("queued a question about table {}", playing.id);
+}
+
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or_default()
+}
+
+#[derive(Serialize)]
+struct Question {
+    id: i64,
+    game: String,
+    by: String,
+    // "an hour and a half", already worded
+    played: String,
+    cheats: usize,
+}
+
+// the one waiting to be asked about, if it is time to ask
+#[tauri::command]
+fn pending_question(state: tauri::State<'_, App>) -> Option<Question> {
+    let settings = state.settings.lock().unwrap();
+    if now_seconds() < settings.ask_again_at {
+        return None;
+    }
+    // the most recent sitting, which is the one they remember
+    let played = settings.played.last()?;
+    Some(Question {
+        id: played.id,
+        game: played.game.clone(),
+        by: played.by.clone(),
+        played: how_long(played.seconds),
+        cheats: played.cheats,
+    })
+}
+
+fn how_long(seconds: u64) -> String {
+    let minutes = seconds / 60;
+    match minutes {
+        0..=1 => "a minute".into(),
+        2..=90 => format!("{minutes} minutes"),
+        _ => {
+            let hours = (minutes as f64 / 60.0 * 10.0).round() / 10.0;
+            if (hours - hours.round()).abs() < 0.05 {
+                format!("{} hours", hours.round())
+            } else {
+                format!("{hours} hours")
+            }
+        }
+    }
+}
+
+#[tauri::command]
+async fn answer_question(
+    state: tauri::State<'_, App>,
+    id: i64,
+    up: bool,
+) -> Result<String, String> {
+    let (install_id, exe) = {
+        let settings = state.settings.lock().unwrap();
+        let exe = settings
+            .played
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.exe.clone())
+            .unwrap_or_default();
+        (settings.install_id.clone(), exe)
+    };
+
+    let build = build_of(&state, &exe);
+    shared::rate(id, up, &install_id, &build)?;
+
+    let mut settings = state.settings.lock().unwrap();
+    if !settings.rated.contains(&id) {
+        settings.rated.push(id);
+    }
+    settings.played.retain(|p| p.id != id);
+    settings.ask_again_at = 0;
+    settings::save(&settings)?;
+
+    Ok(if up {
+        "Thanks. That pushes it up the list for everybody else".into()
+    } else {
+        "Noted. It will sink down the list".into()
+    })
+}
+
+// skipping keeps the question, it just stops us asking for a couple of days.
+// nobody should have to answer to use the app
+#[tauri::command]
+fn skip_question(state: tauri::State<'_, App>) -> Result<(), String> {
+    let mut settings = state.settings.lock().unwrap();
+    settings.ask_again_at = now_seconds() + settings::SNOOZE;
+    settings::save(&settings)
 }
 
 fn armed_for(state: &tauri::State<'_, App>, exe: &str) -> Vec<String> {
@@ -1784,8 +1910,9 @@ fn main() {
             sort_options,
             install_shared,
             remove_table,
-            rate_shared,
-            using,
+            pending_question,
+            answer_question,
+            skip_question,
             share_table,
             whoami,
             claim_name,
@@ -1819,4 +1946,26 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("freeplay failed to start");
+}
+
+#[cfg(test)]
+mod wording {
+    use super::how_long;
+
+    #[test]
+    fn how_long_reads_like_somebody_said_it() {
+        assert_eq!(how_long(30), "a minute");
+        assert_eq!(how_long(60), "a minute");
+        assert_eq!(how_long(300), "5 minutes");
+        assert_eq!(how_long(3600), "60 minutes");
+        assert_eq!(how_long(5400), "90 minutes");
+        assert_eq!(how_long(5460), "1.5 hours");
+        assert_eq!(how_long(7200), "2 hours");
+        assert_eq!(how_long(9000), "2.5 hours");
+    }
+
+    #[test]
+    fn a_long_session_does_not_come_out_as_a_fraction_of_a_fraction() {
+        assert_eq!(how_long(36_000), "10 hours");
+    }
 }

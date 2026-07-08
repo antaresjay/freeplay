@@ -48,7 +48,40 @@ pub struct Settings {
     // games already asked whether the table worked, so it is asked once
     #[serde(default)]
     pub rated: Vec<i64>,
+    // tables that were actually in play, waiting to be asked about. asking
+    // while the game is up means almost nobody sees it
+    #[serde(default)]
+    pub played: Vec<Played>,
+    // skipped once, so leave them alone until this passes. unix seconds
+    #[serde(default)]
+    pub ask_again_at: i64,
 }
+
+// one table, one sitting. what it takes to ask a question somebody can answer
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Played {
+    pub id: i64,
+    pub exe: String,
+    pub game: String,
+    pub by: String,
+    // how long the game was attached, in seconds
+    #[serde(default)]
+    pub seconds: u64,
+    #[serde(default)]
+    pub cheats: usize,
+    // when the sitting ended
+    #[serde(default)]
+    pub at: i64,
+}
+
+// two days, which is long enough not to nag and short enough that the answer
+// still means something for a table people are downloading now
+pub const SNOOZE: i64 = 60 * 60 * 24 * 2;
+// a table has to have been in play this long before the question is worth
+// asking. launching a game and quitting to the menu tells nobody anything
+pub const ENOUGH: u64 = 120;
+// how many to keep waiting. more than this and it is a chore, not a favour
+pub const KEEP: usize = 5;
 
 fn yes() -> bool {
     true
@@ -75,6 +108,8 @@ impl Default for Settings {
             install_id: String::new(),
             grabbed: HashMap::new(),
             rated: Vec::new(),
+            played: Vec::new(),
+            ask_again_at: 0,
         }
     }
 }
@@ -91,6 +126,14 @@ impl Settings {
         }
         self.pinned.dedup();
         self.favourites.dedup();
+
+        // never ask about one twice, and never let the queue become a chore
+        self.played.retain(|p| !self.rated.contains(&p.id));
+        self.played.dedup_by_key(|p| p.id);
+        if self.played.len() > KEEP {
+            let drop = self.played.len() - KEEP;
+            self.played.drain(..drop);
+        }
 
         // a hand edited hotkey that does not parse would leave the overlay
         // with no way to open it
@@ -141,6 +184,59 @@ pub fn save(settings: &Settings) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn played(id: i64) -> Played {
+        Played {
+            id,
+            exe: "witcher2.exe".into(),
+            game: "The Witcher 2".into(),
+            by: "aSwedishMagyar".into(),
+            seconds: 3600,
+            cheats: 3,
+            at: 1_800_000_000,
+        }
+    }
+
+    #[test]
+    fn a_table_already_answered_for_is_dropped_from_the_queue() {
+        let mut settings = Settings {
+            played: vec![played(1), played(2)],
+            rated: vec![1],
+            ..Default::default()
+        };
+        settings.tidy();
+        assert_eq!(settings.played.len(), 1);
+        assert_eq!(settings.played[0].id, 2);
+    }
+
+    #[test]
+    fn the_same_table_twice_is_asked_about_once() {
+        let mut settings = Settings {
+            played: vec![played(7), played(7)],
+            ..Default::default()
+        };
+        settings.tidy();
+        assert_eq!(settings.played.len(), 1);
+    }
+
+    #[test]
+    fn the_queue_keeps_the_most_recent_and_lets_the_rest_go() {
+        let mut settings = Settings {
+            played: (1..=9).map(played).collect(),
+            ..Default::default()
+        };
+        settings.tidy();
+        assert_eq!(settings.played.len(), KEEP);
+        assert_eq!(settings.played[0].id, 5, "the oldest go first");
+        assert_eq!(settings.played[KEEP - 1].id, 9);
+    }
+
+    #[test]
+    fn nothing_is_waiting_to_be_asked_about_on_a_fresh_install() {
+        let settings = Settings::default();
+        assert!(settings.played.is_empty());
+        assert_eq!(settings.ask_again_at, 0);
+    }
 
     #[test]
     fn an_install_id_is_made_once_and_then_kept() {
