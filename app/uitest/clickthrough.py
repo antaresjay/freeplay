@@ -91,6 +91,8 @@ const PHRASE = ["cold","burst","cash","camel","cargo","bread","cloth","clerk",
   "adopt","camel","bear","candy","chalk","bank","alloy","boot","column"];
 
 let OVERLAY = {on: false, key: "Ctrl+Shift+O"};
+let QUESTION = {id: 7, game: "The Witcher 2", by: "aSwedishMagyar",
+                played: "1.5 hours", cheats: 3};
 window.__calls = [];
 /* save_settings hands back what it was given, same as the real one. a stub
    that answered with a fixed object hid the bug where pinning a game did not
@@ -135,8 +137,12 @@ window.__TAURI__ = {
         case "sort_options": return SORTS;
         case "shared_tables": return SHARED;
         case "install_shared": return "The Witcher 2 is ready, 23 cheats";
-        case "using": return [7, false];
-        case "rate_shared": return null;
+        case "pending_question": return QUESTION;
+        case "answer_question":
+          window.__answered = {id: args.id, up: args.up};
+          QUESTION = null;
+          return args.up ? "Thanks" : "Noted";
+        case "skip_question": window.__skipped = true; QUESTION = null; return null;
         case "share_table": return "shared, it is number 9";
         case "whoami": return window.__claimed ? {name: window.__claimed} : null;
         case "claim_name": window.__claimed = args.name; return PHRASE;
@@ -206,6 +212,27 @@ PROBE = r"""
   const cards = document.querySelectorAll("#grid .card, #pinned-grid .card");
   note(cards.length >= 1, "library rendered cards (" + cards.length + ")");
   note(visible("view-library"), "library view is showing");
+
+  // the question waits for the game to close rather than appearing over it,
+  // which is the one moment nobody is looking at this window
+  note(visible("ask"), "a table that was played gets asked about afterwards");
+  note(document.getElementById("ask-title").textContent
+         .includes("Did the table for The Witcher 2 work?"),
+       "and it names the game");
+  const detail = document.getElementById("ask-detail").textContent;
+  note(detail.includes("aSwedishMagyar"), "and who wrote the table");
+  note(detail.includes("1.5 hours"), "and how long you played (" + detail + ")");
+  note(detail.includes("3 cheats"), "and how many cheats you had on");
+  note(document.querySelector(".ask-why").textContent.toLowerCase()
+         .includes("next person"),
+       "and says why answering is worth anything");
+
+  // nobody has to answer
+  note(!!document.getElementById("ask-skip"), "there is a way out of answering");
+  document.getElementById("ask-skip").click();
+  await settle(300);
+  note(window.__skipped === true, "skipping is remembered");
+  note(!visible("ask"), "and the question goes away");
 
   if (cards.length) {
     // pinned games are drawn first, so the first card in the document is not
@@ -710,6 +737,22 @@ PROBE = r"""
 
   note(!document.getElementById("library-count").textContent.includes("1 games"),
        "counts read right at one");
+
+  // a new sitting, and coming back to the library is when it gets asked
+  QUESTION = {id: 9, game: "Detroit: Become Human", by: "", played: "40 minutes", cheats: 1};
+  [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "settings").click();
+  await settle(200);
+  [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "library").click();
+  await settle(400);
+  note(visible("ask"), "coming back to the library asks about the last sitting");
+  note(document.getElementById("ask-detail").textContent.includes("The table you downloaded"),
+       "an anonymous table is not called nobody's table");
+
+  document.getElementById("ask-yes").click();
+  await settle(400);
+  note(window.__answered && window.__answered.id === 9 && window.__answered.up === true,
+       "answering sends the vote for that table");
+  note(!visible("ask"), "and the question is done with");
 
   note(window.__errors.length === 0,
        "no uncaught errors" + (window.__errors.length ? ": " + window.__errors.join(" | ") : ""));

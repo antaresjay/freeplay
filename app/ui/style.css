@@ -359,6 +359,15 @@ svg {
   margin: 4px 0 16px;
 }
 .section-head h2 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -0.2px; }
+
+.head-count {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.head-count h3 { margin: 0; }
 .section-head .filter { margin-left: auto; width: 200px; }
 
 .shelf {
@@ -401,9 +410,15 @@ input::placeholder { color: var(--faint); }
   border-radius: var(--r);
   background: var(--panel);
 }
-.banner .pip { margin-top: 6px; }
-.banner strong { font-size: 13.5px; font-weight: 600; }
-.banner p { margin: 3px 0 0; font-size: 12.5px; color: var(--faint); max-width: 70ch; }
+.banner-body { flex: 1; min-width: 0; }
+.banner strong {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.banner p { margin: 4px 0 0 17px; font-size: 12.5px; color: var(--faint); max-width: 70ch; }
 
 /* ---------- game grid ---------- */
 
@@ -1138,8 +1153,7 @@ input::placeholder { color: var(--faint); }
   vertical-align: 1px;
 }
 
-.banner.ask { align-items: center; }
-.ask-buttons { display: flex; gap: 8px; flex: none; }
+.ask-buttons { display: flex; align-items: center; gap: 8px; flex: none; }
 
 .setting-actions { display: flex; gap: 8px; flex: none; }
 
@@ -1200,7 +1214,7 @@ body.maximised .win .when-big { display: block; }
 .game-main { min-width: 0; }
 
 #cheats-panel .section-head { margin-bottom: 14px; }
-#cheats-panel .section-head .dim { flex: 1; font-size: 12px; }
+#cheats-panel .section-head .dim { font-size: 12px; }
 
 .shared-dock {
   position: sticky;
@@ -1595,3 +1609,28 @@ body.maximised .win .when-big { display: block; }
 .keycap:focus-visible { outline: none; border-color: var(--accent-line); }
 
 .setting-label span.warn { color: var(--warn); }
+
+/* ---------- did that table work ---------- */
+
+/* it waits for the game to close rather than appearing over it, so it has to
+   stand out on a page somebody has come back to */
+.ask-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 15px 18px;
+  margin-bottom: 24px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r);
+  background: var(--accent-soft);
+}
+.ask-body { flex: 1; min-width: 0; }
+.ask-body strong { display: block; font-size: 13.5px; font-weight: 620; }
+.ask-body p { margin: 4px 0 0; font-size: 12.5px; color: var(--dim); }
+.ask-why { color: var(--faint) !important; }
+
+.ask-buttons .link-btn { margin-left: 4px; }
+
+@media (max-width: 900px) {
+  .ask-card { flex-direction: column; align-items: stretch; gap: 14px; }
+}

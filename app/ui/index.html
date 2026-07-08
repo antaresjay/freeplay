@@ -66,10 +66,22 @@
 
     <!-- library ------------------------------------------------------- -->
     <section id="view-library" class="view">
+      <div id="ask" class="ask-card" hidden>
+        <div class="ask-body">
+          <strong id="ask-title"></strong>
+          <p id="ask-detail"></p>
+          <p class="ask-why">Answering is what lets the next person find the table that works. It takes one click.</p>
+        </div>
+        <div class="ask-buttons">
+          <button id="ask-yes" class="primary">It worked</button>
+          <button id="ask-no" class="ghost">It did not</button>
+          <button id="ask-skip" class="link-btn">Not now</button>
+        </div>
+      </div>
+
       <div id="idle-banner" class="banner" hidden>
-        <span class="pip"></span>
-        <div>
-          <strong>Nothing running</strong>
+        <div class="banner-body">
+          <strong><span class="pip"></span>Nothing running</strong>
           <p>Launch a game and it shows up here ready to attach. Freeplay reads memory from a running process, so the game has to be open.</p>
         </div>
       </div>
@@ -141,22 +153,9 @@
       </div>
 
       <div id="attach-note" class="banner" hidden>
-        <span class="pip"></span>
-        <div>
-          <strong id="attach-note-title"></strong>
+        <div class="banner-body">
+          <strong><span class="pip"></span><span id="attach-note-title"></span></strong>
           <p id="attach-note-body"></p>
-        </div>
-      </div>
-
-      <div id="rate-ask" class="banner ask" hidden>
-        <span class="pip live"></span>
-        <div>
-          <strong>Did that table work?</strong>
-          <p>Say so and the next person sees the ones that work first.</p>
-        </div>
-        <div class="ask-buttons">
-          <button id="rate-up" class="primary">It worked</button>
-          <button id="rate-down" class="ghost">It did not</button>
         </div>
       </div>
 
@@ -168,8 +167,10 @@
 
       <div id="cheats-panel">
         <div class="section-head">
-          <h3>Cheats</h3>
-          <span id="cheat-count" class="dim"></span>
+          <div class="head-count">
+            <h3>Cheats</h3>
+            <span id="cheat-count" class="dim"></span>
+          </div>
           <input id="cheat-filter" class="filter" type="search" placeholder="Search cheats" autocomplete="off">
           <button id="remove-table" class="ghost" title="Delete this table from your machine" hidden>Remove table</button>
         </div>

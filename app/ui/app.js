@@ -598,7 +598,6 @@ function drawGamePage() {
   if (guarded) {
     $("cheats-panel").hidden = true;
     $("no-table").hidden = true;
-    $("rate-ask").hidden = true;
   }
 
   const note = $("attach-note");
@@ -618,7 +617,6 @@ function drawGamePage() {
 
   refreshCheats();
   loadShared();
-  checkRatePrompt();
 }
 
 /* ---------- attaching ---------- */
@@ -1119,6 +1117,10 @@ function showView(name) {
     item.classList.toggle("active", target === name || (name === "game" && target === "library"));
   }
 
+  // coming back to the library is exactly when somebody has just finished
+  // playing, so this is the moment to ask
+  if (name === "library") drawQuestion();
+
   if (name === "finder") {
     $("finder-blocked").hidden = !!attached;
     $("finder-panel").hidden = !attached;
@@ -1145,7 +1147,6 @@ function leaveGame() {
   open = null;
   drawGamePage.showing = null;
   sharedFor = null;
-  $("rate-ask").hidden = true;
 }
 document.querySelectorAll("[data-goto]").forEach((button) => {
   button.addEventListener("click", () => showView(button.dataset.goto));
@@ -1548,7 +1549,6 @@ function sharedRow(row) {
       await loadGames(false);
       await refreshCheats();
       await loadShared(true);
-      await checkRatePrompt();
     } catch (e) {
       toast(String(e), true);
       button.disabled = false;
@@ -1580,7 +1580,6 @@ async function removeTable() {
     await loadGames(false);
     await refreshCheats();
     await loadShared(true);
-    await checkRatePrompt();
   } catch (e) {
     toast(String(e), true);
   }
@@ -1588,50 +1587,56 @@ async function removeTable() {
 
 $("remove-table").addEventListener("click", removeTable);
 
-/* asked once per table, and only once the game has actually been attached,
-   because before that nobody knows whether it worked */
-async function checkRatePrompt() {
-  const game = gameFor(open);
-  const ask = $("rate-ask");
-  ask.hidden = true;
-  if (!game || !game.exe) return;
-
-  const asked = open;
-  let held = null;
+/* the question used to appear only while the game was attached, which is the
+   one moment nobody is looking at this window. it waits now, and it is only
+   ever about a table that was actually running: which one that was is noted
+   when the game starts, so switching tables afterwards cannot confuse it */
+async function drawQuestion() {
+  let question = null;
   try {
-    held = await invoke("using", { exe: game.exe });
+    question = await invoke("pending_question");
   } catch {
     return;
   }
-  // same race as the cheat list: this can land after you have moved on, and
-  // voting on the wrong table helps nobody
-  if (open !== asked) return;
-  if (!held) return;
 
-  const id = held[0];
-  const rated = held[1];
-  if (rated) return;
-  if (!attached || attached.process !== game.exe) return;
+  $("ask").hidden = !question;
+  if (!question) return;
 
-  ask.hidden = false;
-  ask.dataset.id = id;
+  $("ask").dataset.id = question.id;
+  $("ask-title").textContent = `Did the table for ${question.game} work?`;
+
+  const by = question.by ? `${question.by}'s table` : "The table you downloaded";
+  const on = question.cheats
+    ? `, ${many(question.cheats, "cheat")} switched on`
+    : "";
+  $("ask-detail").textContent = `${by}. You played for ${question.played}${on}.`;
 }
 
-async function rateShared(up) {
-  const id = Number($("rate-ask").dataset.id);
+async function answerQuestion(up) {
+  const id = Number($("ask").dataset.id);
+  $("ask").hidden = true;
   try {
-    const game = gameFor(open);
-    await invoke("rate_shared", { id, up, exe: game ? game.exe : "" });
-    toast(up ? "Thanks, that pushes it up the list for everyone else" : "Noted, it will sink down the list");
+    toast(await invoke("answer_question", { id, up }));
   } catch (e) {
     toast(String(e), true);
   }
-  $("rate-ask").hidden = true;
-  await loadShared(true);
+  await drawQuestion();
+  if (open) await loadShared(true);
 }
 
-$("rate-up").addEventListener("click", () => rateShared(true));
-$("rate-down").addEventListener("click", () => rateShared(false));
+$("ask-yes").addEventListener("click", () => answerQuestion(true));
+$("ask-no").addEventListener("click", () => answerQuestion(false));
+
+/* nobody has to answer to use the app. skipping keeps the question and just
+   stops us asking for a couple of days */
+$("ask-skip").addEventListener("click", async () => {
+  $("ask").hidden = true;
+  try {
+    await invoke("skip_question");
+  } catch (e) {
+    toast(String(e), true);
+  }
+});
 $("shared-refresh").addEventListener("click", () => loadShared(true));
 $("shared-sort").addEventListener("change", () => loadShared(true));
 
@@ -2041,9 +2046,13 @@ async function start() {
   drawVersion();
   countTables();
   drawOverlay();
+  drawQuestion();
   $("settings-path").textContent = "%APPDATA%\\freeplay\\settings.json";
   await loadGames();
   setInterval(loadGames, 5000);
+  // a sitting can end while this window is closed, and the snooze runs out on
+  // its own, so this is not only driven by the detach event
+  setInterval(drawQuestion, 60000);
   setInterval(refreshCheats, 1500);
 
   if (window.__TAURI__.event) {
@@ -2057,6 +2066,9 @@ async function start() {
     });
     listen("detached", () => {
       attached = null;
+      // this is the moment a sitting ends, and the moment there is something
+      // to ask about
+      drawQuestion();
       // the backend threw the search away with the process, so the addresses
       // on the finder are pointing at memory that no longer exists
       resetScan();
