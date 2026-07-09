@@ -1,7 +1,8 @@
 /* the panel that sits over the game
-   the window itself is transparent, so the rounded card here is the whole of
-   what anybody sees. it has to stay readable over a bright snowfield and over
-   a dark cave, which is what the blur and the heavy border are for */
+   the window is transparent, so this card is the whole of what anybody sees.
+   it has to stay readable over a snowfield and over a cave, which is what the
+   blur and the border are for. everything here is tighter than the main
+   window: you are reading it in the middle of playing, not browsing it */
 
 .overlay-body {
   background: transparent;
@@ -13,36 +14,40 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  background: rgba(10, 11, 14, 0.82);
-  backdrop-filter: blur(22px) saturate(130%);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(9, 10, 13, 0.7);
+  backdrop-filter: blur(26px) saturate(140%);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
+
+/* ---------- head ---------- */
 
 .ov-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 12px 11px 13px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  gap: 9px;
+  padding: 10px 9px 10px 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   cursor: grab;
 }
 .ov-head:active { cursor: grabbing; }
-.ov-mark { width: 20px; height: 20px; flex: none; border-radius: 5px; }
+.ov-mark { width: 17px; height: 17px; flex: none; border-radius: 4px; opacity: 0.9; }
 
-.ov-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ov-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ov-title b {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 620;
+  line-height: 1.3;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .ov-title span {
-  font-size: 10.5px;
+  font-size: 10px;
+  line-height: 1.35;
   color: var(--faint);
   font-variant-numeric: tabular-nums;
   overflow: hidden;
@@ -50,118 +55,172 @@
   white-space: nowrap;
 }
 
+.ov-x {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  padding: 5px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+}
+.ov-x svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.ov-x:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+
+/* ---------- search ---------- */
+
 .ov-search {
-  margin: 11px 12px 0;
-  height: 30px;
-  padding: 0 11px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.05);
+  margin: 9px 10px 0;
+  height: 27px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
 }
-.ov-search:focus { outline: none; border-color: var(--accent-line); }
+.ov-search:focus { outline: none; border-color: var(--accent-line); background: rgba(255, 255, 255, 0.06); }
 .ov-search::placeholder { color: var(--faint); }
+
+/* ---------- the list ---------- */
 
 .ov-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 11px 12px 12px;
+  padding: 8px 10px 10px;
 }
 
-.ov-group { margin-bottom: 14px; }
+.ov-group { margin-bottom: 10px; }
 .ov-group:last-child { margin-bottom: 0; }
 .ov-group h3 {
-  margin: 0 0 7px;
-  font-size: 9.5px;
+  margin: 6px 0 4px 2px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 1.1px;
   text-transform: uppercase;
-  color: var(--faint);
+  color: rgba(255, 255, 255, 0.32);
 }
 
+/* a row is a row. only the one that is doing something gets any weight */
 .ov-cheat {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 9px 11px;
-  margin-bottom: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.035);
+  gap: 9px;
+  padding: 6px 8px 6px 10px;
+  border-radius: 7px;
+  border-left: 2px solid transparent;
 }
-.ov-cheat:last-child { margin-bottom: 0; }
+.ov-cheat:hover { background: rgba(255, 255, 255, 0.045); }
+
+.ov-cheat.armed:not(.on) {
+  background: rgba(255, 255, 255, 0.05);
+  border-left-color: rgba(255, 255, 255, 0.22);
+}
+
+/* the one that is actually running, and it should be obvious at a glance
+   while you are looking at the game and not at this */
 .ov-cheat.on {
-  border-color: var(--accent-line);
   background: var(--accent-soft);
+  border-left-color: var(--accent);
 }
-.ov-cheat.armed:not(.on) { background: rgba(255, 255, 255, 0.06); }
+.ov-cheat.on .ov-name { color: var(--accent); font-weight: 620; }
 
 .ov-main { flex: 1; min-width: 0; }
-.ov-name { font-size: 12.5px; font-weight: 560; color: var(--text); }
-.ov-why { margin-top: 1px; font-size: 10.5px; color: var(--faint); overflow-wrap: anywhere; }
+.ov-name {
+  font-size: 12px;
+  font-weight: 520;
+  line-height: 1.35;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-why {
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.34);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-why:empty { display: none; }
 .ov-why.wait { color: var(--warn); }
 .ov-why.dead { color: var(--bad); }
-.ov-why.live { color: var(--accent); font-weight: 620; }
+/* the row already says it is on, in accent, with a bar down the side */
+.ov-why.live { display: none; }
 
-.ov-value { display: flex; align-items: center; gap: 7px; margin-top: 6px; }
+/* the toggle, smaller than the one in the main window */
+.ov-cheat .switch { width: 30px; height: 17px; }
+.ov-cheat .switch::after { width: 13px; height: 13px; }
+.ov-cheat .switch.on::after { transform: translateX(13px); }
+
+/* ---------- a number ---------- */
+
+.ov-value { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 .ov-value input, .ov-value select {
-  width: 92px;
-  height: 24px;
-  padding: 0 7px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.35);
+  width: 78px;
+  height: 21px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.3);
   color: var(--text);
   font: inherit;
-  font-size: 11.5px;
+  font-size: 11px;
 }
-.ov-value select { width: auto; min-width: 92px; }
+.ov-value select { width: auto; min-width: 78px; }
 .ov-value input:focus, .ov-value select:focus {
   outline: none;
   border-color: var(--accent-line);
 }
 .ov-live {
-  font-size: 10.5px;
-  color: var(--faint);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.34);
   font-variant-numeric: tabular-nums;
 }
 
 .ov-empty {
   margin: 0;
-  padding: 18px 14px;
-  font-size: 12px;
+  padding: 22px 16px;
+  font-size: 11.5px;
   color: var(--faint);
   text-align: center;
   line-height: 1.6;
 }
 
+/* ---------- foot ---------- */
+
 .ov-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 9px 13px 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  font-size: 10.5px;
-  color: var(--faint);
+  gap: 8px;
+  padding: 8px 10px 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.36);
 }
 .ov-key {
-  padding: 2px 7px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 5px;
-  font-weight: 620;
-  letter-spacing: 0.3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 600;
+  letter-spacing: 0.2px;
 }
 
-/* the scrollbar over a game should not be a bright windows one */
-.ov-list::-webkit-scrollbar { width: 9px; }
+/* a bright windows scrollbar over a game looks like a mistake */
+.ov-list::-webkit-scrollbar { width: 8px; }
 .ov-list::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
   background-clip: content-box;
 }
-.ov-list::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); background-clip: content-box; }
+.ov-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.26);
+  background-clip: content-box;
+}

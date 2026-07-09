@@ -219,8 +219,8 @@ async function refresh() {
   attached = now;
 
   if (!attached) {
-    $("ov-game").textContent = "Nothing attached";
-    $("ov-sub").textContent = "Start a game and Freeplay picks it up";
+    $("ov-game").textContent = "Freeplay";
+    $("ov-sub").textContent = "Nothing attached";
     rows = [];
     shape = null;
     cards = new Map();
@@ -230,7 +230,7 @@ async function refresh() {
   }
 
   $("ov-game").textContent = attached.game;
-  $("ov-sub").textContent = `${attached.process} . pid ${attached.pid} . ${attached.arch}`;
+  $("ov-sub").textContent = `${attached.process} . ${attached.arch}`;
 
   if (changed) {
     shape = null;
@@ -268,6 +268,15 @@ async function start() {
   }
   await refresh();
   setInterval(refresh, 1000);
+
+  // shown again after sitting hidden, so catch up now rather than showing
+  // stale rows until the next tick comes round
+  if (window.__TAURI__.event) {
+    window.__TAURI__.event.listen("wake", () => {
+      $("ov-filter").value = "";
+      refresh();
+    });
+  }
 }
 
 start();

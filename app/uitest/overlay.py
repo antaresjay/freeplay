@@ -90,8 +90,9 @@ PROBE = r"""
 
   note(document.getElementById("ov-game").textContent === "The Witcher 2",
        "the overlay names the game it is over");
-  note(document.getElementById("ov-sub").textContent.includes("pid 1234"),
-       "and which process that is");
+  note(document.getElementById("ov-sub").textContent === "witcher2.exe . 32-bit",
+       "and which process, without the noise ("
+       + document.getElementById("ov-sub").textContent + ")");
   note(document.getElementById("ov-key").textContent === "Ctrl+Shift+O",
        "the footer reminds you of the shortcut");
 
@@ -104,8 +105,14 @@ PROBE = r"""
   note(document.querySelectorAll(".ov-cheat.armed").length === 2,
        "two are switched on");
 
-  note(document.querySelector(".ov-why.live").textContent === "On",
-       "a live cheat says so");
+  // the row is already accent coloured with a bar down the side, so saying
+  // "On" underneath as well is the same thing twice
+  const running = document.querySelector(".ov-cheat.on");
+  note(!!running, "the cheat that is running stands out on its own");
+  note(getComputedStyle(running).borderLeftColor !== "rgba(0, 0, 0, 0)",
+       "with a bar down the side");
+  note(getComputedStyle(running.querySelector(".ov-why")).display === "none",
+       "and does not repeat itself underneath");
   note(document.querySelector(".ov-why.wait").textContent === "load a save first",
        "and one waiting says what it is waiting for");
   note(document.getElementById("ov-count").textContent === "2 of 4 cheats on",

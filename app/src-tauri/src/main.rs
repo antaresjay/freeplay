@@ -939,8 +939,14 @@ fn set_overlay(
 
 #[tauri::command]
 fn toggle_overlay(app: tauri::AppHandle, state: tauri::State<'_, App>) -> Result<bool, String> {
-    let pid = state.target.lock().unwrap().as_ref().map(|t| t.pid());
-    overlay::toggle(&app, pid)
+    overlay::toggle(&app, overlay_pid(&state))
+}
+
+// the pid only counts if there is a session on it, which means a table was
+// found and loaded. an overlay with nothing to switch on is a floating box
+fn overlay_pid(state: &tauri::State<'_, App>) -> Option<u32> {
+    let pid = state.target.lock().unwrap().as_ref().map(|t| t.pid())?;
+    state.session.lock().unwrap().as_ref().map(|_| pid)
 }
 
 #[tauri::command]
@@ -998,7 +1004,7 @@ fn rebind_hotkey(app: &tauri::AppHandle) -> Result<(), String> {
             // windows are the main thread's business, and this is not it
             let _ = handle.run_on_main_thread(move || {
                 let state = app.state::<App>();
-                let pid = state.target.lock().unwrap().as_ref().map(|t| t.pid());
+                let pid = overlay_pid(&state);
                 match overlay::toggle(&app, pid) {
                     Ok(shown) => tracing::debug!("overlay {}", if shown { "up" } else { "down" }),
                     Err(e) => {
@@ -1760,7 +1766,7 @@ fn watch_for_games(handle: tauri::AppHandle) {
                 if let Some(session) = state.session.lock().unwrap().as_ref() {
                     session.reconcile();
                 }
-                if let Some(pid) = state.target.lock().unwrap().as_ref().map(|t| t.pid()) {
+                if let Some(pid) = overlay_pid(&state) {
                     let app = handle.clone();
                     let _ = handle.run_on_main_thread(move || overlay::follow(&app, pid));
                 }
@@ -1787,6 +1793,26 @@ fn watch_for_games(handle: tauri::AppHandle) {
                 }
             }
         }
+    }
+}
+
+// alt tab away from the game and the panel goes with it. it is pinned over
+// one window, so leaving it up over whatever you switched to is just litter
+fn watch_the_front(handle: tauri::AppHandle) {
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        if !overlay::showing(&handle) {
+            continue;
+        }
+
+        let state = handle.state::<App>();
+        let still = overlay_pid(&state).is_some_and(|pid| overlay::belongs_here(&handle, pid));
+        if still {
+            continue;
+        }
+
+        let app = handle.clone();
+        let _ = handle.run_on_main_thread(move || overlay::hide(&app));
     }
 }
 
@@ -1929,6 +1955,9 @@ fn main() {
 
             let handle = app.handle().clone();
             std::thread::spawn(move || watch_for_games(handle));
+
+            let handle = app.handle().clone();
+            std::thread::spawn(move || watch_the_front(handle));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

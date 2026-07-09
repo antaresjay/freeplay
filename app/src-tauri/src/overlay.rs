@@ -7,10 +7,10 @@
 //! the swap chain, which is the thing every anti-cheat is looking for, and
 //! this app refuses to go near games that have one.
 
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 pub const LABEL: &str = "overlay";
-const WIDTH: f64 = 340.0;
+const WIDTH: f64 = 296.0;
 // clear of the edge, so it does not sit on top of a health bar in the corner
 const MARGIN: f64 = 24.0;
 
@@ -35,7 +35,7 @@ pub fn prepare(app: &tauri::AppHandle) -> Result<(), String> {
     }
     WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("overlay.html".into()))
         .title("Freeplay overlay")
-        .inner_size(WIDTH, 620.0)
+        .inner_size(WIDTH, 560.0)
         .decorations(false)
         .always_on_top(true)
         .skip_taskbar(true)
@@ -48,10 +48,14 @@ pub fn prepare(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// there is nothing for it to be about with no game attached, and it was
-// turning up over freeplay itself
+// it goes over the game window and nowhere else. not over freeplay, not over
+// a browser, and not over a game with nothing to switch on
 pub fn show(app: &tauri::AppHandle, pid: Option<u32>) -> Result<(), String> {
-    let pid = pid.ok_or("attach to a game first, the overlay goes over the game")?;
+    let pid = pid.ok_or("attach to a game with a table first")?;
+    if !game_in_front(pid) {
+        return Err("bring the game to the front first".into());
+    }
+
     prepare(app)?;
     let Some(window) = app.get_webview_window(LABEL) else {
         return Err("the overlay is not there".into());
@@ -61,7 +65,43 @@ pub fn show(app: &tauri::AppHandle, pid: Option<u32>) -> Result<(), String> {
     window.show().map_err(|e| e.to_string())?;
     let _ = window.set_always_on_top(true);
     let _ = window.set_focus();
+    // it has been sitting hidden and polling slowly, so tell it to catch up
+    // rather than showing whatever it last saw for a second
+    let _ = window.emit("wake", ());
     Ok(())
+}
+
+// the game is what is in front, or the panel itself is because you clicked it
+#[cfg(windows)]
+pub fn belongs_here(app: &tauri::AppHandle, pid: u32) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+
+    let front = unsafe { GetForegroundWindow() };
+    if front.is_invalid() {
+        return false;
+    }
+    if main_window(pid) == Some(front) {
+        return true;
+    }
+    app.get_webview_window(LABEL)
+        .and_then(|w| w.hwnd().ok())
+        .is_some_and(|ours| ours == front)
+}
+
+#[cfg(windows)]
+fn game_in_front(pid: u32) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    main_window(pid) == Some(unsafe { GetForegroundWindow() })
+}
+
+#[cfg(not(windows))]
+pub fn belongs_here(_app: &tauri::AppHandle, _pid: u32) -> bool {
+    false
+}
+
+#[cfg(not(windows))]
+fn game_in_front(_pid: u32) -> bool {
+    false
 }
 
 // pixels all the way through. mixing logical and physical puts the panel in
