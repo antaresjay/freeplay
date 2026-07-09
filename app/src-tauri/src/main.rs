@@ -994,11 +994,19 @@ fn rebind_hotkey(app: &tauri::AppHandle) -> Result<(), String> {
     std::thread::spawn(move || {
         // ends on its own when the listener is dropped and the sender goes
         while heard.recv().is_ok() {
-            let state = handle.state::<App>();
-            let pid = state.target.lock().unwrap().as_ref().map(|t| t.pid());
-            if let Err(e) = overlay::toggle(&handle, pid) {
-                tracing::warn!("overlay: {e}");
-            }
+            let app = handle.clone();
+            // windows are the main thread's business, and this is not it
+            let _ = handle.run_on_main_thread(move || {
+                let state = app.state::<App>();
+                let pid = state.target.lock().unwrap().as_ref().map(|t| t.pid());
+                match overlay::toggle(&app, pid) {
+                    Ok(shown) => tracing::debug!("overlay {}", if shown { "up" } else { "down" }),
+                    Err(e) => {
+                        tracing::info!("overlay: {e}");
+                        let _ = app.emit("overlay-refused", e);
+                    }
+                }
+            });
         }
     });
     Ok(())
@@ -1752,6 +1760,10 @@ fn watch_for_games(handle: tauri::AppHandle) {
                 if let Some(session) = state.session.lock().unwrap().as_ref() {
                     session.reconcile();
                 }
+                if let Some(pid) = state.target.lock().unwrap().as_ref().map(|t| t.pid()) {
+                    let app = handle.clone();
+                    let _ = handle.run_on_main_thread(move || overlay::follow(&app, pid));
+                }
             }
             None => {
                 if !state.settings.lock().unwrap().auto_attach {
@@ -1906,6 +1918,11 @@ fn main() {
                 });
             }
 
+            if app.state::<App>().settings.lock().unwrap().overlay {
+                if let Err(e) = overlay::prepare(app.handle()) {
+                    tracing::warn!("overlay: {e}");
+                }
+            }
             if let Err(e) = rebind_hotkey(app.handle()) {
                 tracing::warn!("overlay hotkey: {e}");
             }

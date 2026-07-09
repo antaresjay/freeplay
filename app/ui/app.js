@@ -2076,6 +2076,9 @@ async function start() {
       if (open) drawGamePage();
       toast(`Attached to ${attached.game}`);
     });
+    // the overlay goes over a game, so pressing the key with nothing attached
+    // has to say something rather than looking broken
+    listen("overlay-refused", (e) => toast(String(e.payload), true));
     listen("detached", () => {
       attached = null;
       // this is the moment a sitting ends, and the moment there is something

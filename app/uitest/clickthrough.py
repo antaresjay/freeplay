@@ -166,7 +166,9 @@ window.__TAURI__ = {
           if (args.on !== null && args.on !== undefined) OVERLAY.on = args.on;
           if (args.key) OVERLAY.key = args.key;
           return null;
-        case "toggle_overlay": return true;
+        case "toggle_overlay":
+          if (!window.__attachedNow) throw "attach to a game first, the overlay goes over the game";
+          return true;
         case "hide_overlay": window.__hidden = true; return null;
         case "overlay_game":
           return {process:"witcher2.exe", pid:1234, game:"The Witcher 2",

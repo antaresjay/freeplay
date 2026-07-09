@@ -26,35 +26,71 @@ pub fn hide(app: &tauri::AppHandle) {
     }
 }
 
+// built once, hidden, on the main thread. creating a window from the hotkey
+// thread is asking for trouble on windows, and building it on the first press
+// makes that press feel slow
+pub fn prepare(app: &tauri::AppHandle) -> Result<(), String> {
+    if app.get_webview_window(LABEL).is_some() {
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("overlay.html".into()))
+        .title("Freeplay overlay")
+        .inner_size(WIDTH, 620.0)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .transparent(true)
+        .visible(false)
+        .build()
+        .map_err(|e| format!("could not open the overlay: {e}"))?;
+    Ok(())
+}
+
+// there is nothing for it to be about with no game attached, and it was
+// turning up over freeplay itself
 pub fn show(app: &tauri::AppHandle, pid: Option<u32>) -> Result<(), String> {
-    let window = match app.get_webview_window(LABEL) {
-        Some(window) => window,
-        None => WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("overlay.html".into()))
-            .title("Freeplay overlay")
-            .inner_size(WIDTH, 620.0)
-            .decorations(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .resizable(false)
-            .shadow(false)
-            .transparent(true)
-            .visible(false)
-            .build()
-            .map_err(|e| format!("could not open the overlay: {e}"))?,
+    let pid = pid.ok_or("attach to a game first, the overlay goes over the game")?;
+    prepare(app)?;
+    let Some(window) = app.get_webview_window(LABEL) else {
+        return Err("the overlay is not there".into());
     };
 
-    if let Some(rect) = pid.and_then(game_rect) {
-        let _ = window.set_size(tauri::LogicalSize::new(WIDTH, rect.height.min(760.0)));
-        let _ = window.set_position(tauri::PhysicalPosition::new(
-            rect.right - (WIDTH as i32) - MARGIN as i32,
-            rect.top + MARGIN as i32,
-        ));
-    }
-
+    pin_to_game(&window, pid);
     window.show().map_err(|e| e.to_string())?;
     let _ = window.set_always_on_top(true);
     let _ = window.set_focus();
     Ok(())
+}
+
+// pixels all the way through. mixing logical and physical puts the panel in
+// the wrong place the moment anybody runs windows at anything but 100 per cent
+fn pin_to_game(window: &tauri::WebviewWindow, pid: u32) {
+    let Some(rect) = game_rect(pid) else { return };
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let width = (WIDTH * scale).round() as i32;
+    let margin = (MARGIN * scale).round() as i32;
+
+    let height = (rect.height - (margin * 2) as f64).clamp(240.0 * scale, 900.0 * scale);
+    let _ = window.set_size(tauri::PhysicalSize::new(
+        width as u32,
+        height.round() as u32,
+    ));
+    let _ = window.set_position(tauri::PhysicalPosition::new(
+        rect.right - width - margin,
+        rect.top + margin,
+    ));
+}
+
+// the game can be moved while the panel is up, and it should go with it
+pub fn follow(app: &tauri::AppHandle, pid: u32) {
+    if !showing(app) {
+        return;
+    }
+    if let Some(window) = app.get_webview_window(LABEL) {
+        pin_to_game(&window, pid);
+    }
 }
 
 pub fn toggle(app: &tauri::AppHandle, pid: Option<u32>) -> Result<bool, String> {
