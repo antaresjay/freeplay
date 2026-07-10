@@ -78,7 +78,12 @@ depend on the memory engine and does not.
 - Switch cheats on with the game closed. Freeplay attaches on its own when the
   game starts and holds them on as soon as you are far enough in for them to
   work, so you never alt-tab back to the app
-- Remembers what you had on, per game, across launches
+- Cheats that take a number take a number. Carry weight, game speed and how
+  much gold are not switches, and a table that freezes them at 999999 is a
+  wrecked save rather than a cheat
+- An overlay over the game, on a shortcut, for turning things on without
+  alt-tabbing at all
+- Remembers what you had on and what you typed, per game, across launches
 - Says what each cheat is doing rather than pretending. On, waiting for the
   game, or not found in this build
 - Finds values yourself: search for 100, take damage, search again, keep going
@@ -86,6 +91,8 @@ depend on the memory engine and does not.
 - Freezes values, sets them once, patches the instruction that changes them, or
   runs a Cheat Engine script and puts everything back when you switch it off
 - Saves what you found as a small readable table file you can share
+- Carries everything to another machine in one file: your games, what you had
+  on, the numbers you set, and which tables to pull back down
 
 ## Single player only
 
@@ -174,11 +181,61 @@ them depends on it.
 
 See [tables/README.md](tables/README.md).
 
+## The overlay
+
+A panel pinned to the right edge of the game, on a shortcut, so switching a
+cheat on does not mean alt-tabbing out of what you are doing. Same toggles and
+number boxes as the main window.
+
+It only ever appears over the game itself and goes away the moment you switch to
+something else, so it cannot end up floating over a browser. It needs a game
+attached with a table loaded, which also means it can never appear over a
+multiplayer game, since Freeplay refuses to attach to one in the first place.
+
+It is a borderless window on top of the game, not something drawn inside it.
+That works for windowed and borderless and does nothing for exclusive
+fullscreen. Drawing inside the game means injecting a DLL and hooking the swap
+chain, which is the thing every anti-cheat looks for, so it is not worth it for
+a program that will not go near those games anyway.
+
+Turning it on lets Freeplay watch the keyboard, and that is worth being straight
+about. `RegisterHotKey` is not enough: plenty of games install a low level
+keyboard hook and swallow every key, which is why the Windows key stops working
+inside them, and hooks run before hotkeys are looked at. So Freeplay installs
+one of its own, and reinstalls it whenever it attaches to a game, because hooks
+are called newest first. The callback compares the key against one combination
+and returns. Nothing is recorded, stored or sent, it is only installed while the
+overlay is turned on, and it is a few lines in `app/src-tauri/src/hotkey.rs`.
+
+The default is `Ctrl+Shift+O`, because everything obvious is taken: `Alt+Z` and
+`Alt+R` are NVIDIA, `Shift+Tab` is Steam, `Win+G` is the Xbox Game Bar, `F12` is
+a Steam screenshot. Pick your own and Freeplay says if it knows who owns it.
+
 ## Sharing tables
 
 If you work out a table that works, one button sends it and everybody else gets
 it. They vote on whether it worked for them, which is what decides the order the
 next person sees.
+
+The question is asked after you close the game rather than over it, since the
+middle of playing is the one moment nobody is looking at this window. It only
+asks about a table that was actually running, and it notes which one that was
+when the game starts, so swapping tables halfway through cannot confuse it. It
+does not ask if you never switched anything on, and "not now" is a real answer
+that buys two days of quiet.
+
+Which table is offered first is worked out on your machine rather than by the
+service, because only your machine knows which build of the game is installed.
+A table checked against your build beats a popular one from two patches ago,
+which usually resolves nothing at all. Votes go through a Wilson lower bound so
+two out of two does not outrank ninety out of a hundred, and a table people say
+is broken is pushed down rather than merely not lifted.
+
+Two different claims are kept apart on purpose. **Author verified** means the
+name is registered to a key and nobody else can publish under it. It says
+nothing about whether the table works. Whether it works is what the votes and
+the tested-on version are for, and Freeplay does not put its own name on any of
+that, because nothing in the app checks a table functionally.
 
 Names are optional and anonymous is the default. If you do want your name on
 what you share, Freeplay makes a key and registers the name against it, so
@@ -219,7 +276,9 @@ in `appinfo.vdf`, which is a binary format, and reading it properly is more
 work than a line of text is worth.
 
 Settings live in `%APPDATA%\freeplay\settings.json`. Downloaded tables live
-next to it in `%APPDATA%\freeplay\tables\`.
+next to it in `%APPDATA%\freeplay\tables\`, and ones you converted from a
+`.CT` yourself in `%APPDATA%\freeplay\mine\`. Whichever you picked most
+recently is the one that wins.
 
 ## Tables
 
@@ -235,7 +294,7 @@ exe  = "somegame.exe"
 id = "infinite-health"
 name = "Infinite Health"
 category = "player"
-type = "freeze"
+type = "value"
 value_type = "f32"
 value = 1000
 
@@ -253,7 +312,13 @@ patching and rip-relative operands.
 
 ```
 cargo test
+python app/uitest/clickthrough.py
+python app/uitest/overlay.py
 ```
+
+Nothing type checks the front end, so the two Python scripts drive it in
+headless Edge behind a fake Tauri bridge and fail if a control does nothing or
+anything throws. They have caught more real bugs than the unit tests have.
 
 ## License
 

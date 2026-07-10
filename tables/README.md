@@ -192,7 +192,26 @@ time but the route to it does not.
 
 ## What a cheat does
 
-**freeze** holds a value while the toggle is on.
+**value** is a number the player picks. Carry weight, game speed, how much
+gold. The box starts on whatever `value` says, or on whatever the game is
+holding if you leave it out, and it is held there while the toggle is on.
+
+```toml
+type = "value"
+value_type = "i32"     # i8 u8 i16 u16 i32 u32 i64 u64 f32 f64
+value = 500            # optional, the starting number
+lock = false           # optional, write it once instead of holding it
+hex = true             # optional, show it in hex
+choices = ["0:Easy", "1:Normal", "2:Hard"]   # optional, a dropdown
+```
+
+This is what a `.CT` value entry becomes. Cheat Engine has no idea what a good
+number is either, which is why the box is editable: freezing a carry weight at
+999999 is not a cheat, it is a wrecked save. A name that says "infinite" or
+"max" gets the ceiling, everything else is left for the player.
+
+**freeze** holds one fixed value while the toggle is on. `value` with `lock`
+left alone does the same thing and lets the number be changed, so prefer that.
 
 ```toml
 type = "freeze"
