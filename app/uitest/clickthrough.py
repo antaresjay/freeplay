@@ -764,6 +764,34 @@ PROBE = r"""
        "answering sends the vote for that table");
   note(!visible("ask"), "and the question is done with");
 
+  // the toast used to be drawn half its own width to the right and jump
+  // left the moment the animation finished, because the shared rise keyframes
+  // end on transform:none and that threw the centring away
+  const shownAt = el => {
+    const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+    return m.m41;
+  };
+  toast("Checking the toast sits still");
+  const bar = document.getElementById("toast");
+  await settle(40);
+  const early = shownAt(bar);
+  await settle(400);
+  const settled = shownAt(bar);
+  note(Math.abs(early - settled) < 2,
+       "the toast does not slide sideways as it appears (" +
+       Math.round(early) + " then " + Math.round(settled) + ")");
+  note(Math.abs(settled + bar.offsetWidth / 2) < 2,
+       "and it is actually centred");
+
+  // rust error strings start lowercase and land in front of somebody as is
+  toast("bring the game to the front first", true);
+  note(document.getElementById("toast").textContent === "Bring the game to the front first",
+       "a message from the backend reads like a sentence");
+  toast("witcher2.exe is not running", true);
+  note(document.getElementById("toast").textContent === "witcher2.exe is not running",
+       "but a file name is left alone");
+  document.getElementById("toast").hidden = true;
+
   note(window.__errors.length === 0,
        "no uncaught errors" + (window.__errors.length ? ": " + window.__errors.join(" | ") : ""));
   } catch (e) {

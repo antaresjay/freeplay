@@ -8,6 +8,13 @@ let rows = [];
 
 const many = (n, one) => `${n} ${n === 1 ? one : one + "s"}`;
 
+// same as the main window: rust errors start lowercase and end up on screen
+function sentence(text) {
+  const first = String(text).split(" ")[0];
+  if (!text || first.includes(".") || first.includes("_")) return text;
+  return text[0].toUpperCase() + text.slice(1);
+}
+
 /* ---------- drawing ---------- */
 
 function whyFor(item) {
@@ -195,7 +202,7 @@ function applyFilter() {
 
 function say(text) {
   $("ov-empty").hidden = !text;
-  $("ov-empty").textContent = text || "";
+  $("ov-empty").textContent = text ? sentence(text) : "";
   $("ov-filter").hidden = !cards.size;
 }
 

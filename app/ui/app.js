@@ -15,9 +15,19 @@ let sharedFor = null; // the exe the shared list on screen belongs to
 const art = new Map();
 const pending = new Set();
 
+/* error strings come up from rust, where they start lowercase by convention,
+   and they land in front of somebody exactly as written. fixing the first
+   letter here beats fixing it in fifty places and forgetting the next one.
+   a first word with a dot in it is a file name, and Witcher2.exe is wrong */
+function sentence(text) {
+  const first = String(text).split(" ")[0];
+  if (!text || first.includes(".") || first.includes("_")) return text;
+  return text[0].toUpperCase() + text.slice(1);
+}
+
 function toast(message, bad = false) {
   const el = $("toast");
-  el.textContent = message;
+  el.textContent = sentence(message);
   el.classList.toggle("bad", bad);
   el.hidden = false;
   clearTimeout(toast.timer);
