@@ -18,7 +18,7 @@ const pending = new Set();
 /* error strings come up from rust, where they start lowercase by convention,
    and they land in front of somebody exactly as written. fixing the first
    letter here beats fixing it in fifty places and forgetting the next one.
-   a first word with a dot in it is a file name, and Witcher2.exe is wrong */
+   a first word with a dot in it is a file name, and Game.exe is wrong */
 function sentence(text) {
   const first = String(text).split(" ")[0];
   if (!text || first.includes(".") || first.includes("_")) return text;

@@ -133,8 +133,8 @@ There is also a command line tool, which is the quickest way to try the engine:
 
 ```
 cargo run --release --bin freeplay -- games
-cargo run --release --bin freeplay -- ps witcher
-cargo run --release --bin freeplay -- scan --process witcher2.exe --type i32 --value 100
+cargo run --release --bin freeplay -- ps
+cargo run --release --bin freeplay -- scan --process game.exe --type i32 --value 100
 ```
 
 `scan` is interactive. Search for what you can see on screen, change it in game,
@@ -169,8 +169,8 @@ same way: a script scans for an instruction, allocates a cave next to it, writes
 a jump over it, and copies whatever register held the player into a slot. Every
 value entry then hangs off that slot's name rather than off an address. So
 Freeplay has an assembler, allocates inside the target, and hooks instructions.
-Without that, a table like aSwedishMagyar's Witcher 2 one imports nothing at
-all, because all 23 of its entries depend on it.
+Without that, plenty of tables import nothing at all, because every entry in
+them depends on it.
 
 See [tables/README.md](tables/README.md).
 

@@ -253,8 +253,9 @@ fn build_of(state: &tauri::State<'_, App>, exe: &str) -> String {
         .unwrap_or_default()
 }
 
-// what this game is called in the library beats what the table calls itself. a
-// .CT converted from witcher2.CT calls the game "witcher2"
+// what the library calls a game beats what the table calls it. a .CT names the
+// game after its own file, so a table converted from one ends up called
+// something like "skyrimse" instead of the name on the store page
 fn nice_name(state: &tauri::State<'_, App>, exe: &str, fallback: &str) -> String {
     let wanted = exe.to_lowercase();
     library(state, false)

@@ -81,7 +81,7 @@ enum Command {
     },
     /// What other people have shared for a game.
     Browse {
-        #[arg(help = "the game's executable, e.g. witcher2.exe")]
+        #[arg(help = "the game's executable, e.g. game.exe")]
         exe: String,
         #[arg(long, default_value = "", help = "prefer tables checked on this build")]
         build: String,

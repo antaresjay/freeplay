@@ -2,9 +2,10 @@
 //!
 //! RegisterHotKey was the obvious answer and it is not enough. plenty of games
 //! install a low level keyboard hook and swallow everything, which is why the
-//! windows key stops working inside the witcher 2. hooks run before hotkeys,
-//! so ours never fired. alt tab keeps working because it is handled in the
-//! kernel before any of this, and there is no way to register into that.
+//! windows key stops working in some of them. hooks run before hotkeys are
+//! looked at, so ours never fired. alt tab keeps working because it is handled
+//! in the kernel before any of this, and there is no way to register into
+//! that.
 //!
 //! so this installs a low level hook of its own. they are called newest first,
 //! which is the whole trick: reinstall ours after the game has installed its

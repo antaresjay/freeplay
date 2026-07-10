@@ -182,12 +182,12 @@ fn find_executables(dir: &Path, depth: usize) -> Vec<PathBuf> {
     found
 }
 
-/// How much two squashed names look like each other. Bigger is better.
-///
-/// Containment wins outright, which covers "witcher2" inside "The Witcher 2:
-/// Assassins of Kings". Otherwise a shared prefix counts, which is what links
-/// "MassEffect1" to "Mass Effect Legendary Edition" where neither contains the
-/// other.
+// how much two squashed names look like each other, bigger is better
+//
+// containment wins outright, which covers a short executable name sitting
+// inside a long store title. otherwise a shared prefix counts, which is what
+// links "MassEffect1" to "Mass Effect Legendary Edition" where neither one
+// contains the other
 fn similarity(title: &str, stem: &str) -> usize {
     if title.is_empty() || stem.is_empty() {
         return 0;
