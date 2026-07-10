@@ -1290,7 +1290,11 @@ fn friendly(error: CoreError) -> String {
 }
 
 #[tauri::command]
-fn attach(state: tauri::State<'_, App>, exe: String) -> Result<Attached, String> {
+fn attach(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, App>,
+    exe: String,
+) -> Result<Attached, String> {
     tear_down(&state);
     *state.declined.lock().unwrap() = None;
 
@@ -1333,6 +1337,15 @@ fn attach(state: tauri::State<'_, App>, exe: String) -> Result<Attached, String>
     }
     *state.target.lock().unwrap() = Some(shared);
     *state.search.lock().unwrap() = None;
+
+    // low level keyboard hooks are called newest first, and a game that eats
+    // the windows key has one of its own. ours has to go on after theirs or
+    // the shortcut never reaches us
+    if state.settings.lock().unwrap().overlay {
+        if let Err(e) = rebind_hotkey(&app) {
+            tracing::warn!("overlay hotkey: {e}");
+        }
+    }
 
     Ok(Attached {
         process: exe,
@@ -1783,7 +1796,7 @@ fn watch_for_games(handle: tauri::AppHandle) {
 
                 if let Some(table) = candidate {
                     let exe = table.game.exe.clone();
-                    match attach(state.clone(), exe.clone()) {
+                    match attach(handle.clone(), state.clone(), exe.clone()) {
                         Ok(what) => {
                             tracing::info!("attached to {exe} on its own");
                             let _ = handle.emit("attached", what);

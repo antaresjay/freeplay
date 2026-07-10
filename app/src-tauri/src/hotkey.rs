@@ -1,9 +1,19 @@
-//! the key that brings the overlay up, registered with windows itself
+//! the key that brings the overlay up
 //!
-//! RegisterHotKey is system wide, so it fires while a game has focus, which is
-//! the whole point. it also refuses when something else already holds the
-//! combination, and that refusal is the only honest way to know a hotkey is
-//! taken.
+//! RegisterHotKey was the obvious answer and it is not enough. plenty of games
+//! install a low level keyboard hook and swallow everything, which is why the
+//! windows key stops working inside the witcher 2. hooks run before hotkeys,
+//! so ours never fired. alt tab keeps working because it is handled in the
+//! kernel before any of this, and there is no way to register into that.
+//!
+//! so this installs a low level hook of its own. they are called newest first,
+//! which is the whole trick: reinstall ours after the game has installed its
+//! one and we see the key before it does.
+//!
+//! a hook like this is handed every keystroke on the machine. this one
+//! compares the key against one combination and returns. it keeps nothing,
+//! writes nothing down and sends nothing anywhere, it is only installed while
+//! the overlay is turned on, and it is fourteen lines you can read below.
 
 use std::sync::mpsc::Sender;
 
@@ -18,7 +28,6 @@ pub const ALT: u32 = 0x0001;
 pub const CONTROL: u32 = 0x0002;
 pub const SHIFT: u32 = 0x0004;
 pub const WIN: u32 = 0x0008;
-const NO_REPEAT: u32 = 0x4000;
 
 // nothing else on a gaming machine wants this one. the obvious picks are all
 // spoken for, see `clash`
@@ -168,10 +177,12 @@ pub fn clash(text: &str) -> Option<&'static str> {
         .map(|(_, who)| *who)
 }
 
-// holds the registration for as long as it is alive
+// holds the hook for as long as it is alive
 pub struct Listener {
     #[cfg(windows)]
     thread: Option<std::thread::JoinHandle<()>>,
+    #[cfg(windows)]
+    watcher: Option<std::thread::JoinHandle<()>>,
     #[cfg(windows)]
     stop: u32,
 }
@@ -179,54 +190,86 @@ pub struct Listener {
 #[cfg(windows)]
 mod win {
     use super::*;
-    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
-    use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, HOT_KEY_MODIFIERS};
+    use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+
+    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_HOTKEY,
-        WM_USER,
+        CallNextHookEx, DispatchMessageW, GetMessageW, PostThreadMessageW, SetWindowsHookExW,
+        TranslateMessage, UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WM_KEYDOWN,
+        WM_SYSKEYDOWN, WM_USER,
     };
 
-    const ID: i32 = 0xF7E9;
     const QUIT: u32 = WM_USER + 1;
 
-    // the hotkey belongs to whichever thread registered it, and its messages
-    // land in that thread's queue rather than any window, so this needs a
-    // thread of its own with a message loop
+    // the modifiers in the low half, the key in the high half. the callback
+    // must not take a lock, so what it needs to know lives in atomics
+    static WANTED: AtomicU64 = AtomicU64::new(0);
+    static HITS: AtomicU32 = AtomicU32::new(0);
+
+    fn held() -> u32 {
+        let down = |vk: u16| unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0;
+        let mut modifiers = 0;
+        if down(VK_CONTROL.0) {
+            modifiers |= CONTROL;
+        }
+        if down(VK_SHIFT.0) {
+            modifiers |= SHIFT;
+        }
+        if down(VK_MENU.0) {
+            modifiers |= ALT;
+        }
+        if down(VK_LWIN.0) || down(VK_RWIN.0) {
+            modifiers |= WIN;
+        }
+        modifiers
+    }
+
+    // windows drops a hook that dawdles, so this counts and returns. anything
+    // that is not the one combination goes straight on to whoever is next,
+    // untouched and unrecorded
+    unsafe extern "system" fn watch(code: i32, what: WPARAM, carried: LPARAM) -> LRESULT {
+        if code >= 0 && (what.0 as u32 == WM_KEYDOWN || what.0 as u32 == WM_SYSKEYDOWN) {
+            let event = unsafe { &*(carried.0 as *const KBDLLHOOKSTRUCT) };
+            let wanted = WANTED.load(Ordering::Relaxed);
+            let key = (wanted >> 32) as u32;
+            let modifiers = wanted as u32;
+
+            if event.vkCode == key && held() == modifiers {
+                HITS.fetch_add(1, Ordering::Relaxed);
+                // ours, so the game does not see it as well
+                return LRESULT(1);
+            }
+        }
+        unsafe { CallNextHookEx(None, code, what, carried) }
+    }
+
     pub fn listen(key: Hotkey, tell: Sender<()>) -> Result<Listener, String> {
+        WANTED.store(
+            ((key.key as u64) << 32) | key.modifiers as u64,
+            Ordering::Relaxed,
+        );
+        let seen = HITS.load(Ordering::Relaxed);
         let (ready, done) = std::sync::mpsc::channel();
 
+        // the hook is owned by the thread that installs it and is called on
+        // that thread, which therefore needs a message loop of its own
         let thread = std::thread::spawn(move || {
-            let registered = unsafe {
-                RegisterHotKey(
-                    Some(HWND::default()),
-                    ID,
-                    HOT_KEY_MODIFIERS(key.modifiers | NO_REPEAT),
-                    key.key,
-                )
+            let hook = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(watch), None, 0) };
+            let Ok(hook) = hook else {
+                let _ = ready.send(Err("windows would not let us watch for the key".to_string()));
+                return;
             };
 
-            if registered.is_err() {
-                let _ = ready.send(Err(
-                    "another program is already using that combination".to_string()
-                ));
-                return;
-            }
-
-            // the loop below only ends when this thread is posted to, so its
-            // id has to travel back out
             let id = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
             let _ = ready.send(Ok(id));
 
             let mut message = MSG::default();
             loop {
                 let got = unsafe { GetMessageW(&mut message, None, 0, 0) };
-                if got.0 <= 0 {
-                    break;
-                }
-                if message.message == QUIT {
-                    break;
-                }
-                if message.message == WM_HOTKEY && tell.send(()).is_err() {
+                if got.0 <= 0 || message.message == QUIT {
                     break;
                 }
                 unsafe {
@@ -234,16 +277,39 @@ mod win {
                     DispatchMessageW(&message);
                 }
             }
+            unsafe {
+                let _ = UnhookWindowsHookEx(hook);
+            }
         });
 
-        match done.recv() {
-            Ok(Ok(id)) => Ok(Listener {
-                thread: Some(thread),
-                stop: id,
-            }),
-            Ok(Err(why)) => Err(why),
-            Err(_) => Err("could not start the hotkey watcher".into()),
-        }
+        let id = match done.recv() {
+            Ok(Ok(id)) => id,
+            Ok(Err(why)) => return Err(why),
+            Err(_) => return Err("could not start the key watcher".into()),
+        };
+
+        // the counter is turned back into something to wait on here, so the
+        // hook itself never allocates or takes a lock
+        let watcher = std::thread::spawn(move || {
+            let mut last = seen;
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+                let now = HITS.load(Ordering::Relaxed);
+                if now == last {
+                    continue;
+                }
+                last = now;
+                if tell.send(()).is_err() {
+                    break;
+                }
+            }
+        });
+
+        Ok(Listener {
+            thread: Some(thread),
+            watcher: Some(watcher),
+            stop: id,
+        })
     }
 
     pub fn quit(listener: &mut Listener) {
@@ -255,6 +321,8 @@ mod win {
         if let Some(thread) = listener.thread.take() {
             let _ = thread.join();
         }
+        // the watcher ends on its own when the sender goes with the listener
+        listener.watcher.take();
     }
 }
 

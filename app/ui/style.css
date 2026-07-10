@@ -1642,3 +1642,12 @@ body.maximised .win .when-big { display: block; }
 @media (max-width: 900px) {
   .ask-card { flex-direction: column; align-items: stretch; gap: 14px; }
 }
+
+/* a note that matters more than the line above it */
+.setting-label span.aside {
+  margin-top: 6px;
+  padding-left: 9px;
+  border-left: 2px solid var(--line);
+  color: var(--dim);
+  line-height: 1.55;
+}
