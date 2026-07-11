@@ -1825,6 +1825,7 @@ fn watch_the_front(handle: tauri::AppHandle) {
             continue;
         }
 
+        tracing::info!("overlay down, the game is not what is in front any more");
         let app = handle.clone();
         let _ = handle.run_on_main_thread(move || overlay::hide(&app));
     }

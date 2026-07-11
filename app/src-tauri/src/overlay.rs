@@ -7,9 +7,17 @@
 //! the swap chain, which is the thing every anti-cheat is looking for, and
 //! this app refuses to go near games that have one.
 
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 pub const LABEL: &str = "overlay";
+// taking focus is not instant, and for a moment the foreground is neither the
+// game nor us. without this the watcher saw that gap and pulled the panel
+// straight back down
+const SETTLE: Duration = Duration::from_millis(700);
+static SHOWN_AT: Mutex<Option<Instant>> = Mutex::new(None);
 const WIDTH: f64 = 296.0;
 // clear of the edge, so it does not sit on top of a health bar in the corner
 const MARGIN: f64 = 24.0;
@@ -62,6 +70,7 @@ pub fn show(app: &tauri::AppHandle, pid: Option<u32>) -> Result<(), String> {
     };
 
     pin_to_game(&window, pid);
+    *SHOWN_AT.lock().unwrap() = Some(Instant::now());
     window.show().map_err(|e| e.to_string())?;
     let _ = window.set_always_on_top(true);
     let _ = window.set_focus();
@@ -72,26 +81,47 @@ pub fn show(app: &tauri::AppHandle, pid: Option<u32>) -> Result<(), String> {
 }
 
 // the game is what is in front, or the panel itself is because you clicked it
+//
+// this asks which process owns the foreground window rather than comparing
+// against one handle. games own several top level windows and the one with
+// focus is often not the biggest, so matching on the handle said no the
+// instant the panel appeared
 #[cfg(windows)]
 pub fn belongs_here(app: &tauri::AppHandle, pid: u32) -> bool {
-    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-
-    let front = unsafe { GetForegroundWindow() };
-    if front.is_invalid() {
-        return false;
-    }
-    if main_window(pid) == Some(front) {
+    if SHOWN_AT
+        .lock()
+        .unwrap()
+        .is_some_and(|at| at.elapsed() < SETTLE)
+    {
         return true;
     }
+    if foreground_pid() == Some(pid) {
+        return true;
+    }
+
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    let front = unsafe { GetForegroundWindow() };
     app.get_webview_window(LABEL)
         .and_then(|w| w.hwnd().ok())
         .is_some_and(|ours| ours == front)
 }
 
 #[cfg(windows)]
+fn foreground_pid() -> Option<u32> {
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+
+    let front = unsafe { GetForegroundWindow() };
+    if front.is_invalid() {
+        return None;
+    }
+    let mut owner = 0u32;
+    unsafe { GetWindowThreadProcessId(front, Some(&mut owner)) };
+    (owner != 0).then_some(owner)
+}
+
+#[cfg(windows)]
 fn game_in_front(pid: u32) -> bool {
-    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-    main_window(pid) == Some(unsafe { GetForegroundWindow() })
+    foreground_pid() == Some(pid)
 }
 
 #[cfg(not(windows))]

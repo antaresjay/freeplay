@@ -566,6 +566,13 @@ PROBE = r"""
   note(document.getElementById("overlay-on").classList.contains("on"),
        "turning it on sticks");
   note(visible("overlay-key-row"), "and the shortcut appears");
+  // the shortcut is part of the overlay, not a setting of its own, and two
+  // cards of wildly different heights side by side left a hole
+  note(document.getElementById("overlay-key-row").closest(".setting")
+         === document.getElementById("overlay-on").closest(".setting"),
+       "the shortcut lives inside the overlay setting");
+  note(getComputedStyle(document.querySelector(".settings-grid")).alignItems === "start",
+       "settings cards size to what is in them");
   note(document.getElementById("overlay-key").textContent === "Ctrl+Shift+O",
        "with a default that treads on nothing");
 
