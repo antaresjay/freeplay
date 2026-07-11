@@ -571,8 +571,6 @@ PROBE = r"""
   note(document.getElementById("overlay-key-row").closest(".setting")
          === document.getElementById("overlay-on").closest(".setting"),
        "the shortcut lives inside the overlay setting");
-  note(getComputedStyle(document.querySelector(".settings-grid")).alignItems === "start",
-       "settings cards size to what is in them");
 
   // the one card with a lot to say takes the whole row, so nothing short sits
   // beside it with a hole in the middle
@@ -580,6 +578,18 @@ PROBE = r"""
   const short = document.getElementById("auto-update").closest(".setting");
   note(tall.offsetWidth > short.offsetWidth * 1.5,
        "the overlay setting spans the row rather than pairing with a short one");
+
+  // every card sharing a row is the same height as the others on it
+  const rows = new Map();
+  for (const card of document.querySelectorAll(".settings-grid .setting")) {
+    const top = Math.round(card.offsetTop);
+    if (!rows.has(top)) rows.set(top, []);
+    rows.get(top).push(Math.round(card.offsetHeight));
+  }
+  const ragged = [...rows.values()].filter(hs => new Set(hs).size > 1);
+  note(ragged.length === 0,
+       "cards sharing a row are the same height" +
+       (ragged.length ? ": " + JSON.stringify(ragged) : ""));
   note(document.getElementById("overlay-key").textContent === "Ctrl+Shift+O",
        "with a default that treads on nothing");
 

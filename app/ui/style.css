@@ -918,9 +918,12 @@ input::placeholder { color: var(--faint); }
 
 /* ---------- settings ---------- */
 
+/* cards in a row are the same height, and what is inside them sits at the
+   top. centring the contents of a stretched card was what left a switch
+   floating in the middle of the empty half of a short one */
 .setting {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 20px;
   padding: 16px 18px;
   margin-bottom: 10px;
@@ -1403,9 +1406,6 @@ body.maximised .win .when-big { display: block; }
   margin-bottom: 22px;
 }
 .settings-grid .setting { margin-bottom: 0; }
-/* cards size to what is in them. stretching a short one to match a tall one
-   next to it leaves a hole with a switch floating in the middle of it */
-.settings-grid { align-items: start; }
 
 /* one setting has far more to say than any of the others, so it takes the
    whole row rather than leaving a hole beside a short card */
@@ -1669,3 +1669,7 @@ body.maximised .win .when-big { display: block; }
 @media (max-width: 900px) {
   .ask-card { flex-direction: column; align-items: stretch; gap: 14px; }
 }
+
+/* the control lines up with the title rather than the box around it */
+.setting > .switch, .setting > .setting-actions, .setting > .segmented,
+.setting > .swatches, .setting > .ghost { margin-top: 1px; }
