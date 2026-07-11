@@ -999,8 +999,18 @@ fn rebind_hotkey(app: &tauri::AppHandle) -> Result<(), String> {
 
     let handle = app.clone();
     std::thread::spawn(move || {
+        let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+
         // ends on its own when the listener is dropped and the sender goes
         while heard.recv().is_ok() {
+            // one press must never be two toggles. a global key hook is
+            // exactly the sort of thing that delivers a stray second event,
+            // and show then hide looks identical to the overlay being broken
+            if last.elapsed() < std::time::Duration::from_millis(300) {
+                continue;
+            }
+            last = std::time::Instant::now();
+
             let app = handle.clone();
             // windows are the main thread's business, and this is not it
             let _ = handle.run_on_main_thread(move || {

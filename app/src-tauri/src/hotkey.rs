@@ -184,6 +184,11 @@ pub struct Listener {
     thread: Option<std::thread::JoinHandle<()>>,
     #[cfg(windows)]
     watcher: Option<std::thread::JoinHandle<()>>,
+    // dropping a join handle does not stop the thread behind it, and this one
+    // polls a counter shared with every other, so a leaked one fires the
+    // shortcut a second time
+    #[cfg(windows)]
+    halt: std::sync::Arc<std::sync::atomic::AtomicBool>,
     #[cfg(windows)]
     stop: u32,
 }
@@ -191,7 +196,8 @@ pub struct Listener {
 #[cfg(windows)]
 mod win {
     use super::*;
-    use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+    use std::sync::Arc;
 
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -200,7 +206,7 @@ mod win {
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetMessageW, PostThreadMessageW, SetWindowsHookExW,
         TranslateMessage, UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WM_KEYDOWN,
-        WM_SYSKEYDOWN, WM_USER,
+        WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_USER,
     };
 
     const QUIT: u32 = WM_USER + 1;
@@ -209,6 +215,9 @@ mod win {
     // must not take a lock, so what it needs to know lives in atomics
     static WANTED: AtomicU64 = AtomicU64::new(0);
     static HITS: AtomicU32 = AtomicU32::new(0);
+    // holding a key repeats keydown, and every repeat used to count as another
+    // press
+    static DOWN: AtomicBool = AtomicBool::new(false);
 
     fn held() -> u32 {
         let down = |vk: u16| unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0;
@@ -232,16 +241,26 @@ mod win {
     // that is not the one combination goes straight on to whoever is next,
     // untouched and unrecorded
     unsafe extern "system" fn watch(code: i32, what: WPARAM, carried: LPARAM) -> LRESULT {
-        if code >= 0 && (what.0 as u32 == WM_KEYDOWN || what.0 as u32 == WM_SYSKEYDOWN) {
+        if code >= 0 {
+            let message = what.0 as u32;
             let event = unsafe { &*(carried.0 as *const KBDLLHOOKSTRUCT) };
             let wanted = WANTED.load(Ordering::Relaxed);
-            let key = (wanted >> 32) as u32;
-            let modifiers = wanted as u32;
 
-            if event.vkCode == key && held() == modifiers {
-                HITS.fetch_add(1, Ordering::Relaxed);
-                // ours, so the game does not see it as well
-                return LRESULT(1);
+            if event.vkCode == (wanted >> 32) as u32 {
+                if message == WM_KEYUP || message == WM_SYSKEYUP {
+                    DOWN.store(false, Ordering::Relaxed);
+                } else if message == WM_KEYDOWN || message == WM_SYSKEYDOWN {
+                    let ours = held() == wanted as u32;
+                    // one press is one toggle, however long it is held
+                    let repeat = DOWN.swap(true, Ordering::Relaxed);
+                    if ours && !repeat {
+                        HITS.fetch_add(1, Ordering::Relaxed);
+                    }
+                    if ours {
+                        // ours, so the game never sees it
+                        return LRESULT(1);
+                    }
+                }
             }
         }
         unsafe { CallNextHookEx(None, code, what, carried) }
@@ -291,10 +310,15 @@ mod win {
 
         // the counter is turned back into something to wait on here, so the
         // hook itself never allocates or takes a lock
+        let halt = Arc::new(AtomicBool::new(false));
+        let mine = Arc::clone(&halt);
         let watcher = std::thread::spawn(move || {
             let mut last = seen;
             loop {
                 std::thread::sleep(std::time::Duration::from_millis(25));
+                if mine.load(Ordering::Relaxed) {
+                    break;
+                }
                 let now = HITS.load(Ordering::Relaxed);
                 if now == last {
                     continue;
@@ -309,6 +333,7 @@ mod win {
         Ok(Listener {
             thread: Some(thread),
             watcher: Some(watcher),
+            halt,
             stop: id,
         })
     }
@@ -322,8 +347,13 @@ mod win {
         if let Some(thread) = listener.thread.take() {
             let _ = thread.join();
         }
-        // the watcher ends on its own when the sender goes with the listener
-        listener.watcher.take();
+        // and this one has to be told. dropping its handle leaves it running,
+        // polling the same counter the next one polls, so every rebind used to
+        // add another toggle to a single press
+        listener.halt.store(true, Ordering::Relaxed);
+        if let Some(watcher) = listener.watcher.take() {
+            let _ = watcher.join();
+        }
     }
 }
 
