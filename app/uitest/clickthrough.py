@@ -573,6 +573,13 @@ PROBE = r"""
        "the shortcut lives inside the overlay setting");
   note(getComputedStyle(document.querySelector(".settings-grid")).alignItems === "start",
        "settings cards size to what is in them");
+
+  // the one card with a lot to say takes the whole row, so nothing short sits
+  // beside it with a hole in the middle
+  const tall = document.getElementById("overlay-on").closest(".setting");
+  const short = document.getElementById("auto-update").closest(".setting");
+  note(tall.offsetWidth > short.offsetWidth * 1.5,
+       "the overlay setting spans the row rather than pairing with a short one");
   note(document.getElementById("overlay-key").textContent === "Ctrl+Shift+O",
        "with a default that treads on nothing");
 
@@ -843,6 +850,9 @@ def main():
     url = "file:///" + page_path.replace("\\", "/")
     run = subprocess.run(
         [browser, "--headless", "--disable-gpu", "--allow-file-access-from-files",
+         # the wide layout is where the two column settings grid lives, and the
+         # default headless window is narrow enough to never see it
+         "--window-size=1600,1000",
          "--virtual-time-budget=40000", "--dump-dom", url],
         capture_output=True, text=True, timeout=180)
 

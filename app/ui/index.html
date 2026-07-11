@@ -341,23 +341,25 @@
         <div class="setting-top">
           <div class="setting-label">
             <strong>Overlay while you play</strong>
-            <span>A panel over the game for switching cheats on without alt tabbing. It only appears over the game itself, and goes away when you switch to something else. Windowed and borderless only, since exclusive fullscreen draws over everything.</span>
+            <span>A panel over the game for switching cheats on without alt tabbing. Windowed and borderless only, since exclusive fullscreen draws over everything.</span>
           </div>
           <button id="overlay-on" class="switch"></button>
         </div>
 
         <div id="overlay-key-row" class="setting-more">
-          <div class="setting-label">
+          <div class="setting-half">
             <strong>Shortcut</strong>
             <span id="overlay-key-why">Click the box, then press the keys you want.</span>
+            <div class="setting-actions">
+              <button id="overlay-key" class="keycap">Ctrl+Shift+O</button>
+              <button id="overlay-key-reset" class="ghost">Reset</button>
+            </div>
           </div>
-          <div class="setting-actions">
-            <button id="overlay-key" class="keycap">Ctrl+Shift+O</button>
-            <button id="overlay-key-reset" class="ghost">Reset</button>
+          <div class="setting-half">
+            <strong>Freeplay watches the keyboard for it</strong>
+            <span>Many games swallow every key while they have focus, so an ordinary shortcut never arrives. Freeplay compares each key against the combination on the left and nothing else. Nothing is recorded, stored or sent, and it stops the moment you switch this off.</span>
           </div>
         </div>
-
-        <p class="aside">Turning this on lets Freeplay watch the keyboard. Many games swallow every key while they have focus, so an ordinary shortcut never arrives. It compares each key against the one combination above and nothing else. Nothing is recorded, stored or sent, and it stops the moment you turn this off.</p>
       </div>
 
       <div class="setting">

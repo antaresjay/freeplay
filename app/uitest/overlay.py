@@ -213,6 +213,9 @@ def main():
     url = "file:///" + page_path.replace("\\", "/")
     run = subprocess.run(
         [browser, "--headless", "--disable-gpu", "--allow-file-access-from-files",
+         # the wide layout is where the two column settings grid lives, and the
+         # default headless window is narrow enough to never see it
+         "--window-size=1600,1000",
          "--virtual-time-budget=20000", "--dump-dom", url],
         capture_output=True, text=True, timeout=180)
 
