@@ -1813,19 +1813,33 @@ fn watch_for_games(handle: tauri::AppHandle) {
 // alt tab away from the game and the panel goes with it. it is pinned over
 // one window, so leaving it up over whatever you switched to is just litter
 fn watch_the_front(handle: tauri::AppHandle) {
+    // one bad reading is not an answer. windows reports odd things mid focus
+    // change, and taking the panel away on the strength of a single poll is
+    // what made it vanish the instant it appeared
+    const STRIKES: u32 = 3;
+    let mut wrong = 0u32;
+
     loop {
         std::thread::sleep(std::time::Duration::from_millis(200));
         if !overlay::showing(&handle) {
+            wrong = 0;
             continue;
         }
 
         let state = handle.state::<App>();
         let still = overlay_pid(&state).is_some_and(|pid| overlay::belongs_here(&handle, pid));
         if still {
+            wrong = 0;
             continue;
         }
 
-        tracing::info!("overlay down, the game is not what is in front any more");
+        wrong += 1;
+        if wrong < STRIKES {
+            continue;
+        }
+        wrong = 0;
+
+        tracing::info!("overlay down, {} has focus", overlay::whats_in_front());
         let app = handle.clone();
         let _ = handle.run_on_main_thread(move || overlay::hide(&app));
     }

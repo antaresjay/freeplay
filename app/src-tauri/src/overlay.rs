@@ -61,6 +61,9 @@ pub fn prepare(app: &tauri::AppHandle) -> Result<(), String> {
 pub fn show(app: &tauri::AppHandle, pid: Option<u32>) -> Result<(), String> {
     let pid = pid.ok_or("attach to a game with a table first")?;
     if !game_in_front(pid) {
+        // said which two things did not match, because guessing at this from
+        // the outside cost two rounds already
+        tracing::info!("overlay: {} is in front, wanted {pid}", whats_in_front());
         return Err("bring the game to the front first".into());
     }
 
@@ -121,7 +124,32 @@ fn foreground_pid() -> Option<u32> {
 
 #[cfg(windows)]
 fn game_in_front(pid: u32) -> bool {
-    foreground_pid() == Some(pid)
+    match foreground_pid() {
+        Some(front) => front == pid,
+        // windows hands back nothing during a focus change and while a screen
+        // is locking. refusing then would be refusing at random, and the
+        // watcher pulls the panel down a moment later anyway if it was wrong
+        None => true,
+    }
+}
+
+// for the log. what actually has focus, in words
+#[cfg(windows)]
+pub fn whats_in_front() -> String {
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowTextW};
+
+    let Some(pid) = foreground_pid() else {
+        return "nothing".into();
+    };
+    let mut title = [0u16; 128];
+    let taken = unsafe { GetWindowTextW(GetForegroundWindow(), &mut title) };
+    let name = String::from_utf16_lossy(&title[..taken.max(0) as usize]);
+    format!("pid {pid} ({name})")
+}
+
+#[cfg(not(windows))]
+pub fn whats_in_front() -> String {
+    "nothing".into()
 }
 
 #[cfg(not(windows))]
