@@ -539,9 +539,14 @@ PROBE = r"""
   const dockMid = document.querySelector(".shared-dock").offsetHeight;
   note(document.querySelectorAll("#shared-list .bone").length === 3,
        "switching games puts up as many placeholders as there were rows");
-  note(dockMid > dockWas * 0.75,
-       "and the panel keeps its shape while it waits (" +
+  note(dockMid === dockWas,
+       "and the panel does not change height at all (" +
        dockWas + " then " + dockMid + ")");
+  await settle(700);
+  const dockAfter = document.querySelector(".shared-dock").offsetHeight;
+  note(dockAfter === dockWas,
+       "nor when the answer lands and there is nothing to show (" +
+       dockAfter + ")");
   note(!document.getElementById("shared-list").textContent.includes("Looking"),
        "no word appears and vanishes in the middle of it");
 

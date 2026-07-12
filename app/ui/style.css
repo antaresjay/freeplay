@@ -1231,7 +1231,9 @@ body.maximised .win .when-big { display: block; }
   position: sticky;
   top: 0;
   width: 320px;
-  max-height: calc(100vh - var(--titlebar) - 132px);
+  /* a height, not a maximum. sizing to the contents meant the panel jumped
+     every time the contents changed, which is every time you switch game */
+  height: calc(100vh - var(--titlebar) - 132px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--line);
@@ -1289,8 +1291,8 @@ body.maximised .win .when-big { display: block; }
 
 @media (max-width: 1240px) {
   .game-layout { grid-template-columns: minmax(0, 1fr); }
-  .shared-dock { position: static; width: auto; max-height: none; }
-  .dock-scroll { max-height: 320px; }
+  .shared-dock { position: static; width: auto; height: auto; }
+  .dock-scroll { height: 320px; }
   .dock-open { writing-mode: horizontal-tb; width: max-content; }
   .dock-open svg { rotate: none; }
 }
@@ -1705,5 +1707,6 @@ body.maximised .win .when-big { display: block; }
 .shared-row.bone .bar.short { width: 64%; }
 .shared-row.bone .bar.button { width: 100%; height: 28px; margin-top: 11px; border-radius: 6px; }
 
-/* the panel keeps roughly its shape rather than folding to nothing */
-.shared-dock .dock-scroll { min-height: 132px; }
+/* the empty message sits in the scrolling area rather than under it, or the
+   panel gains a row's worth of height whenever there is nothing to show */
+.shared-dock .dock-empty { padding: 16px 4px; }
