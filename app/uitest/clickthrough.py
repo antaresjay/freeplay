@@ -139,7 +139,8 @@ window.__TAURI__ = {
         case "shared_tables":
           if (!SETTINGS.community) throw "shared tables are turned off";
           window.__askedAbout = args.exe;
-          return SHARED;
+          await new Promise(r => setTimeout(r, 350));
+          return args.exe === "witcher2.exe" ? SHARED : [];
         case "install_shared": return "The Witcher 2 is ready, 23 cheats";
         case "pending_question": return QUESTION;
         case "answer_question":
@@ -524,6 +525,25 @@ PROBE = r"""
   document.getElementById("cheat-filter").dispatchEvent(new Event("input"));
   await settle(300);
   note(!document.querySelector("#cheat-groups .cheat").hidden, "a match comes back");
+
+  // switching games used to drop the panel to a single line saying Looking
+  // and spring back, which reads as a flicker
+  const detroitAgain = [...rail].find(r => r.textContent.includes("Detroit"));
+  rail[0].click();
+  await settle(900);
+  const dockWas = document.querySelector(".shared-dock").offsetHeight;
+  note(dockWas > 0, "the shared panel has a height to begin with");
+
+  detroitAgain.click();
+  await settle(120);
+  const dockMid = document.querySelector(".shared-dock").offsetHeight;
+  note(document.querySelectorAll("#shared-list .bone").length === 3,
+       "switching games puts up as many placeholders as there were rows");
+  note(dockMid > dockWas * 0.75,
+       "and the panel keeps its shape while it waits (" +
+       dockWas + " then " + dockMid + ")");
+  note(!document.getElementById("shared-list").textContent.includes("Looking"),
+       "no word appears and vanishes in the middle of it");
 
   // a game we cannot find an executable for
   const gog = [...rail].find(r => r.textContent.includes("GOG"));

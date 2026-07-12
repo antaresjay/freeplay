@@ -1446,11 +1446,33 @@ async function loadShared(force = false) {
   }
 
   if (!force && sharedFor === game.exe) return;
+
+  /* a different game means what is on screen is about to be wrong, so it goes
+     now and placeholders the size of real rows hold the panel open. asking
+     again about the same game leaves it alone entirely, because collapsing to
+     one line and springing back is the flicker */
+  const another = sharedFor !== game.exe;
   sharedFor = game.exe;
 
   await loadSortOptions();
   const host = $("shared-list");
-  host.innerHTML = '<div class="placeholder">Looking</div>';
+  if (another) {
+    $("shared-empty").hidden = true;
+    // as many as were there a moment ago, so the panel is close to the size
+    // it was and close to the size it is about to be
+    const many = Math.min(Math.max(sharedRows.length || 2, 1), 4);
+    host.innerHTML = "";
+    for (let n = 0; n < many; n++) {
+      const bone = document.createElement("div");
+      bone.className = "shared-row bone";
+      for (const shape of ["bar wide", "bar", "bar short", "bar button"]) {
+        const line = document.createElement("span");
+        line.className = shape;
+        bone.appendChild(line);
+      }
+      host.appendChild(bone);
+    }
+  }
 
   let rows = [];
   try {

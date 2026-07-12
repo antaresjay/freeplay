@@ -1684,3 +1684,26 @@ body.maximised .win .when-big { display: block; }
   font-size: 13px;
   line-height: 1.6;
 }
+
+/* placeholder rows the size of real ones. the panel used to drop to a single
+   line saying Looking and spring back, which reads as a flicker */
+.shared-row.bone {
+  display: block;
+  pointer-events: none;
+  border-color: var(--line-soft);
+}
+.shared-row.bone .bar {
+  display: block;
+  height: 9px;
+  width: 52%;
+  margin: 5px 0;
+  border-radius: 4px;
+  background: var(--raised-2);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+.shared-row.bone .bar.wide { width: 74%; height: 11px; }
+.shared-row.bone .bar.short { width: 64%; }
+.shared-row.bone .bar.button { width: 100%; height: 28px; margin-top: 11px; border-radius: 6px; }
+
+/* the panel keeps roughly its shape rather than folding to nothing */
+.shared-dock .dock-scroll { min-height: 132px; }
