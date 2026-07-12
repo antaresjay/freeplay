@@ -1673,3 +1673,14 @@ body.maximised .win .when-big { display: block; }
 /* the control lines up with the title rather than the box around it */
 .setting > .switch, .setting > .setting-actions, .setting > .segmented,
 .setting > .swatches, .setting > .ghost { margin-top: 1px; }
+
+/* the quieter half of a two part explanation */
+.setting-label span.quiet { color: var(--faint); opacity: 0.85; }
+
+.prose ul.plain { margin: 0 0 14px; padding-left: 18px; }
+.prose ul.plain li {
+  margin-bottom: 5px;
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1.6;
+}

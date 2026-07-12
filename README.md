@@ -256,14 +256,31 @@ GitHub without installing anything.
 
 ## What it sends
 
-No account, no email, no telemetry, no crash reporting, and nothing about you or
-your machine.
+No email address, no password, no telemetry, no crash reporting, and nothing
+about you or your machine. Claiming a name is optional, is a key rather than an
+account, and nothing else changes if you never do it.
 
-The one thing Freeplay does over the network is fetch cheat tables: a GET of
-`tables/index.json` from this repository, then a GET of any table file that is
-new or has changed. That is it, one host, read only, over https, using the
-certificate store Windows already has. Turn it off in settings and Freeplay
-never opens a socket, and runs on whatever is on your disk.
+Every request Freeplay can make is in this list. Two hosts: GitHub for the
+published tables, and the sharing service for the rest.
+
+| Request | When | What goes with it |
+| --- | --- | --- |
+| The published table list, then any table that changed | Once, at startup | Nothing |
+| What people have shared for a game | Opening that game's page | The game's file name and version |
+| One shared table | You press Use table | The table id, and a random id so downloads can be counted |
+| A table you are publishing | You press Share yours | The table, and your name and signature unless you shared it anonymously |
+| A vote | You answer whether a table worked | The table id, the same random id, and the game version |
+| A name | You claim one | The name |
+
+The random id is made once on first run, is not derived from anything about the
+machine, and exists so one person cannot vote twice.
+
+Two switches in settings cover all of it. **Download new tables automatically**
+is the first row. **Shared tables from other people** is the other five. That
+second one is separate on purpose: opening a game page asks the service about
+that game without you pressing anything, so saying "only when you use it" would
+not have been true. Turn both off and Freeplay opens no connections at all and
+runs on whatever is on your disk.
 
 I built it without any network at first and it was the wrong call. It meant
 every new game was somebody manually finding a file and putting it in a folder,

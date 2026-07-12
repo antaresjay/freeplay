@@ -320,8 +320,8 @@
 
       <div class="setting">
         <div class="setting-label">
-          <strong>Your name on shared tables</strong>
-          <span id="whoami-state">Uploads go out anonymously.</span>
+          <strong>Your identity on shared tables</strong>
+          <span id="whoami-state">Nothing you share carries a name.</span>
         </div>
         <div class="setting-actions">
           <button id="claim-name" class="ghost">Claim a name</button>
@@ -365,9 +365,18 @@
       <div class="setting">
         <div class="setting-label">
           <strong>Download new tables automatically</strong>
-          <span>Checks for published tables on start. No account, and nothing about you is sent. Turn it off and Freeplay never touches the network.</span>
+          <span>Checks the published table list once, when Freeplay starts. Nothing about you or your machine goes with the request. Turn it off and Freeplay stops checking on its own, and runs on whatever is already on disk.</span>
         </div>
         <button id="auto-update" class="switch"></button>
+      </div>
+
+      <div class="setting">
+        <div class="setting-label">
+          <strong>Shared tables from other people</strong>
+          <span>Opening a game page asks the service what other people have shared for it, which means telling it that game's file name and version. Sharing, downloading and voting are your own doing and only happen when you press something.</span>
+          <span class="quiet">Off, and none of that runs. With automatic downloads off as well, Freeplay opens no connections at all.</span>
+        </div>
+        <button id="community-on" class="switch"></button>
       </div>
 
       <div class="setting">
@@ -432,7 +441,15 @@
         <h2>Freeplay</h2>
         <p class="lead">A game trainer for Windows. Free, open source, no account needed.</p>
         <p>It finds your installed games, attaches to one and turns on cheats. Tables other people have published arrive on their own. If nobody has written one for your game, import a Cheat Engine .CT file or search the game's memory and make one.</p>
-        <p>The only request it makes is for the table list, and you can turn that off. No telemetry.</p>
+        <p>No email address, no password, no telemetry, no crash reporting, and nothing about you or your machine. Claiming a name is optional and is a key rather than an account. Every request Freeplay can make is listed here, and the two switches in Settings turn all of them off.</p>
+        <ul class="plain">
+          <li><b>The table list</b>, once at startup. Nothing goes with it.</li>
+          <li><b>What people have shared for a game</b>, when you open that game's page. Sends the game's file name and version.</li>
+          <li><b>A table you asked for</b>, when you press Use table.</li>
+          <li><b>A table you are sharing</b>, when you press Share yours.</li>
+          <li><b>Your vote</b>, when you answer whether a table worked.</li>
+          <li><b>A name you are claiming</b>, when you claim one.</li>
+        </ul>
         <p>It will not attach to anything running an anti-cheat, so it is single player only.</p>
         <p class="dim" id="about-version"></p>
         <div class="about-links">
@@ -463,7 +480,7 @@
 <div id="name-sheet" class="sheet" hidden>
   <div class="sheet-card">
     <h3 id="name-title">Claim a name</h3>
-    <p class="dim" id="name-blurb">Nobody else can publish under it once it is yours. No password, no email.</p>
+    <p class="dim" id="name-blurb">Freeplay makes a key and registers the name against it, so nobody else can publish under it. No password, no email.</p>
 
     <div id="name-pick">
       <input id="name-input" type="text" placeholder="a name, letters and numbers" autocomplete="off" spellcheck="false">
@@ -513,7 +530,7 @@
 
     <label class="check">
       <input type="checkbox" id="export-account">
-      <span><b>Your account</b><i>The key behind your name, so you can publish from the other machine. Anyone who reads the file can publish as you.</i></span>
+      <span><b>Your identity</b><i>Only the name. The import asks for your recovery words, so this file on its own cannot publish as you.</i></span>
     </label>
 
     <div class="check-head">

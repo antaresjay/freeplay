@@ -196,6 +196,7 @@ function applyTheme() {
     ? `${config.pinned.length} pinned`
     : "Nothing pinned yet";
   $("auto-update").classList.toggle("on", config.auto_update !== false);
+  $("community-on").classList.toggle("on", config.community !== false);
   $("auto-attach").classList.toggle("on", config.auto_attach !== false);
   drawDock();
 }
@@ -1223,6 +1224,11 @@ $("auto-attach").addEventListener("click", () =>
 $("auto-update").addEventListener("click", () =>
   saveConfig({ auto_update: config.auto_update === false })
 );
+
+$("community-on").addEventListener("click", async () => {
+  await saveConfig({ community: config.community === false });
+  if (open) await loadShared(true);
+});
 $("update-now").addEventListener("click", () => checkForTables(true));
 
 $("copy-report").addEventListener("click", async () => {
@@ -1426,6 +1432,19 @@ function when(seconds) {
 async function loadShared(force = false) {
   const game = gameFor(open);
   if (!game || !game.exe) return;
+
+  /* turned off means turned off, so this does not fire and then report the
+     refusal as though something had gone wrong */
+  if (config.community === false) {
+    sharedFor = null;
+    $("shared-list").innerHTML = "";
+    $("dock-open-count").textContent = "";
+    $("shared-empty").hidden = false;
+    $("shared-empty").textContent =
+      "Shared tables are turned off, so Freeplay is not asking the service about this game.";
+    return;
+  }
+
   if (!force && sharedFor === game.exe) return;
   sharedFor = game.exe;
 
@@ -1697,8 +1716,8 @@ async function drawWhoami() {
   if (!me) $("share-anon").checked = false;
   if (changed && open) loadShared(true);
   $("whoami-state").textContent = who
-    ? "Uploads go out as " + who.name + "."
-    : "Uploads go out anonymously.";
+    ? `What you share is signed as ${who.name}, and nobody else can use that name.`
+    : "Nothing you share carries a name. Claim one and it is registered to a key only you hold.";
   $("claim-name").hidden = !!who;
   $("forget-name").hidden = !who;
 }

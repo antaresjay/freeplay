@@ -15,10 +15,14 @@ pub struct Settings {
     // game keys, in the order they were pinned
     pub pinned: Vec<String>,
     pub favourites: Vec<String>,
-    // fetch published tables on start. off means we never touch the network
-    // and run on whatever is already on disk
+    // fetch published tables on start
     #[serde(default = "yes")]
     pub auto_update: bool,
+    // ask the service what other people have shared. this one is separate
+    // because it fires whenever a game page is opened rather than on a button,
+    // and with both of these off freeplay opens no sockets at all
+    #[serde(default = "yes")]
+    pub community: bool,
     // attach on our own when a game with a table starts
     #[serde(default = "yes")]
     pub auto_attach: bool,
@@ -99,6 +103,7 @@ impl Default for Settings {
             pinned: Vec::new(),
             favourites: Vec::new(),
             auto_update: true,
+            community: true,
             auto_attach: true,
             armed: HashMap::new(),
             values: HashMap::new(),
@@ -282,6 +287,18 @@ mod tests {
     #[test]
     fn the_overlay_is_off_until_somebody_asks_for_it() {
         assert!(!Settings::default().overlay);
+    }
+
+    // the only two switches between freeplay and the network
+    #[test]
+    fn both_network_switches_start_on_and_can_both_go_off() {
+        let mut settings = Settings::default();
+        assert!(settings.auto_update && settings.community);
+
+        settings.auto_update = false;
+        settings.community = false;
+        settings.tidy();
+        assert!(!settings.auto_update && !settings.community);
     }
 
     #[test]

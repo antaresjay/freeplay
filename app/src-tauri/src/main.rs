@@ -479,6 +479,9 @@ async fn shared_tables(
     exe: String,
     sort: String,
 ) -> Result<Vec<shared::Shared>, String> {
+    // this one runs on its own whenever a game page opens, so it is the one
+    // that has to be switchable. refused here as well as hidden in the page
+    online(&state)?;
     let have: Vec<String> = tables(&state)
         .iter()
         .map(freeplay_table::fingerprint::fingerprint)
@@ -494,6 +497,7 @@ fn sort_options() -> Vec<shared::SortOption> {
 
 #[tauri::command]
 async fn install_shared(state: tauri::State<'_, App>, id: i64) -> Result<String, String> {
+    online(&state)?;
     let install_id = state.settings.lock().unwrap().install_id.clone();
     let (_, table) = shared::install(id, &install_id, &synced_dir())?;
 
@@ -567,6 +571,7 @@ async fn share_table(
     exe: String,
     anonymous: bool,
 ) -> Result<String, String> {
+    online(&state)?;
     let table = tables(&state)
         .into_iter()
         .find(|t| t.matches_process(&exe))
@@ -1114,6 +1119,7 @@ fn save_settings(state: tauri::State<'_, App>, next: Settings) -> Result<Setting
     held.pinned = next.pinned;
     held.favourites = next.favourites;
     held.auto_update = next.auto_update;
+    held.community = next.community;
     held.auto_attach = next.auto_attach;
     held.shared_open = next.shared_open;
 
@@ -1634,6 +1640,7 @@ async fn answer_question(
     id: i64,
     up: bool,
 ) -> Result<String, String> {
+    online(&state)?;
     let (install_id, exe) = {
         let settings = state.settings.lock().unwrap();
         let exe = settings
@@ -1670,6 +1677,14 @@ fn skip_question(state: tauri::State<'_, App>) -> Result<(), String> {
     let mut settings = state.settings.lock().unwrap();
     settings.ask_again_at = now_seconds() + settings::SNOOZE;
     settings::save(&settings)
+}
+
+// nothing that talks to the service should half work while it is turned off
+fn online(state: &tauri::State<'_, App>) -> Result<(), String> {
+    if state.settings.lock().unwrap().community {
+        return Ok(());
+    }
+    Err("shared tables are turned off in settings".into())
 }
 
 fn armed_for(state: &tauri::State<'_, App>, exe: &str) -> Vec<String> {

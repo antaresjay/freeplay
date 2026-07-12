@@ -98,7 +98,7 @@ window.__calls = [];
    that answered with a fixed object hid the bug where pinning a game did not
    show up until you left the page */
 let SETTINGS = {theme:"dark", accent:"amber", pinned:["steam:1222140"],
-                favourites:[], shared_open:true,
+                favourites:[], shared_open:true, community:true,
                 armed:{"witcher2.exe":["vitality"]},
                 values:{"witcher2.exe":{"orens":"5000"}},
                 grabbed:{"witcher2.exe":7}};
@@ -117,6 +117,7 @@ window.__TAURI__ = {
             pinned: args.next.pinned, favourites: args.next.favourites,
             auto_update: args.next.auto_update, auto_attach: args.next.auto_attach,
             shared_open: args.next.shared_open,
+            community: args.next.community,
           };
           return SETTINGS;
         case "list_games": return GAMES;
@@ -135,7 +136,10 @@ window.__TAURI__ = {
           return [];
         case "set_cheat": return null;
         case "sort_options": return SORTS;
-        case "shared_tables": return SHARED;
+        case "shared_tables":
+          if (!SETTINGS.community) throw "shared tables are turned off";
+          window.__askedAbout = args.exe;
+          return SHARED;
         case "install_shared": return "The Witcher 2 is ready, 23 cheats";
         case "pending_question": return QUESTION;
         case "answer_question":
@@ -555,6 +559,32 @@ PROBE = r"""
   settingsNav.click();
   await settle(200);
   note(visible("claim-name"), "settings offers to claim a name");
+
+  // opening a game page asks the service about that game, so it needs a
+  // switch of its own rather than being covered by the downloads one
+  note(document.getElementById("community-on").classList.contains("on"),
+       "shared tables start on");
+  document.getElementById("community-on").click();
+  await settle(400);
+  note(!document.getElementById("community-on").classList.contains("on"),
+       "and can be turned off separately from automatic downloads");
+
+  window.__askedAbout = null;
+  [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "library").click();
+  await settle(200);
+  document.querySelectorAll("#library-rail .rail-game")[0].click();
+  await settle(800);
+  note(window.__askedAbout === null,
+       "with it off, opening a game page asks the service nothing");
+  note(document.getElementById("shared-empty").textContent.includes("turned off"),
+       "and the panel says why rather than showing an error");
+
+  [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "settings").click();
+  await settle(200);
+  document.getElementById("community-on").click();
+  await settle(400);
+  note(document.getElementById("community-on").classList.contains("on"),
+       "turning it back on sticks");
 
   // the overlay, off until asked for
   note(!document.getElementById("overlay-on").classList.contains("on"),
