@@ -537,16 +537,23 @@ PROBE = r"""
   detroitAgain.click();
   await settle(120);
   const dockMid = document.querySelector(".shared-dock").offsetHeight;
-  note(document.querySelectorAll("#shared-list .bone").length === 3,
-       "switching games puts up as many placeholders as there were rows");
   note(dockMid === dockWas,
-       "and the panel does not change height at all (" +
+       "the panel does not resize while it waits (" +
        dockWas + " then " + dockMid + ")");
+  note(document.getElementById("shared-list").classList.contains("waiting"),
+       "what is on screen is held there, dimmed, rather than thrown away");
+  note(document.querySelectorAll("#shared-list .shared-row").length === 3,
+       "so the rows are still up");
+
   await settle(700);
+  note(!document.getElementById("shared-list").classList.contains("waiting"),
+       "and the dimming lifts once the answer lands");
   const dockAfter = document.querySelector(".shared-dock").offsetHeight;
-  note(dockAfter === dockWas,
-       "nor when the answer lands and there is nothing to show (" +
-       dockAfter + ")");
+  note(dockAfter < dockWas,
+       "a game with nothing shared gets a small panel, not a tall empty one (" +
+       dockAfter + " against " + dockWas + ")");
+  note(dockAfter < 400,
+       "and it is genuinely small (" + dockAfter + ")");
   note(!document.getElementById("shared-list").textContent.includes("Looking"),
        "no word appears and vanishes in the middle of it");
 

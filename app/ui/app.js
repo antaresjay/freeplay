@@ -1446,33 +1446,14 @@ async function loadShared(force = false) {
   }
 
   if (!force && sharedFor === game.exe) return;
-
-  /* a different game means what is on screen is about to be wrong, so it goes
-     now and placeholders the size of real rows hold the panel open. asking
-     again about the same game leaves it alone entirely, because collapsing to
-     one line and springing back is the flicker */
-  const another = sharedFor !== game.exe;
   sharedFor = game.exe;
 
   await loadSortOptions();
+  /* whatever is up stays up while the next answer is on its way. emptying it
+     first is what made the panel collapse and spring back, and holding it open
+     at a fixed height just moved the problem to a panel full of nothing */
   const host = $("shared-list");
-  if (another) {
-    $("shared-empty").hidden = true;
-    // as many as were there a moment ago, so the panel is close to the size
-    // it was and close to the size it is about to be
-    const many = Math.min(Math.max(sharedRows.length || 2, 1), 4);
-    host.innerHTML = "";
-    for (let n = 0; n < many; n++) {
-      const bone = document.createElement("div");
-      bone.className = "shared-row bone";
-      for (const shape of ["bar wide", "bar", "bar short", "bar button"]) {
-        const line = document.createElement("span");
-        line.className = shape;
-        bone.appendChild(line);
-      }
-      host.appendChild(bone);
-    }
-  }
+  host.classList.add("waiting");
 
   let rows = [];
   try {
@@ -1482,6 +1463,7 @@ async function loadShared(force = false) {
     });
   } catch (e) {
     if (sharedFor !== game.exe) return;
+    host.classList.remove("waiting");
     // let go of the game, or one bad reply means this never asks again
     sharedFor = null;
     host.innerHTML = "";
@@ -1492,6 +1474,8 @@ async function loadShared(force = false) {
 
   if (sharedFor !== game.exe) return;
 
+  // one change, when there is something to change to
+  host.classList.remove("waiting");
   sharedRows = rows;
   host.innerHTML = "";
   $("shared-empty").hidden = rows.length > 0;
