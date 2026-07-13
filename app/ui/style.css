@@ -1400,13 +1400,18 @@ body.maximised .win .when-big { display: block; }
 
 /* ---------- settings ---------- */
 
-/* one column of cards down the left of a very wide window left two thirds of
-   the page empty */
+/* fills the window the way the library grid does, so nothing is left stranded
+   on the right of a big monitor. the floor is a third of the row rather than a
+   flat 390px, which caps it at three across, otherwise a 4k screen gets nine
+   narrow cards. below that the 390px takes over and it drops to two, then one */
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(390px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(max(390px, (100% - 20px) / 3), 1fr));
+  /* the one full width card pushes everything after it onto a new row and
+     leaves a hole beside the row before. dense lets a short card fall back
+     into it, and at two columns there is no hole so it changes nothing */
+  grid-auto-flow: dense;
   gap: 10px;
-  max-width: 1180px;
   margin-bottom: 22px;
 }
 .settings-grid .setting { margin-bottom: 0; }

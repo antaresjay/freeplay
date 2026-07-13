@@ -149,6 +149,39 @@ PROBE = r"""
 
   note(shifted < 0.05, "layout shift stays small (" + shifted.toFixed(4) + ")");
 
+  /* how much of the window each page actually uses. settings capped itself at
+     1180px and stranded everything to the right of that on a big monitor,
+     which nothing here was measuring. about is the one page left out, it is
+     text and a line eighty characters long is not an improvement */
+  out.push("");
+  out.push("WHAT EACH PAGE LEAVES UNUSED ON THE RIGHT");
+  const stranded = [];
+  for (const name of ["library", "game", "finder", "settings", "about"]) {
+    const nav = document.querySelector(`.nav-item[data-view="${name}"]`);
+    if (nav) nav.click(); else witcher.click();
+    if (name === "game") witcher.click();
+    await settle(250);
+
+    const view = document.getElementById("view-" + name);
+    if (view.hidden) { out.push("   " + name + " did not open"); continue; }
+    const edge = view.getBoundingClientRect().right;
+
+    // the furthest right anything on the page reaches
+    let reach = 0;
+    for (const el of view.querySelectorAll("*")) {
+      if (el.offsetParent === null) continue;
+      const box = el.getBoundingClientRect();
+      if (box.width > 0) reach = Math.max(reach, box.right);
+    }
+    const spare = Math.round(edge - reach);
+    out.push(`   ${name} ${spare}px`);
+    if (name !== "about" && spare > 80) stranded.push(name + " " + spare + "px");
+  }
+
+  note(!stranded.length,
+       "every page reaches the right edge of the window" +
+       (stranded.length ? " (" + stranded.join(", ") + ")" : ""));
+
   } catch (e) {
     out.push("FAIL the probe itself threw: " + (e && e.message ? e.message : e));
   }
