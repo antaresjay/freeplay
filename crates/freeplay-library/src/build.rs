@@ -67,6 +67,96 @@ pub fn of(_exe: &Path) -> Option<String> {
     None
 }
 
+// what a binary calls itself. a file named AntiCheatInstaller.exe does not say
+// whose anti-cheat it is, its version block does
+#[cfg(windows)]
+pub fn describes_itself(file: &Path) -> Option<String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{
+        GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
+    };
+
+    let wide: Vec<u16> = file
+        .as_os_str()
+        .to_string_lossy()
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let path = PCWSTR(wide.as_ptr());
+
+    let size = unsafe { GetFileVersionInfoSizeW(path, None) };
+    if size == 0 {
+        return None;
+    }
+    let mut block = vec![0u8; size as usize];
+    unsafe { GetFileVersionInfoW(path, None, size, block.as_mut_ptr().cast()) }.ok()?;
+
+    let ask = |what: &str| -> Option<String> {
+        let key: Vec<u16> = what.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut found = std::ptr::null_mut();
+        let mut chars = 0u32;
+        let ok = unsafe {
+            VerQueryValueW(
+                block.as_ptr().cast(),
+                PCWSTR(key.as_ptr()),
+                &mut found,
+                &mut chars,
+            )
+        };
+        if !ok.as_bool() || found.is_null() || chars == 0 {
+            return None;
+        }
+        let text = unsafe {
+            std::slice::from_raw_parts(found as *const u16, chars.saturating_sub(1) as _)
+        };
+        let text = String::from_utf16_lossy(text).trim().to_string();
+        (!text.is_empty()).then_some(text)
+    };
+
+    // the strings live under whichever language the file was built with, so
+    // read the translation table first. us english and the two codepages
+    // everything else uses are the fallback
+    let mut langs = Vec::new();
+    let key: Vec<u16> = "\\VarFileInfo\\Translation"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut found = std::ptr::null_mut();
+    let mut bytes = 0u32;
+    let ok = unsafe {
+        VerQueryValueW(
+            block.as_ptr().cast(),
+            PCWSTR(key.as_ptr()),
+            &mut found,
+            &mut bytes,
+        )
+    };
+    if ok.as_bool() && !found.is_null() {
+        let pairs = unsafe {
+            std::slice::from_raw_parts(found as *const u16, (bytes as usize / 2).min(16))
+        };
+        for pair in pairs.chunks_exact(2) {
+            langs.push(format!("{:04x}{:04x}", pair[0], pair[1]));
+        }
+    }
+    langs.push("040904b0".into());
+    langs.push("040904e4".into());
+
+    for lang in &langs {
+        for what in ["ProductName", "FileDescription", "CompanyName"] {
+            if let Some(text) = ask(&format!("\\StringFileInfo\\{lang}\\{what}")) {
+                return Some(text);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(windows))]
+pub fn describes_itself(_file: &Path) -> Option<String> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +178,29 @@ mod tests {
         }
         let found = of(&notepad).expect("notepad carries a version");
         assert_eq!(found.split('.').count(), 4, "got {found}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn reads_what_a_binary_calls_itself() {
+        let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:/Windows".into());
+        let notepad = std::path::PathBuf::from(root)
+            .join("System32")
+            .join("notepad.exe");
+        if !notepad.is_file() {
+            return;
+        }
+        let told = describes_itself(&notepad).expect("notepad names itself");
+        assert!(
+            told.to_lowercase().contains("windows") || told.to_lowercase().contains("notepad"),
+            "got {told}"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn nothing_to_describe_is_none_not_a_panic() {
+        assert_eq!(describes_itself(Path::new("Z:/nothing/here.exe")), None);
     }
 
     #[cfg(windows)]

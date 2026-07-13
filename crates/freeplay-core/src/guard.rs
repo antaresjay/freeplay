@@ -44,7 +44,17 @@ const PROTECTED_PROCESSES: &[&str] = &[
 
 const GENERIC: &str = "an anti-cheat";
 
-fn product_for(lowered: &str) -> Option<&'static str> {
+// a hit, and the name that gave it away. the caller hangs on to the second
+// half so it can read that file's version block when the first half is empty
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Spotted {
+    // none when it is plainly an anti-cheat but the file name does not say whose
+    pub product: Option<&'static str>,
+    pub found_in: String,
+}
+
+// public because the same list names a product read out of a version block
+pub fn product_for(lowered: &str) -> Option<&'static str> {
     let mut hit = None;
     for (needle, product) in PROTECTED_MODULES {
         if lowered.contains(needle) {
@@ -69,15 +79,30 @@ pub fn inspect_modules(modules: &[Module]) -> Option<&'static str> {
 /// for somebody to try attaching. This is a hint only. The refusal that counts
 /// runs against modules the process has actually loaded.
 pub fn inspect_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Option<&'static str> {
-    let mut hit = None;
+    look(names).map(|found| found.product.unwrap_or(GENERIC))
+}
+
+// the same sweep, keeping hold of which name matched
+pub fn look<'a>(names: impl IntoIterator<Item = &'a str>) -> Option<Spotted> {
+    let mut vague = None;
     for name in names {
         match product_for(&name.to_ascii_lowercase()) {
-            Some(GENERIC) => hit = Some(GENERIC),
-            Some(product) => return Some(product),
+            Some(GENERIC) => {
+                vague.get_or_insert_with(|| Spotted {
+                    product: None,
+                    found_in: name.to_string(),
+                });
+            }
+            Some(product) => {
+                return Some(Spotted {
+                    product: Some(product),
+                    found_in: name.to_string(),
+                })
+            }
             None => {}
         }
     }
-    hit
+    vague
 }
 
 pub fn is_protected_process(name: &str) -> bool {
@@ -162,6 +187,31 @@ mod tests {
             "Release",
         ];
         assert_eq!(inspect_names(files), None);
+    }
+
+    #[test]
+    fn keeps_hold_of_the_name_that_matched() {
+        let found = look(["Discovery.exe", "AntiCheatInstaller.exe"]).unwrap();
+        assert_eq!(found.product, None, "the file name does not say whose");
+        assert_eq!(found.found_in, "AntiCheatInstaller.exe");
+
+        let named = look(["EasyAntiCheat_x64.dll"]).unwrap();
+        assert_eq!(named.product, Some("EasyAntiCheat"));
+        assert_eq!(named.found_in, "EasyAntiCheat_x64.dll");
+    }
+
+    #[test]
+    fn a_named_product_wins_over_a_vague_one_found_first() {
+        let found = look(["someanticheat.dll", "BEClient.dll"]).unwrap();
+        assert_eq!(found.product, Some("BattlEye"));
+    }
+
+    #[test]
+    fn a_version_block_string_runs_through_the_same_list() {
+        assert_eq!(
+            product_for(&"Denuvo Anti-Cheat Installer".to_ascii_lowercase()),
+            Some("Denuvo Anti-Cheat")
+        );
     }
 
     #[test]
