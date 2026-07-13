@@ -38,7 +38,7 @@ struct App {
     // protocol, this is just the three exists checks
     art: Mutex<HashMap<String, ArtUrls>>,
     // anti-cheat found in a game's folder, keyed by install dir
-    guards: Mutex<HashMap<PathBuf, Option<String>>>,
+    guards: Mutex<HashMap<PathBuf, Option<Guard>>>,
     // walking every install dir takes seconds, so do it once and then only
     // when asked
     library: Mutex<Option<Vec<InstalledGame>>>,
@@ -79,6 +79,9 @@ struct GameRow {
     has_table: bool,
     // anti-cheat shipped with the game, if any
     guard: Option<String>,
+    // the file it was found in, kept only when the product could not be named,
+    // so the page can show what it actually saw instead of a shrug
+    guard_file: Option<String>,
     // minutes played and when, straight out of steam
     minutes: Option<u32>,
     last_played: Option<u64>,
@@ -268,9 +271,9 @@ fn nice_name(state: &tauri::State<'_, App>, exe: &str, fallback: &str) -> String
         .unwrap_or_else(|| fallback.to_string())
 }
 
-// names in a game's install folder, two deep. anti-cheats drop their loader
+// what is in a game's install folder, two deep. anti-cheats drop their loader
 // next to the exe or one folder down, so that is far enough
-fn folder_names(dir: &Path, depth: usize, out: &mut Vec<String>) {
+fn folder_names(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     if depth == 0 || out.len() > 4000 {
         return;
     }
@@ -278,22 +281,90 @@ fn folder_names(dir: &Path, depth: usize, out: &mut Vec<String>) {
         return;
     };
     for entry in entries.flatten() {
-        out.push(entry.file_name().to_string_lossy().to_string());
+        out.push(entry.path());
         if entry.file_type().is_ok_and(|t| t.is_dir()) {
             folder_names(&entry.path(), depth - 1, out);
         }
     }
 }
 
-fn guard_for(state: &tauri::State<'_, App>, dir: &Path) -> Option<String> {
+// version blocks say "Denuvo Anti-Cheat Installer" and the like. the installer
+// is not the thing, the product is
+fn trim_the_wrapper(text: &str) -> String {
+    let mut name = text.trim();
+    loop {
+        let shorter = [
+            "Installer",
+            "Setup",
+            "Launcher",
+            "Service",
+            "Client",
+            "Bootstrapper",
+        ]
+        .iter()
+        .find_map(|tail| name.strip_suffix(tail))
+        .map(str::trim);
+        match shorter {
+            Some(cut) if !cut.is_empty() => name = cut,
+            _ => break,
+        }
+    }
+    name.trim_end_matches(',').trim().to_string()
+}
+
+// a file called AntiCheatInstaller.exe is obviously an anti-cheat and just as
+// obviously not a name anybody can act on. ask the binary whose it is
+fn name_from_the_file(path: &Path) -> Option<String> {
+    let told = freeplay_library::build::describes_itself(path)?;
+    if let Some(known) = freeplay_core::guard::product_for(&told.to_ascii_lowercase()) {
+        if known != "an anti-cheat" {
+            return Some(known.to_string());
+        }
+    }
+    let cleaned = trim_the_wrapper(&told);
+    let lowered = cleaned.to_ascii_lowercase();
+    // only worth showing if it reads as an anti-cheat rather than as the game
+    (lowered.contains("anti") || lowered.contains("cheat") || lowered.contains("guard"))
+        .then_some(cleaned)
+}
+
+#[derive(Clone)]
+struct Guard {
+    name: String,
+    // only set when the product could not be named
+    file: Option<String>,
+}
+
+fn guard_for(state: &tauri::State<'_, App>, dir: &Path) -> Option<Guard> {
     if let Some(cached) = state.guards.lock().unwrap().get(dir) {
         return cached.clone();
     }
 
-    let mut names = Vec::new();
-    folder_names(dir, 2, &mut names);
-    let found =
-        freeplay_core::guard::inspect_names(names.iter().map(String::as_str)).map(str::to_string);
+    let mut paths = Vec::new();
+    folder_names(dir, 2, &mut paths);
+    let names: Vec<String> = paths
+        .iter()
+        .map(|p| {
+            p.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+
+    let found = freeplay_core::guard::look(names.iter().map(String::as_str)).map(|spotted| {
+        let named = spotted.product.map(str::to_string).or_else(|| {
+            let at = names.iter().position(|n| *n == spotted.found_in)?;
+            name_from_the_file(&paths[at])
+        });
+        match named {
+            Some(name) => Guard { name, file: None },
+            None => Guard {
+                name: "an anti-cheat".into(),
+                file: Some(spotted.found_in),
+            },
+        }
+    });
 
     state
         .guards
@@ -349,8 +420,11 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
                 .copied()
                 .unwrap_or_default();
 
+            let guard = guard_for(&state, &game.install_dir);
+
             GameRow {
-                guard: guard_for(&state, &game.install_dir),
+                guard_file: guard.as_ref().and_then(|g| g.file.clone()),
+                guard: guard.map(|g| g.name),
                 running: !lower.is_empty() && running.iter().any(|p| p == &lower),
                 has_table: exe
                     .as_deref()

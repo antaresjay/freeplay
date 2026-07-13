@@ -577,7 +577,11 @@ function drawGamePage() {
   $("detail-id-row").hidden = !game.app_id;
   $("detail-id").textContent = game.app_id || "";
   $("detail-guard-row").hidden = !game.guard;
-  $("detail-guard").textContent = game.guard || "";
+  // the product when we can name it, the file we saw when we cannot, because
+  // "Anti-cheat: an anti-cheat" tells nobody anything
+  $("detail-guard").textContent = game.guard_file
+    ? "unrecognised, found " + game.guard_file
+    : game.guard || "";
   $("game-folder").disabled = !game.dir;
 
 
