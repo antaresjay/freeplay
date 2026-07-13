@@ -342,6 +342,10 @@ svg {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
+  /* the gutter is always there, taken or not. a long page has a scrollbar and
+     a short one does not, so without this every game you switch to that needs
+     less room drags the whole layout ten pixels sideways */
+  scrollbar-gutter: stable;
   padding: 26px 30px 40px;
 }
 
@@ -1693,3 +1697,7 @@ body.maximised .win .when-big { display: block; }
   pointer-events: none;
   transition: opacity 0.12s var(--ease);
 }
+
+/* Play and Switch to game are different lengths, and the row of buttons after
+   it slid across every time the game started or stopped */
+#game-play { min-width: 132px; }

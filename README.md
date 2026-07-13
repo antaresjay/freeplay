@@ -331,11 +331,16 @@ patching and rip-relative operands.
 cargo test
 python app/uitest/clickthrough.py
 python app/uitest/overlay.py
+python app/uitest/layout.py
 ```
 
-Nothing type checks the front end, so the two Python scripts drive it in
-headless Edge behind a fake Tauri bridge and fail if a control does nothing or
-anything throws. They have caught more real bugs than the unit tests have.
+Nothing type checks the front end, so the Python scripts drive it in headless
+Edge behind a fake Tauri bridge and fail if a control does nothing or anything
+throws. They have caught more real bugs than the unit tests have.
+
+The last one measures rather than clicks. It records the position and size of
+every element before and after switching game and prints whatever moved, which
+is how the layout stays still instead of sliding around by a scrollbar width.
 
 ## License
 
