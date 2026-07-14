@@ -468,6 +468,23 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   text-overflow: ellipsis;
 }
 
+/* the rail is sorted with these last, so this is only ever drawn once and it
+   is the line that says why the ones under it are greyed out */
+.rail-split {
+  margin: 14px 7px 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.rail-game.barred .name { color: var(--faint); }
+.rail-game.barred .thumb { opacity: 0.5; }
+.rail-barred { width: 12px; height: 12px; flex: none; color: var(--bad); opacity: 0.75; }
+
 .pip {
   width: 7px;
   height: 7px;
@@ -613,6 +630,10 @@ input::placeholder { color: var(--faint); }
 }
 
 .shelf-icon { width: 15px; height: 15px; flex: none; color: var(--accent); }
+
+.shelf-head.barred .shelf-icon { color: var(--bad); }
+.shelf-head.barred h3 { color: var(--dim); }
+.shelf-head.barred + .shelf-note { margin: -6px 0 15px; font-size: 12.5px; color: var(--faint); }
 
 .tally {
   padding: 1px 8px;

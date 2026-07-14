@@ -233,6 +233,32 @@ PROBE = r"""
   await settle(700);
   note(!document.getElementById("splash"), "and takes itself out of the page");
 
+  /* a game with an anti-cheat cannot be used at all, so it goes to the end
+     under its own heading rather than sitting in the middle of the ones that
+     work with a small badge as the only clue */
+  note(visible("blocked-wrap"), "games with an anti-cheat get their own shelf");
+  note(document.getElementById("blocked-count").textContent === "1",
+       "and it is counted (" + document.getElementById("blocked-count").textContent + ")");
+  note(document.querySelector("#blocked-grid .card") !== null,
+       "with the game in it");
+  note([...document.querySelectorAll("#grid .card")]
+         .every(c => !c.className.includes("guarded")),
+       "and it is not in the main grid as well");
+  const barredHead = document.querySelector("#blocked-wrap h3").textContent.toLowerCase();
+  note(barredHead.includes("not supported"),
+       "the heading says what it means (" + barredHead + ")");
+  note(document.querySelector("#blocked-wrap .shelf-note").textContent.toLowerCase()
+         .includes("anti-cheat"),
+       "and the line under it says why");
+
+  const lastRail = [...document.querySelectorAll("#library-rail .rail-game")].pop();
+  note(lastRail.className.includes("barred"),
+       "the sidebar keeps them at the bottom and marks them");
+  note(!!document.querySelector("#library-rail .rail-split"),
+       "with a line above saying not supported");
+  note(document.querySelectorAll("#library-rail .rail-split").length === 1,
+       "drawn once, not once per game");
+
   const cards = document.querySelectorAll("#grid .card, #pinned-grid .card");
   note(cards.length >= 1, "library rendered cards (" + cards.length + ")");
   note(visible("view-library"), "library view is showing");

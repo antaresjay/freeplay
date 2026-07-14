@@ -416,9 +416,21 @@ function drawRail(list) {
     return;
   }
 
+  let split = false;
   for (const game of list) {
+    /* they are last in the order already, so one line here is enough to say
+       why the ones under it look different */
+    if (game.guard && !split) {
+      split = true;
+      const head = document.createElement("div");
+      head.className = "rail-split";
+      head.textContent = "Not supported";
+      host.appendChild(head);
+    }
+
     const button = document.createElement("button");
-    button.className = "rail-game" + (open === game.key ? " active" : "");
+    button.className =
+      "rail-game" + (open === game.key ? " active" : "") + (game.guard ? " barred" : "");
 
     const thumb = document.createElement("span");
     thumb.className = "thumb";
@@ -436,10 +448,19 @@ function drawRail(list) {
     name.className = "name";
     name.textContent = game.name;
 
-    const pip = document.createElement("span");
-    pip.className = "pip" + (game.running ? " live" : "");
+    let mark;
+    if (game.guard) {
+      mark = document.createElement("span");
+      mark.className = "rail-barred";
+      mark.title = game.name + " runs " + game.guard;
+      mark.innerHTML =
+        '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><path d="M4 4l8 8"/></svg>';
+    } else {
+      mark = document.createElement("span");
+      mark.className = "pip" + (game.running ? " live" : "");
+    }
 
-    button.append(thumb, name, pip);
+    button.append(thumb, name, mark);
     button.addEventListener("click", () => showGame(game.key));
     host.appendChild(button);
   }
@@ -449,21 +470,32 @@ function drawGrids(list) {
   const needle = $("filter").value.trim().toLowerCase();
   const shown = list.filter((g) => !needle || g.name.toLowerCase().includes(needle));
 
+  /* a game with an anti-cheat cannot be attached to whatever else is true of
+     it, so it goes to the end on its own rather than sitting in favourites
+     next to something that works */
+  const barred = shown.filter((g) => g.guard);
+  const usable = shown.filter((g) => !g.guard);
+
   /* starring a game filled in the star and did nothing else, which is not a
      feature, it is a button that lies */
-  const favourite = shown.filter((g) => g.favourite);
-  const pinned = shown.filter((g) => g.pinned && !g.favourite);
-  const rest = shown.filter((g) => !g.pinned && !g.favourite);
+  const favourite = usable.filter((g) => g.favourite);
+  const pinned = usable.filter((g) => g.pinned && !g.favourite);
+  const rest = usable.filter((g) => !g.pinned && !g.favourite);
 
   $("fav-wrap").hidden = !favourite.length;
   $("pinned-wrap").hidden = !pinned.length;
-  $("rest-shelf").hidden = !rest.length || !(favourite.length || pinned.length);
+  $("blocked-wrap").hidden = !barred.length;
+  // no heading over the first grid when it is the only one on the page
+  $("rest-shelf").hidden =
+    !rest.length || !(favourite.length || pinned.length || barred.length);
   $("fav-count").textContent = favourite.length;
   $("pinned-count").textContent = pinned.length;
   $("rest-count").textContent = rest.length;
+  $("blocked-count").textContent = barred.length;
   fill($("fav-grid"), favourite);
   fill($("pinned-grid"), pinned);
   fill($("grid"), rest);
+  fill($("blocked-grid"), barred);
 
   const blank = $("library-empty");
   blank.hidden = shown.length > 0;
