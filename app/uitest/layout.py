@@ -151,8 +151,7 @@ PROBE = r"""
 
   /* how much of the window each page actually uses. settings capped itself at
      1180px and stranded everything to the right of that on a big monitor,
-     which nothing here was measuring. about is the one page left out, it is
-     text and a line eighty characters long is not an improvement */
+     which nothing here was measuring */
   out.push("");
   out.push("WHAT EACH PAGE LEAVES UNUSED ON THE RIGHT");
   const stranded = [];
@@ -175,7 +174,7 @@ PROBE = r"""
     }
     const spare = Math.round(edge - reach);
     out.push(`   ${name} ${spare}px`);
-    if (name !== "about" && spare > 80) stranded.push(name + " " + spare + "px");
+    if (spare > 80) stranded.push(name + " " + spare + "px");
   }
 
   note(!stranded.length,

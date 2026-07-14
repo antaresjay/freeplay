@@ -437,25 +437,31 @@
 
     <!-- about ----------------------------------------------------------- -->
     <section id="view-about" class="view" hidden>
-      <div class="prose">
-        <h2>Freeplay</h2>
-        <p class="lead">A game trainer for Windows. Free, open source, no account needed.</p>
-        <p>It finds your installed games, attaches to one and turns on cheats. Tables other people have published arrive on their own. If nobody has written one for your game, import a Cheat Engine .CT file or search the game's memory and make one.</p>
-        <p>No email address, no password, no telemetry, no crash reporting, and nothing about you or your machine. Claiming a name is optional and is a key rather than an account. Every request Freeplay can make is listed here, and the two switches in Settings turn all of them off.</p>
-        <ul class="plain">
-          <li><b>The table list</b>, once at startup. Nothing goes with it.</li>
-          <li><b>What people have shared for a game</b>, when you open that game's page. Sends the game's file name and version.</li>
-          <li><b>A table you asked for</b>, when you press Use table.</li>
-          <li><b>A table you are sharing</b>, when you press Share yours.</li>
-          <li><b>Your vote</b>, when you answer whether a table worked.</li>
-          <li><b>A name you are claiming</b>, when you claim one.</li>
-        </ul>
-        <p>It will not attach to anything running an anti-cheat, so it is single player only.</p>
-        <p class="dim" id="about-version"></p>
-        <div class="about-links">
-          <button class="ghost" data-open="https://github.com/antaresjay/freeplay">Source on GitHub</button>
-          <button class="ghost" data-open="https://github.com/antaresjay/freeplay/issues">Report a problem</button>
-          <button class="ghost" data-open="https://github.com/antaresjay/freeplay-tables">Published tables</button>
+      <div class="about">
+        <div class="prose">
+          <h2>Freeplay</h2>
+          <p class="lead">A game trainer for Windows. Free, open source, no account needed.</p>
+          <p>It finds your installed games, attaches to one and turns on cheats. Tables other people have published arrive on their own. If nobody has written one for your game, import a Cheat Engine .CT file or search the game's memory and make one.</p>
+          <p>No email address, no password, no telemetry, no crash reporting, and nothing about you or your machine. Claiming a name is optional and is a key rather than an account. Every request Freeplay can make is listed here, and the two switches in Settings turn all of them off.</p>
+          <p>It will not attach to anything running an anti-cheat, so it is single player only.</p>
+          <p class="dim" id="about-version"></p>
+          <div class="about-links">
+            <button class="ghost" data-open="https://github.com/antaresjay/freeplay">Source on GitHub</button>
+            <button class="ghost" data-open="https://github.com/antaresjay/freeplay/issues">Report a problem</button>
+            <button class="ghost" data-open="https://github.com/antaresjay/freeplay-tables">Published tables</button>
+          </div>
+        </div>
+
+        <div class="about-net">
+          <div class="shelf">Every request it can make</div>
+          <div class="net-grid">
+            <div class="net-card"><b>The table list</b><span>Once at startup. Nothing goes with it.</span></div>
+            <div class="net-card"><b>What people have shared for a game</b><span>When you open that game's page. Sends the game's file name and version.</span></div>
+            <div class="net-card"><b>A table you asked for</b><span>When you press Use table.</span></div>
+            <div class="net-card"><b>A table you are sharing</b><span>When you press Share yours.</span></div>
+            <div class="net-card"><b>Your vote</b><span>When you answer whether a table worked.</span></div>
+            <div class="net-card"><b>A name you are claiming</b><span>When you claim one.</span></div>
+          </div>
         </div>
       </div>
     </section>
