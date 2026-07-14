@@ -22,6 +22,7 @@ mod dialog;
 mod hotkey;
 mod log;
 mod overlay;
+mod place;
 mod profile;
 mod settings;
 mod shared;
@@ -2054,8 +2055,13 @@ fn main() {
             std::thread::spawn(move || responder.respond(serve_art(&path)));
         })
         .setup(|app| {
+            // the window is built hidden, so this is what puts it on screen.
+            // sizing it after it was already up meant it appeared at the size
+            // in tauri.conf and then jumped
             if let Some(window) = app.get_webview_window("main") {
                 set_window_icons(&window);
+                let spot = app.state::<App>().settings.lock().unwrap().window;
+                place::restore(&window, spot);
             }
 
             // own thread. a slow or blocked network must never be something
@@ -2137,6 +2143,22 @@ fn main() {
             scan_next,
             write_value,
         ])
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let Some(window) = window.get_webview_window("main") else {
+                    return;
+                };
+                let state = window.state::<App>();
+                let mut held = state.settings.lock().unwrap();
+                held.window = place::at_close(&window);
+                if let Err(e) = settings::save(&held) {
+                    tracing::warn!("could not remember the window: {e}");
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("freeplay failed to start");
 }

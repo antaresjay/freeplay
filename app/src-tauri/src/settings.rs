@@ -59,6 +59,21 @@ pub struct Settings {
     // skipped once, so leave them alone until this passes. unix seconds
     #[serde(default)]
     pub ask_again_at: i64,
+    // where the window was when it was last closed
+    #[serde(default)]
+    pub window: Option<Spot>,
+}
+
+// physical pixels, which is what tauri hands back and takes, so a window put
+// down on a scaled monitor comes back the same size it was
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Spot {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+    #[serde(default)]
+    pub maximised: bool,
 }
 
 // one table, one sitting. what it takes to ask a question somebody can answer
@@ -115,6 +130,7 @@ impl Default for Settings {
             rated: Vec::new(),
             played: Vec::new(),
             ask_again_at: 0,
+            window: None,
         }
     }
 }
