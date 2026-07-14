@@ -215,7 +215,23 @@ PROBE = r"""
   const note = (ok, label) => out.push((ok ? "PASS " : "FAIL ") + label);
   const settle = ms => new Promise(r => setTimeout(r, ms));
 
+  /* the opening screen covers the whole window, so the way it fails is by
+     staying there. it also has to outlast a fast start rather than blinking */
+  note(!!document.getElementById("splash"), "the opening screen is up to begin with");
+  note(document.body.classList.contains("booting"), "and the window knows it is still starting");
+  const winButtons = document.getElementById("win-close").getBoundingClientRect();
+  note(document.elementFromPoint(winButtons.x + winButtons.width / 2,
+                                 winButtons.y + winButtons.height / 2)
+         ?.closest("#win-close") !== null,
+       "the close button is still the thing under the cursor while it is up");
+
   await settle(500);
+  note(!!document.getElementById("splash"), "it holds for a moment on a fast start");
+
+  await settle(1400);
+  note(!document.body.classList.contains("booting"), "then it lets go");
+  await settle(700);
+  note(!document.getElementById("splash"), "and takes itself out of the page");
 
   const cards = document.querySelectorAll("#grid .card, #pinned-grid .card");
   note(cards.length >= 1, "library rendered cards (" + cards.length + ")");

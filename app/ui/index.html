@@ -5,7 +5,22 @@
 <title>Freeplay</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="booting">
+
+<div id="splash" class="splash" data-tauri-drag-region>
+  <div class="sky">
+    <span class="glow g1"></span>
+    <span class="glow g2"></span>
+    <span class="glow g3"></span>
+    <span class="glow g4"></span>
+  </div>
+  <div class="grain"></div>
+  <div class="splash-body">
+    <div class="splash-word">FREEPLAY</div>
+    <div class="splash-bar"><span></span></div>
+    <p id="splash-step" class="splash-step">Starting up</p>
+  </div>
+</div>
 
 <div class="titlebar" data-tauri-drag-region>
   <div class="brand" data-tauri-drag-region>

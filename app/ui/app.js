@@ -36,6 +36,32 @@ function toast(message, bad = false) {
 
 const gameFor = (key) => games.find((g) => g.key === key);
 
+/* ---------- opening screen ---------- */
+
+const bootedAt = Date.now();
+
+const bootStep = (what) => {
+  const step = $("splash-step");
+  if (step) step.textContent = what;
+};
+
+/* held for a moment even when everything is instant, because something that
+   appears and vanishes inside one frame reads as a glitch rather than a screen */
+async function stopBooting() {
+  const splash = $("splash");
+  if (!splash || splash.classList.contains("gone")) return;
+
+  const waited = Date.now() - bootedAt;
+  if (waited < 1200) await new Promise((r) => setTimeout(r, 1200 - waited));
+
+  document.body.classList.remove("booting");
+  splash.classList.add("gone");
+  setTimeout(() => splash.remove(), 600);
+}
+
+// nothing below is allowed to leave it sitting there
+setTimeout(stopBooting, 12000);
+
 /* ---------- dropdowns ---------- */
 
 /* a native select opens an operating system menu that knows nothing about the
@@ -2085,6 +2111,7 @@ $("forget-name").addEventListener("click", async () => {
 });
 
 async function start() {
+  bootStep("Reading your settings");
   try {
     config = await invoke("settings");
   } catch (e) {
@@ -2099,7 +2126,11 @@ async function start() {
   drawOverlay();
   drawQuestion();
   $("settings-path").textContent = "%APPDATA%\\freeplay\\settings.json";
+
+  bootStep("Looking through Steam, Epic and GOG");
   await loadGames();
+  stopBooting();
+
   setInterval(loadGames, 5000);
   // a sitting can end while this window is closed, and the snooze runs out on
   // its own, so this is not only driven by the detach event
