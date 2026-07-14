@@ -458,6 +458,9 @@ function drawGrids(list) {
   $("fav-wrap").hidden = !favourite.length;
   $("pinned-wrap").hidden = !pinned.length;
   $("rest-shelf").hidden = !rest.length || !(favourite.length || pinned.length);
+  $("fav-count").textContent = favourite.length;
+  $("pinned-count").textContent = pinned.length;
+  $("rest-count").textContent = rest.length;
   fill($("fav-grid"), favourite);
   fill($("pinned-grid"), pinned);
   fill($("grid"), rest);

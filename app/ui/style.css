@@ -530,7 +530,10 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   gap: 14px;
   margin: 4px 0 16px;
 }
-.section-head h2 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -0.2px; }
+/* the same size as the heading on the about page, so every page in the app
+   opens the same way. at seventeen it was barely bigger than a shelf title
+   under it and the page read as one flat list of headings */
+.section-head h2 { margin: 0; font-size: 22px; font-weight: 680; letter-spacing: -0.3px; }
 
 .head-count {
   display: flex;
@@ -550,7 +553,6 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   text-transform: uppercase;
   color: var(--faint);
 }
-#pinned-wrap .shelf + .grid { margin-bottom: 28px; }
 
 .dim { color: var(--dim); font-size: 12.5px; }
 
@@ -591,6 +593,45 @@ input::placeholder { color: var(--faint); }
   font-weight: 600;
 }
 .banner p { margin: 4px 0 0 17px; font-size: 12.5px; color: var(--faint); max-width: 70ch; }
+
+/* ---------- shelves on the library page ---------- */
+
+/* these were eleven pixel grey capitals sitting right under the row of covers
+   above them, so a shelf title read as a caption for the wrong shelf. same
+   size as everything else on the page and no room around it is not a heading */
+.shelf-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 34px 0 15px;
+}
+.shelf-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 660;
+  letter-spacing: -0.2px;
+}
+
+.shelf-icon { width: 15px; height: 15px; flex: none; color: var(--accent); }
+
+.tally {
+  padding: 1px 8px;
+  border-radius: 99px;
+  background: var(--raised-2);
+  color: var(--faint);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* the rule runs from the title to the right edge, which is what separates one
+   shelf from the covers above it */
+.shelf-head::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  margin-left: 4px;
+  background: linear-gradient(90deg, var(--line), transparent);
+}
 
 /* ---------- game grid ---------- */
 
