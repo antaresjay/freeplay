@@ -62,8 +62,11 @@ one.
 Submitter handles are optional, free text, and whatever somebody types.
 
 Addresses are never stored. Rate limiting hashes them with `IP_SALT`, keeps
-twelve bytes of that, and drops rows older than an hour. Nothing in the tables
+twelve bytes of that, and drops rows older than a day. Nothing in the tables
 repository has ever seen one.
+
+`schema.sql` only creates what is missing, so run it again after a pull to pick
+up new tables on a service that is already live.
 
 ## Endpoints
 
@@ -82,6 +85,17 @@ less than one from the version you are actually running.
 
 Submissions are capped at 256KB, ten per IP per hour, and anything calling
 `loadlibrary`, `createthread`, `luacall` and friends is rejected outright.
+
+Votes are forty an hour per address, and one address only gets to be six
+different voters a day. New names are three a day.
+
+An install id is made by the client, so anybody can mint as many as they like
+and vote once from each. The fix is not to fingerprint the machine: the client
+is open source and would just be patched, and an app that promises to send
+nothing about you cannot start reading disk serials to enforce it. Addresses
+are the thing an attacker has to pay for, so that is what the limits count.
+None of this makes stuffing impossible. It makes it cost something, which for
+ordering a list of cheat tables is the right amount of effort to spend.
 
 That check is here so obvious junk never reaches the database. It is not what
 protects you. The client validates and sandboxes every downloaded table before

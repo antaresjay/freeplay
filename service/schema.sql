@@ -35,6 +35,17 @@ create table if not exists posts (
 
 create index if not exists posts_by_ip on posts (ip, at);
 
+-- rate limiting for everything that is not a submission. `what` is there so
+-- one address cannot mint a hundred install ids and vote once from each
+create table if not exists hits (
+  ip text not null,
+  kind text not null,
+  what text not null default '',
+  at integer not null
+);
+
+create index if not exists hits_by_ip on hits (kind, ip, at);
+
 create table if not exists grabs (
   install text not null,
   table_id integer not null,

@@ -1,6 +1,21 @@
 const MAX_BYTES = 256 * 1024;
 const MAX_POSTS_PER_HOUR = 10;
 
+/* an install id is made by the client, so anybody can mint as many as they
+   like and vote once from each. the answer is not to fingerprint the machine:
+   the client is open source and would just be patched, and a program that
+   promises to send nothing about you cannot start reading disk serials.
+
+   what actually costs an attacker something is addresses. votes are counted
+   per hour against a salted hash of one, and a single address only gets to be
+   so many different people in a day */
+const MAX_VOTES_PER_HOUR = 40;
+const MAX_VOTERS_PER_DAY = 6;
+const MAX_NAMES_PER_DAY = 3;
+
+const HOUR = 3600;
+const DAY = 86400;
+
 // same list the rust guard refuses. the client is what actually protects you,
 // this is here so obvious junk never reaches the database in the first place
 const BANNED = [
@@ -155,7 +170,7 @@ async function who(path, env) {
   return row ? json(row) : json({ taken: false }, 404);
 }
 
-async function claim(env, name, pubkey, signature, fingerprint) {
+async function claim(env, ip, name, pubkey, signature, fingerprint) {
   if (!/^[0-9a-f]{64}$/.test(pubkey || "")) return "that is not a key";
   if (!/^[0-9a-f]{128}$/.test(signature || "")) return "that is not a signature";
   if (!/^[\w.-]{2,32}$/.test(name)) return "that name has odd characters in it";
@@ -173,11 +188,20 @@ async function claim(env, name, pubkey, signature, fingerprint) {
     return held.pubkey === pubkey ? null : `${name} belongs to somebody else`;
   }
 
+  // publishing under a name you already hold is not a claim. this only counts
+  // the ones that register something new, so sitting on a pile of names has to
+  // be spread over days
+  const today = await lately(env, ip, "claim", DAY);
+  if (today.count >= MAX_NAMES_PER_DAY) {
+    return `that is ${MAX_NAMES_PER_DAY} new names today, try tomorrow`;
+  }
+
   await env.DB.prepare(
     "insert into accounts (name, pubkey, created_at) values (?1, ?2, ?3)"
   )
     .bind(name.toLowerCase(), pubkey, Math.floor(Date.now() / 1000))
     .run();
+  await noteHit(env, ip, "claim", name.toLowerCase());
   return null;
 }
 
@@ -210,7 +234,9 @@ async function submit(request, env) {
   // a name only counts if it is signed for. anything else is anonymous
   let handle = "";
   if (submitted_by) {
-    const wrong = await claim(env, String(submitted_by), body.pubkey, body.signature, fingerprint);
+    const wrong = await claim(
+      env, ip, String(submitted_by), body.pubkey, body.signature, fingerprint
+    );
     if (wrong) return bad(wrong, 403);
     handle = String(submitted_by);
   }
@@ -262,6 +288,20 @@ async function vote(request, env) {
   if (!Number.isInteger(id)) return bad("that is not an id");
   if (!/^[0-9a-f]{16,64}$/.test(install)) return bad("bad install id");
 
+  const ip = await stamp(request.headers.get("cf-connecting-ip") || "", env);
+  const seen = await lately(env, ip, "vote", HOUR);
+  if (seen.count >= MAX_VOTES_PER_HOUR) return bad("slow down", 429);
+
+  // changing your own mind is not a new voter, so this only bites when one
+  // address turns up as several people
+  const day = await lately(env, ip, "vote", DAY);
+  const known = await env.DB.prepare(
+    "select 1 as yes from hits where kind = 'vote' and ip = ?1 and what = ?2 limit 1"
+  )
+    .bind(ip, install)
+    .first();
+  if (!known && day.distinct >= MAX_VOTERS_PER_DAY) return bad("slow down", 429);
+
   const before = await env.DB.prepare(
     "select vote from votes where install = ?1 and table_id = ?2"
   )
@@ -284,6 +324,7 @@ async function vote(request, env) {
     ).bind(id),
   ]);
 
+  await noteHit(env, ip, "vote", install);
   return json({ ok: true });
 }
 
@@ -391,6 +432,30 @@ async function mirror(env) {
     `update tables set mirrored = 1 where id in (${rows.map((r) => r.id).join(",")})`
   ).run();
 }
+
+// how many of `kind` this address has done lately, and how many different
+// things it did them as. nothing is written until the caller says it went
+// ahead, so a refused request does not count against the next one
+async function lately(env, ip, kind, since) {
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare("delete from hits where at < ?1")
+    .bind(now - DAY)
+    .run();
+
+  const row = await env.DB.prepare(
+    `select count(*) as n, count(distinct what) as who
+       from hits where kind = ?1 and ip = ?2 and at > ?3`
+  )
+    .bind(kind, ip, now - since)
+    .first();
+
+  return { count: (row && row.n) || 0, distinct: (row && row.who) || 0 };
+}
+
+const noteHit = (env, ip, kind, what = "") =>
+  env.DB.prepare("insert into hits (ip, kind, what, at) values (?1, ?2, ?3, ?4)")
+    .bind(ip, kind, what, Math.floor(Date.now() / 1000))
+    .run();
 
 async function stamp(value, env) {
   const salt = env.IP_SALT || "freeplay";
