@@ -140,8 +140,10 @@ pub fn update_from(
     let mut report = Report::default();
 
     for entry in &catalog.tables {
-        // A file name from the network is not allowed to be a path.
-        if entry.file.contains(['/', '\\']) || entry.file.contains("..") {
+        // a file name from the network is not allowed to be a path. the colon
+        // counts, C:x has a drive on it and joining that onto a folder throws
+        // the folder away
+        if entry.file.contains(['/', '\\', ':']) || entry.file.contains("..") {
             report.failed.push((
                 entry.game.clone(),
                 format!("bad file name {:?}", entry.file),
@@ -317,6 +319,23 @@ mod tests {
         ]}"#;
         let evil: &'static str = Box::leak(evil.to_string().into_boxed_str());
         let fetch = server(vec![("index.json", evil), ("settings.json", TABLE)]);
+
+        let report = update_from(CATALOG, &dir, &fetch).unwrap();
+        assert!(report.added.is_empty());
+        assert!(report.failed[0].1.contains("bad file name"));
+    }
+
+    // no slash in it, so the first check let it through. on windows a name
+    // with a drive on it replaces whatever it is joined to, so this landed
+    // wherever the process happened to be sitting on that drive
+    #[test]
+    fn nor_a_bare_drive_letter() {
+        let dir = temp("nor_a_bare_drive_letter");
+        let evil = r#"{"version":1,"tables":[
+            {"exe":"a.exe","game":"Evil","file":"C:freeplay-escaped.toml","revision":1}
+        ]}"#;
+        let evil: &'static str = Box::leak(evil.to_string().into_boxed_str());
+        let fetch = server(vec![("index.json", evil), ("freeplay-escaped.toml", TABLE)]);
 
         let report = update_from(CATALOG, &dir, &fetch).unwrap();
         assert!(report.added.is_empty());

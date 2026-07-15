@@ -123,8 +123,17 @@ impl Table {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.game.exe.trim().is_empty() {
+        let exe = self.game.exe.trim();
+        if exe.is_empty() {
             return Err("game.exe is empty".into());
+        }
+        // it is the name of a running process and never a path, and it is what
+        // names the file a downloaded table gets written to. one off the
+        // network calling itself ..\..\something must not land there. the
+        // colon matters as much as the slashes: on windows C:x is a path with
+        // a drive on it and joining it throws away everything in front
+        if exe.contains(['/', '\\', ':']) || exe == ".." || exe == "." {
+            return Err(format!("game.exe {exe:?} is a path, not a process name"));
         }
 
         let mut seen = std::collections::HashSet::new();
@@ -303,5 +312,34 @@ mod tests {
         let table = Table::parse("[game]\nname = \"X\"\nexe = \"x.exe\"").unwrap();
         assert!(table.cheats.is_empty());
         assert!(table.validate().is_ok());
+    }
+
+    // the name goes straight into the file a downloaded table is written to,
+    // and the table comes off the network
+    #[test]
+    fn an_exe_that_is_really_a_path_is_refused() {
+        for exe in [
+            r"..\..\..\Windows\System32\x",
+            "../../x",
+            r"C:x",
+            r"\\server\share\x",
+            "..",
+            ".",
+        ] {
+            let text = format!("[game]\nname = \"X\"\nexe = {exe:?}");
+            let table = Table::parse(&text).unwrap();
+            assert!(
+                table.validate().is_err(),
+                "{exe:?} was accepted as a process name"
+            );
+        }
+    }
+
+    #[test]
+    fn an_ordinary_process_name_still_passes() {
+        for exe in ["witcher2.exe", "MassEffect1.exe", "Discovery-d.exe", "x"] {
+            let text = format!("[game]\nname = \"X\"\nexe = {exe:?}");
+            assert!(Table::parse(&text).unwrap().validate().is_ok(), "{exe}");
+        }
     }
 }
