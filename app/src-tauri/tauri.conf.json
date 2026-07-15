@@ -31,6 +31,15 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "publisher": "antaresjay",
+    "homepage": "https://github.com/antaresjay/freeplay",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English"],
+        "displayLanguageSelector": false
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
