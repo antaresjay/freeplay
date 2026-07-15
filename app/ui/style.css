@@ -73,36 +73,54 @@
 
 /* amber by default. the arcade cabinets this is named after glowed this
    colour */
+/* the three lights behind the opening screen sit alongside the accent rather
+   than being worked out from it. a hue rotation gives you a colour that is
+   technically related and still looks wrong, so these are picked by eye */
 :root,
 :root[data-accent="amber"] {
   --accent: #f0a52a;
   --accent-ink: #1d1403;
   --accent-soft: rgba(240, 165, 42, 0.14);
   --accent-line: rgba(240, 165, 42, 0.45);
+  --lit-2: #a78bfa;
+  --lit-3: #d64030;
+  --lit-4: #38bdf8;
 }
 :root[data-accent="violet"] {
   --accent: #a78bfa;
   --accent-ink: #150f2e;
   --accent-soft: rgba(167, 139, 250, 0.16);
   --accent-line: rgba(167, 139, 250, 0.5);
+  --lit-2: #4f46e5;
+  --lit-3: #e879f9;
+  --lit-4: #22d3ee;
 }
 :root[data-accent="cyan"] {
   --accent: #38bdf8;
   --accent-ink: #04141f;
   --accent-soft: rgba(56, 189, 248, 0.15);
   --accent-line: rgba(56, 189, 248, 0.5);
+  --lit-2: #4f46e5;
+  --lit-3: #0d9488;
+  --lit-4: #8b5cf6;
 }
 :root[data-accent="rose"] {
   --accent: #fb7185;
   --accent-ink: #29060d;
   --accent-soft: rgba(251, 113, 133, 0.15);
   --accent-line: rgba(251, 113, 133, 0.5);
+  --lit-2: #a855f7;
+  --lit-3: #b91c3c;
+  --lit-4: #fb923c;
 }
 :root[data-accent="lime"] {
   --accent: #a3e635;
   --accent-ink: #131c04;
   --accent-soft: rgba(163, 230, 53, 0.16);
   --accent-line: rgba(163, 230, 53, 0.5);
+  --lit-2: #14b8a6;
+  --lit-3: #4d7c0f;
+  --lit-4: #eab308;
 }
 
 * { box-sizing: border-box; }
@@ -173,7 +191,22 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 
 /* four wide soft lights drifting behind everything. blurred this hard they
    read as one moving field rather than four circles */
-.sky { position: absolute; inset: -20%; filter: blur(90px); opacity: 0.85; }
+/* it comes up from nothing rather than being there on the first frame, partly
+   because it looks better and partly because the accent is only known once
+   settings have been read, a few milliseconds in, and a swap while the lights
+   are still faint is a swap nobody sees */
+.sky {
+  position: absolute;
+  inset: -20%;
+  filter: blur(90px);
+  opacity: 0.85;
+  animation: lights-up 0.9s var(--ease) both;
+}
+
+@keyframes lights-up {
+  from { opacity: 0; }
+  to { opacity: 0.85; }
+}
 
 .glow {
   position: absolute;
@@ -185,19 +218,22 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 .g1 {
   top: -6%;
   left: -4%;
-  background: radial-gradient(circle, rgba(240, 165, 42, 0.85), transparent 66%);
+  background: radial-gradient(circle, var(--accent) 0%, transparent 66%);
+  opacity: 0.85;
   animation: drift-a 19s ease-in-out infinite;
 }
 .g2 {
   top: 18%;
   right: -10%;
-  background: radial-gradient(circle, rgba(167, 139, 250, 0.7), transparent 66%);
+  background: radial-gradient(circle, var(--lit-2) 0%, transparent 66%);
+  opacity: 0.7;
   animation: drift-b 23s ease-in-out infinite;
 }
 .g3 {
   bottom: -18%;
   left: 14%;
-  background: radial-gradient(circle, rgba(214, 64, 48, 0.6), transparent 66%);
+  background: radial-gradient(circle, var(--lit-3) 0%, transparent 66%);
+  opacity: 0.6;
   animation: drift-c 27s ease-in-out infinite;
 }
 .g4 {
@@ -205,7 +241,8 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   right: 16%;
   width: 44%;
   height: 44%;
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.42), transparent 66%);
+  background: radial-gradient(circle, var(--lit-4) 0%, transparent 66%);
+  opacity: 0.42;
   animation: drift-d 21s ease-in-out infinite;
 }
 
@@ -249,21 +286,31 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   to { opacity: 1; transform: none; }
 }
 
-/* a light travels across the letters every few seconds, which is the whole
-   reason for the background-clip rather than a flat colour */
 .splash-word {
   font-size: clamp(38px, 3.6vw, 62px);
   font-weight: 780;
   letter-spacing: 14px;
   text-indent: 14px;
-  background: linear-gradient(100deg,
-    #f7c76a 0%, #f7c76a 38%, #fff6e2 50%, #f7c76a 62%, #f7c76a 100%);
-  background-size: 260% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 26px rgba(240, 165, 42, 0.4));
-  animation: sweep 4.5s var(--ease) infinite;
+  color: var(--accent);
+}
+
+/* a light travels across the letters every few seconds, which is the whole
+   reason for clipping a gradient to the text instead of colouring it.
+   behind a supports, because letters painted in transparent with a gradient
+   that did not parse are letters nobody can see */
+@supports (color: color-mix(in srgb, red, white)) {
+  .splash-word {
+    --ink: color-mix(in srgb, var(--accent) 74%, white);
+    --shine: color-mix(in srgb, var(--accent) 14%, white);
+    background: linear-gradient(100deg,
+      var(--ink) 0%, var(--ink) 38%, var(--shine) 50%, var(--ink) 62%, var(--ink) 100%);
+    background-size: 260% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 0 26px color-mix(in srgb, var(--accent) 40%, transparent));
+    animation: sweep 4.5s var(--ease) infinite;
+  }
 }
 
 @keyframes sweep {
@@ -307,7 +354,7 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 .splash.gone { opacity: 0; filter: blur(6px); pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .glow, .splash-word, .splash-bar span, .splash-body { animation: none; }
+  .sky, .glow, .splash-word, .splash-bar span, .splash-body { animation: none; }
   .splash-bar span { width: 100%; }
 }
 
