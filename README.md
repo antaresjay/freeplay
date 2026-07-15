@@ -17,6 +17,44 @@ anything running an anti-cheat.
 Named after the arcade cabinet setting that gives you unlimited credits without
 feeding coins into the slot.
 
+## Get it
+
+[Releases](https://github.com/antaresjay/freeplay/releases) has three files.
+
+| File | What it is |
+| --- | --- |
+| `Freeplay_x.y.z_x64-setup.exe` | Installer. Goes in your own user folder, no admin prompt, uninstalls from Settings like anything else |
+| `Freeplay.exe` | The same program, nothing to install. Put it where you like |
+| `freeplay.exe` | The command line one |
+
+Neither is signed, so SmartScreen stops you the first time: **More info**, then
+**Run anyway**. See [Things you should know](#things-you-should-know).
+
+### Or build it yourself
+
+Nothing here is worth trusting a stranger's binary for, and you do not need a
+Rust toolchain to avoid one. Fork the repository, open **Actions**, pick
+**release**, press **Run workflow**. About ten minutes later the run has a
+`freeplay-windows-x64` artifact with the same three files in it, built from the
+code you are looking at, on a machine that is not mine.
+
+Locally, if you have Rust:
+
+```
+cargo run --release -p freeplay-app       # just run it
+
+cargo install tauri-cli --version "^2"    # once, if you want the installer
+cd app && cargo tauri build
+```
+
+The installer lands in `target/release/bundle/nsis/`. The first bundle
+downloads NSIS, which is a few megabytes and can time out on a slow line: run
+it again and it picks up where it left off.
+
+Build in release either way. Finding your games walks every install directory
+and scanning a game reads gigabytes of its memory, and both are several times
+slower in a debug build.
+
 ## Architecture
 
 ```
@@ -124,19 +162,9 @@ login.
 Being open source matters more than usual here. A program that attaches to your
 games and writes into their memory is one you should be able to read first.
 
-## Running it
+## The command line tool
 
-```
-git clone https://github.com/antaresjay/freeplay
-cd freeplay
-cargo run --release -p freeplay-app
-```
-
-Build it in release. Finding your games means walking every install directory,
-and scanning a running game means reading gigabytes of its memory. Both are
-several times slower in a debug build.
-
-There is also a command line tool, which is the quickest way to try the engine:
+The quickest way to try the engine without the desktop app:
 
 ```
 cargo run --release --bin freeplay -- games
@@ -153,11 +181,15 @@ the list until one address is left.
 **Windows will complain.** The binary is unsigned, so SmartScreen warns on first
 run. Windows Defender may flag it too, because reading and writing another
 process's memory is exactly what malware does. There is no way around that
-short of a code signing certificate costing a few hundred pounds a year. Build
-it yourself if you would rather not trust a download.
+short of a code signing certificate costing a few hundred pounds a year. Every
+release is built by the workflow in this repository and the Actions tab shows
+the run that produced it, so you can check the files came from this code. Or
+build it yourself, which takes one click on a fork.
 
-**You will probably need to run it as administrator.** Opening a handle to
-another process usually requires it.
+**Administrator is usually not needed.** A game you started yourself runs as
+you, and one program of yours can open another. You need it in one case: if the
+game runs elevated, Freeplay has to be elevated too, because a normal process
+cannot open a handle to one above it.
 
 **Freeplay does not ship cheats for many games.** It ships the engine and the
 format. Somebody has to sit with a debugger and work out where a game keeps its
