@@ -60,9 +60,13 @@ async function list(url, env) {
   if (!exe) return bad("which game");
   const build = url.searchParams.get("build") || "";
 
+  // own property, because ORDER["constructor"] and ORDER["toString"] both come
+  // back truthy off the prototype and end up interpolated into the sql below
   const sort = url.searchParams.get("sort") || "best";
+  if (!Object.prototype.hasOwnProperty.call(ORDER, sort)) {
+    return bad(`sort by one of ${Object.keys(ORDER).join(", ")}`);
+  }
   const order = ORDER[sort];
-  if (!order) return bad(`sort by one of ${Object.keys(ORDER).join(", ")}`);
 
   const statement = env.DB.prepare(
     `select id, exe, game, fingerprint, cheats, bytes, submitted_by, built_for,
