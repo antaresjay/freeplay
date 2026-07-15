@@ -1,9 +1,15 @@
 name: release
 
+# Tag a version and it builds an installer and attaches it to a draft release.
+# Run it by hand and it builds the same thing and leaves it on the run, which
+# is what a fork wants: no tag, no release, nothing to publish.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -18,7 +24,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build installer and command line tool
+      - name: Command line tool
+        run: cargo build --release -p freeplay-cli
+
+      # a tag gets a draft release to look over before anyone sees it
+      - name: Installer, for a tag
+        if: startsWith(github.ref, 'refs/tags/')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -28,7 +39,46 @@ jobs:
           releaseName: Freeplay ${{ github.ref_name }}
           releaseDraft: true
           releaseBody: |
-            Windows build. Unsigned, so SmartScreen will warn on first run:
-            click More info, then Run anyway. Windows Defender may also flag
-            it, because writing to another process's memory is exactly what
-            malware does. Source is here if you would rather build it yourself.
+            **Freeplay_x64-setup.exe** is the installer. **Freeplay.exe** is the
+            same program with nothing to install, and **freeplay.exe** is the
+            command line one.
+
+            Neither is signed, so SmartScreen will stop you the first time:
+            click More info, then Run anyway. Defender may complain as well,
+            because writing to another process's memory is exactly what malware
+            does. Every line of it is in this repository, and the Actions tab
+            shows the run that produced these files. Build it yourself if you
+            would rather: fork, Actions, release, Run workflow.
+
+      - name: Installer, for a run by hand
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+
+      - name: Gather
+        shell: bash
+        run: |
+          mkdir out
+          cp target/release/bundle/nsis/*-setup.exe out/
+          cp target/release/freeplay-app.exe out/Freeplay.exe
+          cp target/release/freeplay.exe out/freeplay.exe
+          ls -l out
+
+      # so a fork can download the build from the run itself
+      - uses: actions/upload-artifact@v4
+        with:
+          name: freeplay-windows-x64
+          path: out/*
+          if-no-files-found: error
+
+      # tauri-action only knows about its own bundle, so the other two go up
+      # separately
+      - name: Add the rest to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" out/Freeplay.exe out/freeplay.exe --clobber

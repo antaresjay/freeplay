@@ -36,5 +36,13 @@ jobs:
       - name: Click through the interface
         run: python app/uitest/clickthrough.py
 
+      - name: Click through the overlay
+        run: python app/uitest/overlay.py
+
+      # this one measures. it catches a panel sliding sideways by the width of
+      # a scrollbar, which no assertion on a single number ever did
+      - name: Measure the layout
+        run: python app/uitest/layout.py
+
       - name: Build release
         run: cargo build --release --workspace
