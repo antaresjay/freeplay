@@ -39,16 +39,38 @@ jobs:
           releaseName: Freeplay ${{ github.ref_name }}
           releaseDraft: true
           releaseBody: |
-            **Freeplay_x64-setup.exe** is the installer. **Freeplay.exe** is the
-            same program with nothing to install, and **freeplay-cli.exe** is
-            the command line one.
+            Freeplay finds your installed games, attaches to one and turns
+            cheats on. Tables other people have shared arrive on their own. If
+            nobody has written one for your game, import a Cheat Engine `.CT`
+            file or search the game's memory and make one yourself.
 
-            Neither is signed, so SmartScreen will stop you the first time:
-            click More info, then Run anyway. Defender may complain as well,
-            because writing to another process's memory is exactly what malware
-            does. Every line of it is in this repository, and the Actions tab
-            shows the run that produced these files. Build it yourself if you
-            would rather: fork, Actions, release, Run workflow.
+            Single player only. It will not attach to anything running an
+            anti-cheat.
+
+            ### Which file
+
+            The **-setup.exe** is the installer. It goes into your own user
+            folder, so there is no admin prompt, and it uninstalls from
+            Settings like anything else. **Freeplay.exe** is the same program
+            with nothing to install. **freeplay-cli.exe** is the command line
+            one.
+
+            ### Windows will complain
+
+            None of them are signed, so SmartScreen stops you the first time:
+            click More info, then Run anyway. Defender may have something to
+            say as well, because writing into another process's memory is
+            exactly what malware does.
+
+            Every line is in this repository and the Actions tab shows the run
+            that built these files. If you would rather not trust a download,
+            fork it and press Run workflow on the release action. Same three
+            files, built somewhere that is not my machine.
+
+            ### What it does not come with
+
+            Cheats for many games. It comes with the engine, the table format,
+            and the finder for working out where a game keeps its numbers.
 
       - name: Installer, for a run by hand
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
