@@ -60,12 +60,8 @@ jobs:
             None of them are signed, so SmartScreen stops you the first time:
             click More info, then Run anyway. Defender may have something to
             say as well, because writing into another process's memory is
-            exactly what malware does.
-
-            Every line is in this repository and the Actions tab shows the run
-            that built these files. If you would rather not trust a download,
-            fork it and press Run workflow on the release action. Same three
-            files, built somewhere that is not my machine.
+            exactly what malware does. Fork this and press Run workflow on the
+            release action if you would rather build it than trust a download.
 
             ### What it does not come with
 
