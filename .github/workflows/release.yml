@@ -40,8 +40,8 @@ jobs:
           releaseDraft: true
           releaseBody: |
             **Freeplay_x64-setup.exe** is the installer. **Freeplay.exe** is the
-            same program with nothing to install, and **freeplay.exe** is the
-            command line one.
+            same program with nothing to install, and **freeplay-cli.exe** is
+            the command line one.
 
             Neither is signed, so SmartScreen will stop you the first time:
             click More info, then Run anyway. Defender may complain as well,
@@ -64,8 +64,11 @@ jobs:
           mkdir out
           cp target/release/bundle/nsis/*-setup.exe out/
           cp target/release/freeplay-app.exe out/Freeplay.exe
-          cp target/release/freeplay.exe out/freeplay.exe
+          # freeplay.exe is the same path as Freeplay.exe as far as windows is
+          # concerned, and the second copy quietly ate the first
+          cp target/release/freeplay.exe out/freeplay-cli.exe
           ls -l out
+          test "$(ls out | wc -l)" -eq 3 || { echo "expected three files"; exit 1; }
 
       # so a fork can download the build from the run itself
       - uses: actions/upload-artifact@v4
@@ -81,4 +84,4 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" out/Freeplay.exe out/freeplay.exe --clobber
+        run: gh release upload "${{ github.ref_name }}" out/Freeplay.exe out/freeplay-cli.exe --clobber

@@ -25,7 +25,7 @@ feeding coins into the slot.
 | --- | --- |
 | `Freeplay_x.y.z_x64-setup.exe` | Installer. Goes in your own user folder, no admin prompt, uninstalls from Settings like anything else |
 | `Freeplay.exe` | The same program, nothing to install. Put it where you like |
-| `freeplay.exe` | The command line one |
+| `freeplay-cli.exe` | The command line one |
 
 Neither is signed, so SmartScreen stops you the first time: **More info**, then
 **Run anyway**. See [Things you should know](#things-you-should-know).
