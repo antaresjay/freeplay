@@ -24,6 +24,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # cargo reads a toml with a byte order mark on the front, the toml parser
+      # inside tauri-action does not, and the build only fell over at bundling
+      - name: No byte order marks
+        shell: bash
+        run: |
+          found=$(git ls-files -z | xargs -0 -I{} sh -c \
+            'test -f "{}" && head -c3 "{}" | grep -q "$(printf "\357\273\277")" && echo "{}"' || true)
+          if [ -n "$found" ]; then echo "byte order mark in:"; echo "$found"; exit 1; fi
+
       - name: Format
         run: cargo fmt --all --check
 
