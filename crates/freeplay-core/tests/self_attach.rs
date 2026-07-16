@@ -10,6 +10,7 @@ use std::hint::black_box;
 
 use freeplay_core::pattern::Pattern;
 use freeplay_core::scanner::{self, Scope};
+use freeplay_core::search::{Filter, Search};
 use freeplay_core::target::Target;
 use freeplay_core::value::{Scalar, ValueKind};
 use freeplay_core::windows_target::{processes, WindowsTarget};
@@ -119,4 +120,63 @@ fn scans_real_memory_for_a_known_needle() {
         hits.len()
     );
     black_box(haystack);
+}
+
+/* the whole point of the value finder, against memory that is really moving.
+search.rs tests the narrowing on its own and the scan above proves the read
+path, but nobody had put the two together: find a number, change it, search
+again, and end up holding the address of the thing that changed. */
+#[test]
+fn narrows_down_to_the_value_that_actually_moved() {
+    /* a couple of megabytes, which windows hands out as its own mapping
+    rather than carving off the small block heap. the other tests in this
+    binary allocate while this one is scanning, and a region that gets split
+    between rounds fails the re-read, which drops every candidate in it */
+    let mut buffer = vec![0i32; 512 * 1024];
+    buffer[4096] = 1_234_567;
+    let addr = &buffer[4096] as *const i32 as usize;
+
+    let target = attach();
+
+    let mut search = Search::first(
+        &target,
+        ValueKind::I32,
+        Filter::Exact(Scalar::I32(1_234_567)),
+    )
+    .expect("first scan");
+
+    let found = search.len();
+    assert!(found > 0, "the first scan found nothing at all");
+    assert!(
+        search.results(usize::MAX).iter().any(|c| c.addr == addr),
+        "the first scan missed our own value at {addr:#x}, {found} candidates"
+    );
+
+    // this is the part a player does in game
+    buffer[4096] = 7_654_321;
+
+    search
+        .next(&target, Filter::Exact(Scalar::I32(7_654_321)))
+        .expect("second scan");
+
+    let left = search.results(usize::MAX);
+    assert!(
+        left.iter().any(|c| c.addr == addr),
+        "narrowing threw away the address that actually changed"
+    );
+    assert!(
+        left.len() <= found,
+        "narrowing left more than it started with, {} then {}",
+        found,
+        left.len()
+    );
+    assert_eq!(search.rounds(), 2);
+
+    // and the address it kept is one we can write through
+    target
+        .write_scalar(addr, Scalar::I32(99))
+        .expect("write to the address the search found");
+    assert_eq!(buffer[4096], 99);
+
+    black_box(buffer);
 }
