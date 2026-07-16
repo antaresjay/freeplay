@@ -3,3 +3,6 @@
 *.png binary
 *.ico binary
 *.exe binary
+
+# cheat engine writes crlf and the importer normalises it, so keep the bytes
+*.CT -text

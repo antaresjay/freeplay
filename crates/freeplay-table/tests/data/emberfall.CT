@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="34">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>1</ID>
+      <Description>"Get Player Base"</Description>
+      <Options moHideChildren="1" moDeactivateChildrenAsWell="1"/>
+      <LastState/>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>{
+	Game	: emberfall.exe
+	Version	: 1.4.2
+	Date	: 2026-02-11
+}
+[ENABLE]
+aobscanmodule(getPlayer,emberfall.exe,8B 10 8B C8 FF 92 34 02 00 00 84)
+registersymbol(getPlayer)
+registersymbol(basePlayer)
+alloc(newgetPlayer,100,getPlayer)
+label(codegetPlayer)
+label(returngetPlayer)
+label(basePlayer)
+newgetPlayer:
+  mov [basePlayer],eax
+codegetPlayer:
+  mov edx,[eax]
+  mov ecx,eax
+  call dword ptr [edx+00000234]
+  jmp returngetPlayer
+basePlayer:
+  dd 0
+getPlayer:
+  jmp newgetPlayer
+  nop 5
+returngetPlayer:
+
+[DISABLE]
+getPlayer:
+  db 8B 10 8B C8 FF 92 34 02 00 00
+
+unregistersymbol(getPlayer)
+unregistersymbol(basePlayer)
+dealloc(newgetPlayer)
+
+{
+// ORIGINAL CODE - INJECTION POINT: emberfall.exe.text+4A11C0
+
+emberfall.exe.text+4A11B8: 8B F9                 - mov edi,ecx
+emberfall.exe.text+4A11BA: E8 98 B1 E7 FF        - call emberfall.exe.text+31C357
+emberfall.exe.text+4A11BF: 84 C0                 - test al,al
+// ---------- INJECTING HERE ----------
+emberfall.exe.text+4A11C0: 8B 10                 - mov edx,[eax]
+emberfall.exe.text+4A11C2: 8B C8                 - mov ecx,eax
+emberfall.exe.text+4A11C4: FF 92 34 02 00 00     - call dword ptr [edx+00000234]
+// ---------- DONE INJECTING  ----------
+emberfall.exe.text+4A11CA: 84 C0                 - test al,al
+}
+</AssemblerScript>
+      <CheatEntries>
+        <CheatEntry>
+          <ID>2</ID>
+          <Description>"Player"</Description>
+          <Options moHideChildren="1"/>
+          <GroupHeader>1</GroupHeader>
+          <CheatEntries>
+            <CheatEntry>
+              <ID>3</ID>
+              <Description>"Current Health"</Description>
+              <VariableType>Float</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>8</Offset>
+                <Offset>14</Offset>
+              </Offsets>
+            </CheatEntry>
+            <CheatEntry>
+              <ID>4</ID>
+              <Description>"Max Health"</Description>
+              <VariableType>Float</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>C</Offset>
+                <Offset>14</Offset>
+              </Offsets>
+            </CheatEntry>
+            <CheatEntry>
+              <ID>5</ID>
+              <Description>"Current Stamina"</Description>
+              <VariableType>Float</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>2A4</Offset>
+                <Offset>14</Offset>
+              </Offsets>
+            </CheatEntry>
+            <CheatEntry>
+              <ID>6</ID>
+              <Description>"Current Focus"</Description>
+              <VariableType>Float</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>2A8</Offset>
+                <Offset>14</Offset>
+              </Offsets>
+            </CheatEntry>
+            <CheatEntry>
+              <ID>7</ID>
+              <Description>"Experience Points"</Description>
+              <VariableType>4 Bytes</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>2AC</Offset>
+                <Offset>14</Offset>
+              </Offsets>
+            </CheatEntry>
+            <CheatEntry>
+              <ID>8</ID>
+              <Description>"Skill Points"</Description>
+              <VariableType>4 Bytes</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>2B0</Offset>
+                <Offset>14</Offset>
+              </Offsets>
+            </CheatEntry>
+            <CheatEntry>
+              <ID>9</ID>
+              <Description>"Charm Slots"</Description>
+              <VariableType>Byte</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>29C</Offset>
+                <Offset>14</Offset>
+              </Offsets>
+            </CheatEntry>
+          </CheatEntries>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>10</ID>
+          <Description>"Inventory"</Description>
+          <Options moHideChildren="1"/>
+          <GroupHeader>1</GroupHeader>
+          <CheatEntries>
+            <CheatEntry>
+              <ID>11</ID>
+              <Description>"Crowns"</Description>
+              <VariableType>4 Bytes</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>2C</Offset>
+                <Offset>50</Offset>
+                <Offset>1C</Offset>
+                <Offset>0</Offset>
+                <Offset>C4</Offset>
+              </Offsets>
+            </CheatEntry>
+            <CheatEntry>
+              <ID>12</ID>
+              <Description>"Weight Limit"</Description>
+              <VariableType>Float</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>30</Offset>
+                <Offset>50</Offset>
+                <Offset>1C</Offset>
+                <Offset>0</Offset>
+                <Offset>C4</Offset>
+              </Offsets>
+              <LastState Value="118.5" RealAddress="1D4A0C30"/>
+            </CheatEntry>
+            <CheatEntry>
+              <ID>13</ID>
+              <Description>"Lockpicks"</Description>
+              <VariableType>2 Bytes</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>34</Offset>
+                <Offset>50</Offset>
+                <Offset>1C</Offset>
+              </Offsets>
+            </CheatEntry>
+            <CheatEntry>
+              <ID>14</ID>
+              <Description>"Arrows"</Description>
+              <VariableType>2 Bytes</VariableType>
+              <Address>basePlayer</Address>
+              <Offsets>
+                <Offset>38</Offset>
+                <Offset>50</Offset>
+                <Offset>1C</Offset>
+              </Offsets>
+              <ShowAsHex>1</ShowAsHex>
+            </CheatEntry>
+          </CheatEntries>
+        </CheatEntry>
+      </CheatEntries>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>15</ID>
+      <Description>"Infinite Health"</Description>
+      <LastState/>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+aobscanmodule(hurtPlayer,emberfall.exe,89 41 04 8B 4E 08)
+alloc(newhurtPlayer,80,hurtPlayer)
+label(returnhurtPlayer)
+newhurtPlayer:
+  mov ecx,[esi+08]
+  jmp returnhurtPlayer
+hurtPlayer:
+  jmp newhurtPlayer
+  nop
+returnhurtPlayer:
+registersymbol(hurtPlayer)
+
+[DISABLE]
+hurtPlayer:
+  db 89 41 04 8B 4E 08
+unregistersymbol(hurtPlayer)
+dealloc(newhurtPlayer)
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>16</ID>
+      <Description>"Infinite Items"</Description>
+      <LastState/>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+aobscanmodule(useItem,emberfall.exe,66 FF 4A 02 8B 45)
+alloc(newuseItem,80,useItem)
+label(returnuseItem)
+newuseItem:
+  mov eax,[ebp]
+  jmp returnuseItem
+useItem:
+  jmp newuseItem
+  nop
+returnuseItem:
+registersymbol(useItem)
+
+[DISABLE]
+useItem:
+  db 66 FF 4A 02 8B 45
+unregistersymbol(useItem)
+dealloc(newuseItem)
+</AssemblerScript>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>17</ID>
+      <Description>"Modify Exp Gain"</Description>
+      <LastState/>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>[ENABLE]
+aobscanmodule(giveExp,emberfall.exe,03 46 2C 89 46 2C)
+alloc(newgiveExp,100,giveExp)
+label(returngiveExp)
+label(expMultVal)
+registersymbol(expMultVal)
+registersymbol(giveExp)
+newgiveExp:
+  push ebx
+  mov ebx,[expMultVal]
+  imul eax,ebx
+  pop ebx
+  add eax,[esi+2C]
+  mov [esi+2C],eax
+  jmp returngiveExp
+expMultVal:
+  dd (int)1
+giveExp:
+  jmp newgiveExp
+  nop
+returngiveExp:
+
+[DISABLE]
+giveExp:
+  db 03 46 2C 89 46 2C
+unregistersymbol(giveExp)
+unregistersymbol(expMultVal)
+dealloc(newgiveExp)
+</AssemblerScript>
+      <CheatEntries>
+        <CheatEntry>
+          <ID>18</ID>
+          <Description>"Multiplier"</Description>
+          <VariableType>4 Bytes</VariableType>
+          <Address>expMultVal</Address>
+        </CheatEntry>
+      </CheatEntries>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>19</ID>
+      <Description>"World"</Description>
+      <Options moHideChildren="1"/>
+      <GroupHeader>1</GroupHeader>
+      <CheatEntries>
+        <CheatEntry>
+          <ID>20</ID>
+          <Description>"Game Speed"</Description>
+          <VariableType>Float</VariableType>
+          <Address>emberfall.exe+1A2B3C</Address>
+          <LastState Value="1" RealAddress="00F12B3C"/>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>21</ID>
+          <Description>"Time Of Day"</Description>
+          <VariableType>4 Bytes</VariableType>
+          <Address>emberfall.exe+1A2B44</Address>
+          <DropDownList ReadOnly="1" DisplayValueAsItem="1">0:Dawn
+1:Noon
+2:Dusk
+3:Night</DropDownList>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>22</ID>
+          <Description>"Weather Seed"</Description>
+          <VariableType>4 Bytes</VariableType>
+          <Address>emberfall.exe+1A2B48</Address>
+          <ShowAsHex>1</ShowAsHex>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>23</ID>
+          <Description>"Wanted Level"</Description>
+          <VariableType>Byte</VariableType>
+          <Address>emberfall.exe+1A2B50</Address>
+        </CheatEntry>
+      </CheatEntries>
+    </CheatEntry>
+  </CheatEntries>
+</CheatTable>
