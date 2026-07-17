@@ -31,7 +31,9 @@ pub struct Profile {
 pub struct Prefs {
     pub theme: String,
     pub accent: String,
-    #[serde(default)]
+    // pinning is gone. still read, so a profile written before it went still
+    // opens, and folded into favourites when it is applied
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pinned: Vec<String>,
     #[serde(default)]
     pub favourites: Vec<String>,
@@ -99,7 +101,7 @@ pub fn build(
         prefs: prefs.then(|| Prefs {
             theme: settings.theme.clone(),
             accent: settings.accent.clone(),
-            pinned: settings.pinned.clone(),
+            pinned: Vec::new(),
             favourites: settings.favourites.clone(),
             auto_update: settings.auto_update,
             auto_attach: settings.auto_attach,
@@ -130,6 +132,7 @@ pub fn apply(profile: &Profile, settings: &mut Settings) -> Applied {
         settings.theme = prefs.theme.clone();
         settings.accent = prefs.accent.clone();
         settings.pinned = prefs.pinned.clone();
+        // tidy folds them in, so applying an old profile keeps them
         settings.favourites = prefs.favourites.clone();
         settings.auto_update = prefs.auto_update;
         settings.auto_attach = prefs.auto_attach;

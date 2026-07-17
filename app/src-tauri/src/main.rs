@@ -86,7 +86,6 @@ struct GameRow {
     // minutes played and when, straight out of steam
     minutes: Option<u32>,
     last_played: Option<u64>,
-    pinned: bool,
     favourite: bool,
 }
 
@@ -403,10 +402,7 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
         .collect();
     let tables = tables(&state);
     let played = freeplay_library::play::steam();
-    let (pinned, favourites) = {
-        let settings = state.settings.lock().unwrap();
-        (settings.pinned.clone(), settings.favourites.clone())
-    };
+    let favourites = state.settings.lock().unwrap().favourites.clone();
 
     Ok(library(&state, refresh)
         .into_iter()
@@ -432,7 +428,6 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
                     .is_some_and(|e| tables.iter().any(|t| t.matches_process(e))),
                 minutes: play.minutes,
                 last_played: play.last_played,
-                pinned: pinned.contains(&key),
                 favourite: favourites.contains(&key),
                 key,
                 name: game.name,
@@ -1191,7 +1186,6 @@ fn save_settings(state: tauri::State<'_, App>, next: Settings) -> Result<Setting
 
     held.theme = next.theme;
     held.accent = next.accent;
-    held.pinned = next.pinned;
     held.favourites = next.favourites;
     held.auto_update = next.auto_update;
     held.community = next.community;

@@ -7,7 +7,7 @@ let attached = null;
 let scanning = false;
 let open = null; // key of the game whose page is showing
 let drawn = "";
-let config = { theme: "system", accent: "amber", pinned: [], favourites: [] };
+let config = { theme: "system", accent: "amber", favourites: [] };
 let me = null; // the name we publish under, if any
 let sharedFor = null; // the exe the shared list on screen belongs to
 
@@ -218,9 +218,9 @@ function applyTheme() {
   for (const button of document.querySelectorAll("#accent-pick button")) {
     button.classList.toggle("on", button.dataset.accent === config.accent);
   }
-  $("pinned-count").textContent = config.pinned.length
-    ? `${config.pinned.length} pinned`
-    : "Nothing pinned yet";
+  $("fav-total").textContent = config.favourites.length
+    ? `${config.favourites.length} starred`
+    : "Nothing starred yet";
   $("auto-update").classList.toggle("on", config.auto_update !== false);
   $("community-on").classList.toggle("on", config.community !== false);
   $("auto-attach").classList.toggle("on", config.auto_attach !== false);
@@ -270,11 +270,10 @@ async function saveConfig(changes) {
     return toast(String(e), true);
   }
   applyTheme();
-  /* the pinned and favourite flags are worked out back there and come down
-     with the games list, which only refreshes every few seconds. without this
-     you have to leave the page and come back to see the star fill in */
+  /* the favourite flag is worked out back there and comes down with the games
+     list, which only refreshes every few seconds. without this you have to
+     leave the page and come back to see the star fill in */
   for (const game of games) {
-    game.pinned = config.pinned.includes(game.key);
     game.favourite = config.favourites.includes(game.key);
   }
   drawn = "";
@@ -388,7 +387,7 @@ function ordered(list) {
 function signature(list) {
   return (
     list
-      .map((g) => `${g.key}${g.running}${g.has_table}${g.pinned}${g.favourite}${art.has(g.app_id)}`)
+      .map((g) => `${g.key}${g.running}${g.has_table}${g.favourite}${art.has(g.app_id)}`)
       .join("|") + `#${$("filter").value}#${attached ? attached.process : ""}`
   );
 }
@@ -479,23 +478,19 @@ function drawGrids(list) {
   /* starring a game filled in the star and did nothing else, which is not a
      feature, it is a button that lies */
   const favourite = usable.filter((g) => g.favourite);
-  const pinned = usable.filter((g) => g.pinned && !g.favourite);
-  const rest = usable.filter((g) => !g.pinned && !g.favourite);
+  const rest = usable.filter((g) => !g.favourite);
 
   $("fav-wrap").hidden = !favourite.length;
-  $("pinned-wrap").hidden = !pinned.length;
   $("blocked-wrap").hidden = !barred.length;
   /* "everything else" only means anything as a contrast to a shelf above it.
-     with nothing pinned or starred there is nothing above, and it ends up
-     calling your whole library the leftovers. the anti-cheat shelf does not
-     count, that sits below and has its own heading */
-  $("rest-shelf").hidden = !rest.length || !(favourite.length || pinned.length);
+     with nothing starred there is nothing above, and it ends up calling your
+     whole library the leftovers. the anti-cheat shelf does not count, that
+     sits below and has its own heading */
+  $("rest-shelf").hidden = !rest.length || !favourite.length;
   $("fav-count").textContent = favourite.length;
-  $("pinned-count").textContent = pinned.length;
   $("rest-count").textContent = rest.length;
   $("blocked-count").textContent = barred.length;
   fill($("fav-grid"), favourite);
-  fill($("pinned-grid"), pinned);
   fill($("grid"), rest);
   fill($("blocked-grid"), barred);
 
@@ -651,10 +646,6 @@ function drawGamePage() {
   const fav = $("game-fav");
   fav.classList.toggle("on", game.favourite);
   fav.title = game.favourite ? "Remove from favourites" : "Add to favourites";
-
-  const pin = $("game-pin");
-  pin.classList.toggle("on", game.pinned);
-  pin.title = game.pinned ? "Unpin from the top of the library" : "Pin to the top of the library";
 
   const isAttached = attached && attached.process === game.exe;
   const attach = $("game-attach");
@@ -1280,10 +1271,7 @@ $("game-attach").addEventListener("click", () => {
 $("game-fav").addEventListener("click", () => {
   if (open) saveConfig({ favourites: toggleIn(config.favourites, open) });
 });
-$("game-pin").addEventListener("click", () => {
-  if (open) saveConfig({ pinned: toggleIn(config.pinned, open) });
-});
-$("clear-pins").addEventListener("click", () => saveConfig({ pinned: [] }));
+$("clear-favs").addEventListener("click", () => saveConfig({ favourites: [] }));
 $("auto-attach").addEventListener("click", () =>
   saveConfig({ auto_attach: config.auto_attach === false })
 );

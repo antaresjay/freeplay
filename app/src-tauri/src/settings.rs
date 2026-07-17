@@ -12,9 +12,13 @@ pub struct Settings {
     // system, dark or light
     pub theme: String,
     pub accent: String,
-    // game keys, in the order they were pinned
-    pub pinned: Vec<String>,
+    // game keys, in the order they were starred
     pub favourites: Vec<String>,
+    // pinning was a second way of doing what starring does, one shelf lower.
+    // read so an older settings file still opens, folded into favourites by
+    // tidy, and never written again
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pinned: Vec<String>,
     // fetch published tables on start
     #[serde(default = "yes")]
     pub auto_update: bool,
@@ -145,7 +149,12 @@ impl Settings {
         if !["amber", "violet", "cyan", "rose", "lime"].contains(&self.accent.as_str()) {
             self.accent = "amber".into();
         }
-        self.pinned.dedup();
+        // anything that was pinned becomes a favourite rather than vanishing
+        for key in std::mem::take(&mut self.pinned) {
+            if !self.favourites.contains(&key) {
+                self.favourites.push(key);
+            }
+        }
         self.favourites.dedup();
 
         // never ask about one twice, and never let the queue become a chore
@@ -322,7 +331,7 @@ mod tests {
         let settings = Settings::default();
         assert_eq!(settings.theme, "system");
         assert_eq!(settings.accent, "amber");
-        assert!(settings.pinned.is_empty());
+        assert!(settings.favourites.is_empty());
     }
 
     #[test]
@@ -345,13 +354,33 @@ mod tests {
     fn survives_a_round_trip() {
         let before = Settings {
             theme: "light".into(),
-            pinned: vec!["steam:20920".into()],
+            favourites: vec!["steam:20920".into()],
             ..Default::default()
         };
 
         let text = serde_json::to_string(&before).unwrap();
         let after: Settings = serde_json::from_str(&text).unwrap();
         assert_eq!(after.theme, "light");
-        assert_eq!(after.pinned, vec!["steam:20920".to_string()]);
+        assert_eq!(after.favourites, vec!["steam:20920".to_string()]);
+    }
+
+    // pinning is gone, and somebody upgrading had games in it
+    #[test]
+    fn what_was_pinned_becomes_a_favourite() {
+        let mut settings: Settings = serde_json::from_str(
+            r#"{"pinned":["steam:20920","steam:1"],"favourites":["steam:1","gog:x"]}"#,
+        )
+        .unwrap();
+        settings.tidy();
+
+        assert!(settings.pinned.is_empty());
+        assert_eq!(
+            settings.favourites,
+            vec!["steam:1".to_string(), "gog:x".into(), "steam:20920".into()]
+        );
+
+        // and the old key is not written back out
+        let text = serde_json::to_string(&settings).unwrap();
+        assert!(!text.contains("pinned"), "{text}");
     }
 }

@@ -115,15 +115,6 @@
         <div id="fav-grid" class="grid"></div>
       </div>
 
-      <div id="pinned-wrap" hidden>
-        <div class="shelf-head">
-          <svg class="shelf-icon" viewBox="0 0 20 20"><path d="M12.5 2.5l5 5-2.2.6-3.3 3.3-.4 3.4-5.4-5.4 3.4-.4 3.3-3.3z"/><path d="M6.2 13.8l-3.4 3.4"/></svg>
-          <h3>Pinned</h3>
-          <span id="pinned-count" class="tally"></span>
-        </div>
-        <div id="pinned-grid" class="grid"></div>
-      </div>
-
       <div id="rest-shelf" class="shelf-head" hidden>
         <svg class="shelf-icon" viewBox="0 0 20 20"><rect x="2.5" y="3" width="6" height="14" rx="1.5"/><rect x="11.5" y="3" width="6" height="6" rx="1.5"/><rect x="11.5" y="11" width="6" height="6" rx="1.5"/></svg>
         <h3>Everything else</h3>
@@ -174,9 +165,6 @@
             <span class="spacer"></span>
             <button id="game-fav" class="icon-toggle" title="Add to favourites">
               <svg viewBox="0 0 20 20"><path d="M10 2.8l2.3 4.6 5.1.7-3.7 3.6.9 5.1L10 14.4l-4.6 2.4.9-5.1L2.6 8.1l5.1-.7z"/></svg>
-            </button>
-            <button id="game-pin" class="icon-toggle" title="Pin to the top of the library">
-              <svg viewBox="0 0 20 20"><path d="M12.5 2.5l5 5-2.2.6-3.3 3.3-.4 3.4-5.4-5.4 3.4-.4 3.3-3.3z"/><path d="M6.2 13.8l-3.4 3.4"/></svg>
             </button>
           </div>
         </div>
@@ -440,10 +428,10 @@
 
       <div class="setting">
         <div class="setting-label">
-          <strong>Pinned games</strong>
-          <span id="pinned-count"></span>
+          <strong>Favourite games</strong>
+          <span id="fav-total"></span>
         </div>
-        <button id="clear-pins" class="ghost">Clear</button>
+        <button id="clear-favs" class="ghost">Clear</button>
       </div>
 
       </div>
@@ -568,7 +556,7 @@
 
     <label class="check">
       <input type="checkbox" id="export-prefs" checked>
-      <span><b>Preferences</b><i>Theme, accent, pins and favourites.</i></span>
+      <span><b>Preferences</b><i>Theme, accent and favourites.</i></span>
     </label>
 
     <label class="check">

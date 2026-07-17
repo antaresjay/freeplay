@@ -104,7 +104,7 @@ depend on the memory engine and does not.
   everybody tomorrow without anyone hunting for a file
 - Shows what other people have shared for a game, sorted by what worked for
   them, and asks afterwards whether it worked for you
-- A page per game: art, play time, launch it, pin it to the top, favourite it
+- A page per game: art, play time, launch it, star it to keep it at the top
 - Marks games that ship an anti-cheat before you click them, rather than letting
   you find out at the point of refusal
 - Light and dark, follows Windows by default, and five accents if you dislike

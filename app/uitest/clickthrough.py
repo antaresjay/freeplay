@@ -30,16 +30,16 @@ window.addEventListener("unhandledrejection", e => window.__errors.push("promise
 const GAMES = [
   {key:"steam:20920", name:"The Witcher 2", store:"Steam", exe:"witcher2.exe",
    dir:"D:/games/witcher2", app_id:"20920", running:true, has_table:false,
-   guard:null, minutes:1801, last_played:1785824227, pinned:false, favourite:false},
+   guard:null, minutes:1801, last_played:1785824227, favourite:false},
   {key:"steam:1222140", name:"Detroit Become Human", store:"Steam", exe:"Detroit.exe",
    dir:"D:/games/detroit", app_id:"1222140", running:false, has_table:false,
-   guard:null, minutes:1065, last_played:1783896512, pinned:true, favourite:false},
+   guard:null, minutes:1065, last_played:1783896512, favourite:false},
   {key:"gog:noexe", name:"Some GOG Game", store:"GOG", exe:null,
    dir:"D:/games/gog", app_id:null, running:false, has_table:false,
-   guard:null, minutes:null, last_played:null, pinned:false, favourite:false},
+   guard:null, minutes:null, last_played:null, favourite:false},
   {key:"steam:2073850", name:"THE FINALS", store:"Steam", exe:"Discovery.exe",
    dir:"D:/games/finals", app_id:"2073850", running:false, has_table:false,
-   guard:"easyanticheat", minutes:73451, last_played:1786142235, pinned:false, favourite:false}
+   guard:"easyanticheat", minutes:73451, last_played:1786142235, favourite:false}
 ];
 
 const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true};
@@ -97,8 +97,7 @@ window.__calls = [];
 /* save_settings hands back what it was given, same as the real one. a stub
    that answered with a fixed object hid the bug where pinning a game did not
    show up until you left the page */
-let SETTINGS = {theme:"dark", accent:"amber", pinned:["steam:1222140"],
-                favourites:[], shared_open:true, community:true,
+let SETTINGS = {theme:"dark", accent:"amber", favourites:[], shared_open:true, community:true,
                 armed:{"witcher2.exe":["vitality"]},
                 values:{"witcher2.exe":{"orens":"5000"}},
                 grabbed:{"witcher2.exe":7}};
@@ -114,7 +113,7 @@ window.__TAURI__ = {
           SETTINGS = {
             ...SETTINGS,
             theme: args.next.theme, accent: args.next.accent,
-            pinned: args.next.pinned, favourites: args.next.favourites,
+            favourites: args.next.favourites,
             auto_update: args.next.auto_update, auto_attach: args.next.auto_attach,
             shared_open: args.next.shared_open,
             community: args.next.community,
@@ -259,7 +258,7 @@ PROBE = r"""
   note(document.querySelectorAll("#library-rail .rail-split").length === 1,
        "drawn once, not once per game");
 
-  const cards = document.querySelectorAll("#grid .card, #pinned-grid .card");
+  const cards = document.querySelectorAll("#grid .card, #fav-grid .card");
   note(cards.length >= 1, "library rendered cards (" + cards.length + ")");
   note(visible("view-library"), "library view is showing");
 
@@ -399,19 +398,14 @@ PROBE = r"""
     }
     note(visible("remove-table"), "and there is a way to remove one that was never shared");
 
-    // pinning without having to leave the page and come back
-    const pin = document.getElementById("game-pin");
-    const wasPinned = pin.classList.contains("on");
-    pin.click();
-    await settle(300);
-    note(pin.classList.contains("on") !== wasPinned, "the pin fills in straight away");
-    note(pin.title.toLowerCase().includes(wasPinned ? "pin to" : "unpin"),
-         "and the tooltip says what clicking it again does");
-
+    // starring without having to leave the page and come back
     const fav = document.getElementById("game-fav");
+    const wasFav = fav.classList.contains("on");
     fav.click();
     await settle(300);
-    note(fav.classList.contains("on"), "the star fills in straight away");
+    note(fav.classList.contains("on") !== wasFav, "the star fills in straight away");
+    note(fav.title.toLowerCase().includes(wasFav ? "add to" : "remove"),
+         "and the tooltip says what clicking it again does");
     document.getElementById("back").click();
     await settle(300);
     note(visible("fav-wrap"), "and the game gets a favourites shelf of its own");
@@ -757,14 +751,13 @@ PROBE = r"""
   /* nothing pinned or starred means nothing above the first grid, and a
      heading calling it "everything else" is calling the whole library the
      leftovers. filtering the pinned one away is the same situation */
-  // the gog one, because the pages above have pinned and starred the witcher
+  // the gog one, because the pages above have starred the witcher
   document.getElementById("filter").value = "gog";
   document.getElementById("filter").dispatchEvent(new Event("input"));
   await settle(250);
   note(document.querySelectorAll("#grid .card").length > 0,
        "there are games in the main grid");
-  note(!visible("pinned-wrap") && !visible("fav-wrap"),
-       "with nothing pinned or starred");
+  note(!visible("fav-wrap"), "with nothing starred");
   note(!visible("rest-shelf"),
        "so the grid gets no Everything else heading over it");
 
