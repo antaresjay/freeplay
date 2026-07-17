@@ -754,10 +754,26 @@ PROBE = r"""
   note(visible("library-empty"), "filtering to nothing says so");
   note(document.querySelector("#library-empty h3").textContent.includes("Nothing matches"),
        "and says it is the filter, not a missing library");
+  /* nothing pinned or starred means nothing above the first grid, and a
+     heading calling it "everything else" is calling the whole library the
+     leftovers. filtering the pinned one away is the same situation */
+  // the gog one, because the pages above have pinned and starred the witcher
+  document.getElementById("filter").value = "gog";
+  document.getElementById("filter").dispatchEvent(new Event("input"));
+  await settle(250);
+  note(document.querySelectorAll("#grid .card").length > 0,
+       "there are games in the main grid");
+  note(!visible("pinned-wrap") && !visible("fav-wrap"),
+       "with nothing pinned or starred");
+  note(!visible("rest-shelf"),
+       "so the grid gets no Everything else heading over it");
+
   document.getElementById("filter").value = "";
   document.getElementById("filter").dispatchEvent(new Event("input"));
   await settle(250);
   note(!visible("library-empty"), "clearing the filter brings them back");
+  note(visible("rest-shelf"),
+       "and the heading comes back once there is a shelf above it");
 
   const settingsAgain = [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "settings");
   settingsAgain.click();

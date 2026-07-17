@@ -485,9 +485,11 @@ function drawGrids(list) {
   $("fav-wrap").hidden = !favourite.length;
   $("pinned-wrap").hidden = !pinned.length;
   $("blocked-wrap").hidden = !barred.length;
-  // no heading over the first grid when it is the only one on the page
-  $("rest-shelf").hidden =
-    !rest.length || !(favourite.length || pinned.length || barred.length);
+  /* "everything else" only means anything as a contrast to a shelf above it.
+     with nothing pinned or starred there is nothing above, and it ends up
+     calling your whole library the leftovers. the anti-cheat shelf does not
+     count, that sits below and has its own heading */
+  $("rest-shelf").hidden = !rest.length || !(favourite.length || pinned.length);
   $("fav-count").textContent = favourite.length;
   $("pinned-count").textContent = pinned.length;
   $("rest-count").textContent = rest.length;
