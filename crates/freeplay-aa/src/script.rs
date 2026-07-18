@@ -51,6 +51,14 @@ pub struct Script {
 }
 
 pub fn parse(source: &str) -> Result<Script> {
+    // cheat engine lets a script switch language partway through. lua and c
+    // both get the whole machine rather than the game's memory, so a table off
+    // the network does not get to use them, and saying which it was beats
+    // failing on the first line of it that does not look like assembly
+    if let Some(other) = other_language(source) {
+        return Err(AaError::NotAssembly(other));
+    }
+
     let mut enable = Vec::new();
     let mut disable = Vec::new();
     let mut active = None;
@@ -177,6 +185,22 @@ fn declared_labels(lines: &[(usize, String)]) -> Vec<String> {
         }
     }
     out
+}
+
+// "{$lua}" and friends, which turn the rest of the script into another language
+fn other_language(source: &str) -> Option<&'static str> {
+    let lowered = source.to_ascii_lowercase();
+    for (marker, name) in [
+        ("{$lua", "Lua"),
+        ("{$luacode", "Lua"),
+        ("{$ccode", "C"),
+        ("{$c}", "C"),
+    ] {
+        if lowered.contains(marker) {
+            return Some(name);
+        }
+    }
+    None
 }
 
 fn anchor_label(text: &str) -> Option<String> {
@@ -449,6 +473,21 @@ dealloc(newgetWitcher)
         );
         let script = parse("[ENABLE]\n\"sekiro.exe\"+BAD636:\n  db 90\n[DISABLE]\n").unwrap();
         assert_eq!(script.enable.sections[0].anchor, "\"sekiro.exe\"+BAD636");
+    }
+
+    #[test]
+    fn a_script_that_switches_to_lua_is_refused_by_name() {
+        let source = "[ENABLE]\n{$lua}\nif syntaxcheck then return end\nprint('hi')\n[DISABLE]\n";
+        let why = parse(source).unwrap_err().to_string();
+        assert!(why.contains("Lua"), "{why}");
+    }
+
+    #[test]
+    fn a_c_block_is_refused_the_same_way() {
+        assert!(parse("[ENABLE]\n{$ccode}\nint x;\n[DISABLE]\n")
+            .unwrap_err()
+            .to_string()
+            .contains('C'));
     }
 
     // the ordinary comment block still has to work

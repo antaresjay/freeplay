@@ -8,6 +8,9 @@ pub enum AaError {
     #[error("cannot read the directive {0:?}")]
     BadDirective(String),
 
+    #[error("this one is written in {0}, not assembly, and Freeplay only runs assembly")]
+    NotAssembly(&'static str),
+
     #[error("{0} is used but never scanned for, allocated or labelled")]
     UndefinedSymbol(String),
 
