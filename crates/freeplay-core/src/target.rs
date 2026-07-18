@@ -101,7 +101,14 @@ pub trait Target: Send + Sync {
     }
 
     fn module(&self, name: &str) -> Result<Module> {
-        let wanted = name.to_ascii_lowercase();
+        let wanted = name.trim().to_ascii_lowercase();
+        // what cheat engine calls the exe you are attached to. tables use it
+        // constantly so the same script works whichever build you have, and
+        // without this every aobscanmodule($process,..) looks for a module
+        // literally called that and comes back empty
+        if wanted == "$process" {
+            return self.main_module();
+        }
         self.modules()?
             .into_iter()
             .find(|m| m.name.to_ascii_lowercase() == wanted)
@@ -111,5 +118,43 @@ pub trait Target: Send + Sync {
     fn main_module(&self) -> Result<Module> {
         let name = self.name().to_string();
         self.module(&name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock::MockTarget;
+
+    fn target() -> MockTarget {
+        MockTarget::zeroed(0x1000, 0x100)
+            .with_module("mock.exe", 0x400000, 0x1000)
+            .with_module("d3d11.dll", 0x500000, 0x1000)
+    }
+
+    #[test]
+    fn a_module_is_found_whatever_case_it_is_written_in() {
+        assert_eq!(target().module("D3D11.DLL").unwrap().base, 0x500000);
+    }
+
+    #[test]
+    fn dollar_process_means_the_exe_we_are_attached_to() {
+        let found = target().module("$process").unwrap();
+        assert_eq!(found.name, "mock.exe");
+        assert_eq!(found.base, 0x400000);
+    }
+
+    // tables are hand written and the spacing is nobody's priority
+    #[test]
+    fn dollar_process_still_works_with_spaces_round_it() {
+        assert_eq!(target().module("  $process ").unwrap().name, "mock.exe");
+    }
+
+    #[test]
+    fn a_module_that_is_not_loaded_says_so() {
+        assert!(matches!(
+            target().module("nope.dll"),
+            Err(Error::ModuleNotFound(_))
+        ));
     }
 }
