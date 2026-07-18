@@ -185,16 +185,36 @@ fn anchor_label(text: &str) -> Option<String> {
     if !text[at + 1..].trim().is_empty() {
         return None;
     }
-    if name.is_empty()
-        || !name
+
+    // "god+07:" and "game.exe+1A2B3C:" are both somewhere to start writing, and
+    // tables use them as freely as a plain label. anything cleverer than one
+    // offset, like "aob+(DWORD)[aob+03]+07:", is left for a person to look at
+    let (base, _) = split_offset(name);
+    if base.is_empty()
+        || !base
             .chars()
             .next()
             .is_some_and(|c| c.is_alphabetic() || c == '_')
-        || !name.chars().all(|c| c.is_alphanumeric() || c == '_')
+        || !base
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '-')
     {
         return None;
     }
     Some(name.to_string())
+}
+
+// "god+07" into "god" and "+07". the tail has to be a number or there is no
+// split, so a module called some-game.exe stays in one piece. a module with a
+// space in its name comes quoted, and the quotes are not part of the name
+pub fn split_offset(name: &str) -> (&str, Option<&str>) {
+    let (head, tail) = match name.rfind(['+', '-']) {
+        Some(at) if at > 0 && freeplay_asm::operand::number(&name[at..]).is_ok() => {
+            (&name[..at], Some(&name[at..]))
+        }
+        _ => (name, None),
+    };
+    (head.trim().trim_matches('"'), tail)
 }
 
 fn read_directive(text: &str) -> Result<Option<Directive>> {
@@ -385,6 +405,56 @@ dealloc(newgetWitcher)
     fn the_trailing_disassembly_block_is_dropped() {
         let source = "[ENABLE]\nalloc(a,100)\na:\n  nop\n{\nwitcher2.EXE+1: 8B 10 - mov edx,[eax]\n}\n[DISABLE]\n";
         let script = parse(source).unwrap();
+        assert_eq!(script.enable.sections[0].body.trim(), "nop");
+    }
+
+    // patching a few bytes into the middle of a match, rather than hooking the
+    // top of it, is how a good third of real tables are written
+    #[test]
+    fn a_section_can_start_partway_into_a_symbol() {
+        let source =
+            "[ENABLE]\naobscanmodule(god,game.exe,0F B6 4B)\ngod+07:\n  xor esi,esi\n[DISABLE]\n";
+        let script = parse(source).unwrap();
+        assert_eq!(script.enable.sections[0].anchor, "god+07");
+        assert_eq!(script.enable.sections[0].body.trim(), "xor esi,esi");
+    }
+
+    #[test]
+    fn a_section_can_start_at_a_module() {
+        let source = "[ENABLE]\ngame.exe+1A2B3C:\n  nop\n[DISABLE]\n";
+        let script = parse(source).unwrap();
+        assert_eq!(script.enable.sections[0].anchor, "game.exe+1A2B3C");
+    }
+
+    #[test]
+    fn an_offset_that_is_not_a_number_is_not_a_place_to_write() {
+        assert_eq!(anchor_label("cmdAob+(DWORD)[cmdAob+03]+07:"), None);
+        assert_eq!(anchor_label("mov [rax],1"), None);
+    }
+
+    #[test]
+    fn splitting_leaves_a_hyphenated_name_alone() {
+        assert_eq!(split_offset("some-game.exe"), ("some-game.exe", None));
+        assert_eq!(split_offset("god+07"), ("god", Some("+07")));
+        assert_eq!(split_offset("god-4"), ("god", Some("-4")));
+    }
+
+    // a module with a space in it is written in quotes, and they are not part
+    // of the name
+    #[test]
+    fn a_quoted_module_loses_its_quotes() {
+        assert_eq!(
+            split_offset("\"sekiro.exe\"+BAD636"),
+            ("sekiro.exe", Some("+BAD636"))
+        );
+        let script = parse("[ENABLE]\n\"sekiro.exe\"+BAD636:\n  db 90\n[DISABLE]\n").unwrap();
+        assert_eq!(script.enable.sections[0].anchor, "\"sekiro.exe\"+BAD636");
+    }
+
+    // the ordinary comment block still has to work
+    #[test]
+    fn a_plain_brace_block_is_still_just_a_comment() {
+        let script = parse("[ENABLE]\nalloc(a,100)\na:\n  nop\n{ notes }\n[DISABLE]\n").unwrap();
         assert_eq!(script.enable.sections[0].body.trim(), "nop");
     }
 }

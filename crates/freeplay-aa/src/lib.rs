@@ -171,9 +171,7 @@ impl<'a> Runner<'a> {
         for pass in 0..2 {
             writes.clear();
             for section in &half.sections {
-                let origin = *symbols
-                    .get(&section.anchor)
-                    .ok_or_else(|| AaError::UndefinedSymbol(section.anchor.clone()))?;
+                let origin = self.locate(&section.anchor, &symbols)?;
 
                 let built = assemble(&section.body, origin, self.bits, &symbols)?;
                 for (name, addr) in built.labels {
@@ -235,6 +233,31 @@ impl<'a> Runner<'a> {
             }));
         }
         Ok(())
+    }
+
+    // where a section starts writing. a bare label, a label plus an offset, or
+    // a module plus an offset, because cheat engine uses all three
+    fn locate(&self, anchor: &str, symbols: &HashMap<String, u64>) -> Result<u64> {
+        if let Some(value) = symbols.get(anchor) {
+            return Ok(*value);
+        }
+
+        let (base, offset) = script::split_offset(anchor);
+        let start = match symbols.get(base) {
+            Some(value) => *value,
+            None => self
+                .target
+                .module(base)
+                .map(|m| m.base as u64)
+                .map_err(|_| AaError::UndefinedSymbol(anchor.to_string()))?,
+        };
+
+        let shift = match offset {
+            Some(text) => freeplay_asm::operand::number(text)
+                .map_err(|_| AaError::UndefinedSymbol(anchor.to_string()))?,
+            None => 0,
+        };
+        Ok(start.wrapping_add_signed(shift))
     }
 
     fn scan(&self, pattern: &str, module: Option<&str>, symbol: &str) -> Result<usize> {

@@ -207,3 +207,51 @@ fn an_unguarded_runner_leaves_your_own_tables_alone() {
         .enable(&script, &HashMap::new())
         .is_ok());
 }
+
+// the other half of the tables out there do not hook the top of the match,
+// they blank two bytes in the middle of it and leave the rest running
+const PARTWAY: &str = r#"[ENABLE]
+aobscanmodule(getWitcher,witcher2.EXE,8B 10 8B C8 FF 92 34 02 00 00 84)
+registersymbol(getWitcher)
+getWitcher+04:
+  db 90 90
+
+[DISABLE]
+getWitcher+04:
+  db FF 92
+unregistersymbol(getWitcher)
+"#;
+
+#[test]
+fn a_patch_partway_into_the_match_lands_at_the_offset() {
+    let target = game();
+    let script = parse(PARTWAY).unwrap();
+    let engaged = Runner::new(&target)
+        .enable(&script, &HashMap::new())
+        .unwrap();
+
+    assert_eq!(
+        read(&target, HOOK, 4),
+        ORIGINAL[..4].to_vec(),
+        "before it is untouched"
+    );
+    assert_eq!(read(&target, HOOK + 4, 2), vec![0x90, 0x90]);
+    assert_eq!(
+        read(&target, HOOK + 6, 5),
+        ORIGINAL[6..].to_vec(),
+        "after it is untouched"
+    );
+
+    Runner::new(&target).disable(&script, &engaged).unwrap();
+    assert_eq!(read(&target, HOOK, 11), ORIGINAL.to_vec());
+}
+
+#[test]
+fn a_module_and_an_offset_is_a_place_to_write() {
+    let target = game();
+    let script = parse("[ENABLE]\nwitcher2.EXE+1000:\n  db 90\n[DISABLE]\n").unwrap();
+    Runner::new(&target)
+        .enable(&script, &HashMap::new())
+        .unwrap();
+    assert_eq!(read(&target, HOOK, 1), vec![0x90]);
+}
