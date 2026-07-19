@@ -54,6 +54,13 @@ enum Command {
         #[arg(help = "only show names containing this")]
         filter: Option<String>,
     },
+    /// Read a table over without the game running.
+    Check {
+        #[arg(help = "table files, or folders of them")]
+        paths: Vec<PathBuf>,
+        #[arg(long, help = "only say something when one is wrong")]
+        quiet: bool,
+    },
     /// What a table offers for a running game, and whether each part works.
     Cheats {
         #[arg(long)]
@@ -162,6 +169,7 @@ fn run(command: Command) -> Result<(), String> {
         Command::Play { name, dry_run } => play(&name, dry_run),
         Command::Import { file, exe, out } => import(&file, exe.as_deref(), out.as_deref()),
         Command::Ps { filter } => list_processes(filter.as_deref()),
+        Command::Check { paths, quiet } => check(&paths, quiet),
         Command::Cheats { table, process } => cheats(&table, process.as_deref()),
         Command::On {
             table,
@@ -454,6 +462,92 @@ fn import(file: &PathBuf, exe: Option<&str>, out: Option<&Path>) -> Result<(), S
             eprintln!("wrote {}", path.display());
         }
         None => println!("{toml}"),
+    }
+    Ok(())
+}
+
+// everything that can be said about a table with no game in front of you:
+// does it parse, does it hold together, and would the scripts be refused
+fn check(paths: &[PathBuf], quiet: bool) -> Result<(), String> {
+    let mut files = Vec::new();
+    for path in paths {
+        if path.is_dir() {
+            let mut found: Vec<PathBuf> = std::fs::read_dir(path)
+                .map_err(|e| format!("{}: {e}", path.display()))?
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| {
+                    p.extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("toml"))
+                })
+                .collect();
+            found.sort();
+            files.extend(found);
+        } else {
+            files.push(path.clone());
+        }
+    }
+    if files.is_empty() {
+        return Err("name a table file or a folder with some in".into());
+    }
+
+    let (mut bad, mut cheats, mut scripts) = (0usize, 0usize, 0usize);
+    for file in &files {
+        let short = file
+            .file_name()
+            .unwrap_or(file.as_os_str())
+            .to_string_lossy();
+        let table = match Table::load(file) {
+            Ok(table) => table,
+            Err(e) => {
+                println!("{short}: {e}");
+                bad += 1;
+                continue;
+            }
+        };
+
+        let mut trouble: Vec<String> = Vec::new();
+        if let Err(e) = table.validate() {
+            trouble.push(e);
+        }
+        for cheat in &table.cheats {
+            if let freeplay_table::schema::Action::Script { source } = &cheat.action {
+                scripts += 1;
+                match freeplay_aa::parse(source) {
+                    Ok(script) => trouble.extend(
+                        freeplay_aa::safety::check(&script)
+                            .iter()
+                            .map(|r| format!("{}: {r}", cheat.id)),
+                    ),
+                    Err(e) => trouble.push(format!("{}: {e}", cheat.id)),
+                }
+            }
+        }
+
+        cheats += table.cheats.len();
+        if trouble.is_empty() {
+            if !quiet {
+                println!(
+                    "{:<40} {:>4} cheats  {}",
+                    truncate(&short, 40),
+                    table.cheats.len(),
+                    table.game.exe
+                );
+            }
+        } else {
+            bad += 1;
+            println!("{}", truncate(&short, 40));
+            for why in &trouble {
+                println!("    {why}");
+            }
+        }
+    }
+
+    println!(
+        "\n{} tables, {cheats} cheats, {scripts} scripts, {bad} with something wrong",
+        files.len()
+    );
+    if bad > 0 {
+        return Err(format!("{bad} did not check out"));
     }
     Ok(())
 }

@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 toml = "0.9"
 clap = { version = "4", features = ["derive"] }
+freeplay-aa = { path = "../freeplay-aa" }
 freeplay-core = { path = "../freeplay-core" }
 freeplay-id = { path = "../freeplay-id" }
 freeplay-library = { path = "../freeplay-library" }
