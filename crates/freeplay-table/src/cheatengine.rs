@@ -110,7 +110,7 @@ pub fn import(xml: &str, exe: &str, game_name: &str) -> Result<Imported, String>
     let mut used: HashSet<String> = HashSet::new();
 
     for entry in &roots {
-        convert(entry, None, &mut cheats, &mut skipped, &mut used);
+        convert(entry, None, None, &mut cheats, &mut skipped, &mut used);
     }
 
     Ok(Imported {
@@ -252,6 +252,7 @@ fn attribute(tag: &quick_xml::events::BytesStart<'_>, want: &str) -> Option<Stri
 fn convert(
     entry: &Entry,
     group: Option<&str>,
+    parent: Option<&Locator>,
     out: &mut Vec<Cheat>,
     skipped: &mut Vec<Skipped>,
     used: &mut HashSet<String>,
@@ -278,9 +279,13 @@ fn convert(
         }
     }
 
+    // worked out even for a heading that never becomes a cheat itself, because
+    // everything nested under it is written as an offset from wherever it lands
+    let here = locate(entry, parent);
+
     if !entry.children.is_empty() {
         for child in &entry.children {
-            convert(child, Some(&name), out, skipped, used);
+            convert(child, Some(&name), here.as_ref(), out, skipped, used);
         }
         return;
     }
@@ -301,38 +306,26 @@ fn convert(
         return;
     };
 
-    let hops: Vec<Hop> = entry
-        .offsets
-        .iter()
-        .rev()
-        .map(|v| Hop(*v as isize))
-        .collect();
-
-    let locator = match split_address(&entry.address) {
-        Some((module, offset)) => Locator::Static {
-            module,
-            offset,
-            hops,
-        },
-        None => match symbol_in(&entry.address) {
-            Some(symbol) => Locator::Symbol { symbol, hops },
-            None => {
-                let why = if entry.address.is_empty() {
-                    "no address".to_string()
-                } else {
-                    format!(
-                        "address {:?} is not anchored to a module, so it means nothing on another machine",
-                        entry.address
-                    )
-                };
-                skipped.push(Skipped {
-                    name,
-                    why,
-                    blocker: Blocker::Other,
-                });
-                return;
-            }
-        },
+    let Some(locator) = here else {
+        let why = if entry.address.is_empty() {
+            "no address".to_string()
+        } else if entry.address.trim_start().starts_with('+') {
+            format!(
+                "address {:?} is an offset from the group above it, and that group has no address we can use",
+                entry.address
+            )
+        } else {
+            format!(
+                "address {:?} is not anchored to a module, so it means nothing on another machine",
+                entry.address
+            )
+        };
+        skipped.push(Skipped {
+            name,
+            why,
+            blocker: Blocker::Other,
+        });
+        return;
     };
 
     let choices: Vec<Choice> = entry
@@ -358,6 +351,66 @@ fn convert(
             lock: true,
         },
     });
+}
+
+// where an entry points, if anywhere we can write down. cheat engine nests
+// entries under a group and writes the nested ones as a bare "+4C", meaning
+// that far past whatever the group resolved to, so those need the parent
+fn locate(entry: &Entry, parent: Option<&Locator>) -> Option<Locator> {
+    let own: Vec<Hop> = entry
+        .offsets
+        .iter()
+        .rev()
+        .map(|v| Hop(*v as isize))
+        .collect();
+
+    let address = entry.address.trim();
+    if let Some(rest) = address.strip_prefix('+') {
+        // "+godmode" is an offset by a name only cheat engine knows, not a number
+        let extra = i64::from_str_radix(rest.trim(), 16).ok()?;
+        let mut base = under(parent?, extra as isize)?;
+        if !own.is_empty() {
+            hops_of(&mut base).extend(own);
+        }
+        return Some(base);
+    }
+
+    if let Some((module, offset)) = split_address(address) {
+        return Some(Locator::Static {
+            module,
+            offset,
+            hops: own,
+        });
+    }
+    symbol_in(address).map(|symbol| Locator::Symbol { symbol, hops: own })
+}
+
+// one more offset onto the end of the parent's chain. it lands on the last hop
+// rather than becoming a hop of its own, because a hop is a dereference and
+// this is only ever arithmetic on the address the parent already found
+fn under(parent: &Locator, extra: isize) -> Option<Locator> {
+    let mut child = parent.clone();
+    match &mut child {
+        Locator::Static { offset, hops, .. } if hops.is_empty() => {
+            *offset = offset.wrapping_add_signed(extra);
+        }
+        Locator::Pattern { offset, hops, .. } if hops.is_empty() => {
+            *offset = offset.wrapping_add(extra as i64);
+        }
+        // a symbol on its own is an address, and there is nowhere in the schema
+        // to say "that address plus four" without inventing a dereference
+        Locator::Symbol { hops, .. } if hops.is_empty() => return None,
+        other => hops_of(other).last_mut()?.0 += extra,
+    }
+    Some(child)
+}
+
+fn hops_of(locator: &mut Locator) -> &mut Vec<Hop> {
+    match locator {
+        Locator::Static { hops, .. }
+        | Locator::Symbol { hops, .. }
+        | Locator::Pattern { hops, .. } => hops,
+    }
 }
 
 // cheat engine gives no hint of what a good number is, so this is a guess and
@@ -626,8 +679,134 @@ alloc(newmem,$1000)
 </CheatTable>
 "#;
 
+    // the shape half of every real table uses: one script finds an object, a
+    // heading points at what it wrote down, and the fields hang off the heading
+    const NESTED: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="42">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>1</ID>
+      <Description>"Health"</Description>
+      <GroupHeader>1</GroupHeader>
+      <Address>healthPtr</Address>
+      <Offsets>
+        <Offset>0</Offset>
+      </Offsets>
+      <CheatEntries>
+        <CheatEntry>
+          <ID>2</ID>
+          <Description>"Current"</Description>
+          <VariableType>4 Bytes</VariableType>
+          <Address>+4C</Address>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>3</ID>
+          <Description>"Stats"</Description>
+          <GroupHeader>1</GroupHeader>
+          <Address>+68</Address>
+          <CheatEntries>
+            <CheatEntry>
+              <ID>4</ID>
+              <Description>"Strength"</Description>
+              <VariableType>4 Bytes</VariableType>
+              <Address>+8</Address>
+            </CheatEntry>
+          </CheatEntries>
+        </CheatEntry>
+        <CheatEntry>
+          <ID>5</ID>
+          <Description>"Named offset"</Description>
+          <VariableType>Byte</VariableType>
+          <Address>+godmode</Address>
+        </CheatEntry>
+      </CheatEntries>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>6</ID>
+      <Description>"Settings"</Description>
+      <GroupHeader>1</GroupHeader>
+      <Address>game.exe+1000</Address>
+      <CheatEntries>
+        <CheatEntry>
+          <ID>7</ID>
+          <Description>"Game Speed"</Description>
+          <VariableType>Float</VariableType>
+          <Address>+58</Address>
+        </CheatEntry>
+      </CheatEntries>
+    </CheatEntry>
+  </CheatEntries>
+</CheatTable>
+"#;
+
     fn imported() -> Imported {
         import(SAMPLE, "witcher2.exe", "The Witcher 2").unwrap()
+    }
+
+    fn nested() -> Imported {
+        import(NESTED, "game.exe", "Game").unwrap()
+    }
+
+    fn locator_for<'a>(out: &'a Imported, name: &str) -> &'a Locator {
+        out.table
+            .cheats
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("{name} was not imported"))
+            .locator
+            .as_ref()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_field_nested_under_a_pointer_lands_past_it() {
+        match locator_for(&nested(), "Current") {
+            Locator::Symbol { symbol, hops } => {
+                assert_eq!(symbol, "healthPtr");
+                // the group's own +0 and the child's +4C are one dereference,
+                // not two, so they add up rather than stacking
+                assert_eq!(hops, &[Hop(0x4c)]);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn nesting_two_deep_keeps_adding_up() {
+        match locator_for(&nested(), "Strength") {
+            Locator::Symbol { symbol, hops } => {
+                assert_eq!(symbol, "healthPtr");
+                assert_eq!(hops, &[Hop(0x68 + 0x8)]);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    // no pointer in the way, so the offset belongs on the module address
+    #[test]
+    fn a_field_under_a_plain_module_address_just_moves_it_along() {
+        match locator_for(&nested(), "Game Speed") {
+            Locator::Static {
+                module,
+                offset,
+                hops,
+            } => {
+                assert_eq!(module, "game.exe");
+                assert_eq!(*offset, 0x1058);
+                assert!(hops.is_empty());
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_offset_by_a_name_rather_than_a_number_is_left_alone() {
+        let out = nested();
+        assert!(!out.table.cheats.iter().any(|c| c.name == "Named offset"));
+        assert!(out
+            .skipped
+            .iter()
+            .any(|s| s.name == "Named offset" && s.why.contains("group above")));
     }
 
     #[test]
