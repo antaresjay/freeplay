@@ -1057,6 +1057,7 @@ name = "freeplay-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "freeplay-aa",
  "freeplay-core",
  "freeplay-id",
  "freeplay-library",
@@ -1131,6 +1132,7 @@ dependencies = [
 name = "freeplay-table"
 version = "0.1.0"
 dependencies = [
+ "freeplay-aa",
  "freeplay-core",
  "quick-xml 0.37.5",
  "serde",

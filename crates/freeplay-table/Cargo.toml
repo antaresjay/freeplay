@@ -9,6 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+freeplay-aa = { path = "../freeplay-aa" }
 freeplay-core = { path = "../freeplay-core" }
 serde = { version = "1", features = ["derive"] }
 thiserror.workspace = true

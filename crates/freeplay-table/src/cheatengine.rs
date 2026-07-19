@@ -461,6 +461,9 @@ fn script_cheat(
     if !source.to_ascii_uppercase().contains("[ENABLE]") {
         return Err("the script has no [ENABLE] section".into());
     }
+    // one that will not parse can never run, so publishing it only wastes the
+    // reader's time working out why the toggle does nothing
+    freeplay_aa::parse(source).map_err(|e| e.to_string())?;
 
     Ok(Cheat {
         id: unique_id(name, used),
