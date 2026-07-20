@@ -23,7 +23,7 @@ impl std::fmt::Display for Refusal {
 
 // directives that load or run something of their own choosing. we already skip
 // these when a table is local, but a table off the network does not get to ask
-const BANNED: &[&str] = &[
+pub(crate) const BANNED: &[&str] = &[
     "loadlibrary",
     "createthread",
     "createthreadandwait",

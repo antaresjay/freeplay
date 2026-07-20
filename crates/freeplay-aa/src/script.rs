@@ -79,7 +79,19 @@ pub fn parse(source: &str) -> Result<Script> {
         match active {
             Some(true) => enable.push((index + 1, raw.to_string())),
             Some(false) => disable.push((index + 1, raw.to_string())),
-            None => {}
+            // the header block lives up here and is nobody's code. we drop it
+            // rather than run it, but a table that hid a loadlibrary in there
+            // is still a table nobody should be passing round
+            None => {
+                if let Some(what) = banned_call(raw) {
+                    return Err(AaError::Refused {
+                        refusals: vec![crate::safety::Refusal {
+                            what: what.to_string(),
+                            why: "sits above [ENABLE] where it would be easy to miss".into(),
+                        }],
+                    });
+                }
+            }
         }
     }
 
@@ -185,6 +197,18 @@ fn declared_labels(lines: &[(usize, String)]) -> Vec<String> {
         }
     }
     out
+}
+
+fn banned_call(raw: &str) -> Option<&'static str> {
+    let mut line = raw.trim();
+    if let Some(at) = line.find("//") {
+        line = line[..at].trim();
+    }
+    let head = line.split('(').next()?.trim().to_ascii_lowercase();
+    crate::safety::BANNED
+        .iter()
+        .find(|banned| **banned == head)
+        .copied()
 }
 
 // "{$lua}" and friends, which turn the rest of the script into another language
@@ -480,6 +504,27 @@ dealloc(newgetWitcher)
         let source = "[ENABLE]\n{$lua}\nif syntaxcheck then return end\nprint('hi')\n[DISABLE]\n";
         let why = parse(source).unwrap_err().to_string();
         assert!(why.contains("Lua"), "{why}");
+    }
+
+    // real tables do this: a luacall on line one, above [ENABLE], where the
+    // parser used to drop it on the floor without anybody checking it
+    #[test]
+    fn a_banned_call_above_enable_is_still_refused() {
+        let source = "LuaCall(getMainForm().Panel4.Visible = false)\n[ENABLE]\nalloc(a,100)\na:\n  nop\n[DISABLE]\n";
+        let why = parse(source).unwrap_err().to_string();
+        assert!(why.contains("luacall"), "{why}");
+    }
+
+    #[test]
+    fn a_commented_out_one_above_enable_is_fine() {
+        let source = "//LuaCall(CheckVersion())\n[ENABLE]\nalloc(a,100)\na:\n  nop\n[DISABLE]\n";
+        assert!(parse(source).is_ok());
+    }
+
+    #[test]
+    fn an_ordinary_header_above_enable_is_left_alone() {
+        let source = "{\n  Game : witcher2.exe\n  Author : somebody\n}\n[ENABLE]\nalloc(a,100)\na:\n  nop\n[DISABLE]\n";
+        assert!(parse(source).is_ok());
     }
 
     #[test]
