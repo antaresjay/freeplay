@@ -60,6 +60,8 @@ enum Command {
         paths: Vec<PathBuf>,
         #[arg(long, help = "only say something when one is wrong")]
         quiet: bool,
+        #[arg(long, help = "one json object per table, for piping somewhere")]
+        json: bool,
     },
     /// What a table offers for a running game, and whether each part works.
     Cheats {
@@ -169,7 +171,7 @@ fn run(command: Command) -> Result<(), String> {
         Command::Play { name, dry_run } => play(&name, dry_run),
         Command::Import { file, exe, out } => import(&file, exe.as_deref(), out.as_deref()),
         Command::Ps { filter } => list_processes(filter.as_deref()),
-        Command::Check { paths, quiet } => check(&paths, quiet),
+        Command::Check { paths, quiet, json } => check(&paths, quiet, json),
         Command::Cheats { table, process } => cheats(&table, process.as_deref()),
         Command::On {
             table,
@@ -468,7 +470,7 @@ fn import(file: &PathBuf, exe: Option<&str>, out: Option<&Path>) -> Result<(), S
 
 // everything that can be said about a table with no game in front of you:
 // does it parse, does it hold together, and would the scripts be refused
-fn check(paths: &[PathBuf], quiet: bool) -> Result<(), String> {
+fn check(paths: &[PathBuf], quiet: bool, json: bool) -> Result<(), String> {
     let mut files = Vec::new();
     for path in paths {
         if path.is_dir() {
@@ -524,22 +526,44 @@ fn check(paths: &[PathBuf], quiet: bool) -> Result<(), String> {
         }
 
         cheats += table.cheats.len();
-        if trouble.is_empty() {
-            if !quiet {
-                println!(
-                    "{:<40} {:>4} cheats  {}",
-                    truncate(&short, 40),
-                    table.cheats.len(),
-                    table.game.exe
-                );
-            }
-        } else {
+        if !trouble.is_empty() {
             bad += 1;
-            println!("{}", truncate(&short, 40));
-            for why in &trouble {
-                println!("    {why}");
+            if !json {
+                println!("{}", truncate(&short, 40));
+                for why in &trouble {
+                    println!("    {why}");
+                }
             }
+            continue;
         }
+
+        if json {
+            // one object a line, so the whole folder pipes into something else
+            println!(
+                r#"{{"file":{},"exe":{},"game":{},"author":{},"cheats":{},"scripts":{},"fingerprint":"{}"}}"#,
+                quoted(&short),
+                quoted(&table.game.exe),
+                quoted(&table.game.name),
+                quoted(&table.game.author),
+                table.cheats.len(),
+                table.cheats.iter().filter(|c| c.action.is_script()).count(),
+                freeplay_table::fingerprint::fingerprint(&table),
+            );
+        } else if !quiet {
+            println!(
+                "{:<40} {:>4} cheats  {}",
+                truncate(&short, 40),
+                table.cheats.len(),
+                table.game.exe
+            );
+        }
+    }
+
+    if json {
+        if bad > 0 {
+            return Err(format!("{bad} did not check out"));
+        }
+        return Ok(());
     }
 
     println!(
@@ -718,6 +742,24 @@ fn read(process: &str, address: &str, type_name: &str) -> Result<(), String> {
     let value: Scalar = target.read_scalar(addr, kind).map_err(|e| e.to_string())?;
     println!("{addr:#018x}  {kind}  {value}");
     Ok(())
+}
+
+fn quoted(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn truncate(text: &str, width: usize) -> String {
