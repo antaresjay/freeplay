@@ -2198,7 +2198,7 @@ fn main() {
 
 #[cfg(test)]
 mod wording {
-    use super::how_long;
+    use super::{how_long, link_in};
 
     #[test]
     fn how_long_reads_like_somebody_said_it() {
@@ -2215,5 +2215,35 @@ mod wording {
     #[test]
     fn a_long_session_does_not_come_out_as_a_fraction_of_a_fraction() {
         assert_eq!(how_long(36_000), "10 hours");
+    }
+
+    // the source link is pulled out of a free text notes field, so it has to
+    // cope with the note being a sentence rather than just a url
+    #[test]
+    fn the_source_link_comes_out_of_the_notes() {
+        assert_eq!(
+            link_in("Converted from a Cheat Engine table by X. Source: https://example.com/t=1"),
+            "https://example.com/t=1"
+        );
+    }
+
+    #[test]
+    fn a_full_stop_after_the_link_is_not_part_of_it() {
+        assert_eq!(
+            link_in("see https://example.com/thread."),
+            "https://example.com/thread"
+        );
+    }
+
+    #[test]
+    fn notes_with_no_link_give_nothing() {
+        assert_eq!(link_in("tested on the enhanced edition"), "");
+        assert_eq!(link_in(""), "");
+    }
+
+    // http would be handed to the shell and open a browser on a plain socket
+    #[test]
+    fn only_https_counts_as_a_link() {
+        assert_eq!(link_in("http://example.com/thread"), "");
     }
 }
