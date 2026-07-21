@@ -14,3 +14,6 @@ app/src-tauri/gen/
 
 # working copies of tables being tested
 /*.CT
+
+# wrangler keeps the local dev database in here
+service/.wrangler/
