@@ -134,6 +134,14 @@ window.__TAURI__ = {
           }
           return [];
         case "set_cheat": return null;
+        case "credit":
+          if (args.exe === "witcher2.exe") {
+            return {author: "aSwedishMagyar",
+                    source: "https://fearlessrevolution.com/viewtopic.php?t=14844",
+                    notes: "Converted from a Cheat Engine table by aSwedishMagyar."};
+          }
+          // a table nobody put a name on
+          return {author: "", source: "", notes: ""};
         case "sort_options": return SORTS;
         case "shared_tables":
           if (!SETTINGS.community) throw "shared tables are turned off";
@@ -308,6 +316,18 @@ PROBE = r"""
     const groups = document.querySelectorAll("#cheat-groups .group").length;
     note(groups === 4, "cheats are grouped by category (" + groups + ")");
     note(!visible("no-table"), "no-table notice stays hidden when there is a table");
+
+    // whoever found the addresses is not whoever uploaded the table, and the
+    // person who did the work is the one worth naming on the page
+    note(visible("table-credit"), "the table credits whoever worked it out");
+    note(document.getElementById("credit-author").textContent === "aSwedishMagyar",
+         "and names them");
+    const src = document.getElementById("credit-source");
+    note(visible("credit-source"), "with a link back to where it came from");
+    note(src.textContent === "fearlessrevolution.com",
+         "shown as the site, not the whole url (" + src.textContent + ")");
+    note(src.dataset.open === "https://fearlessrevolution.com/viewtopic.php?t=14844",
+         "and the link goes to the thread");
 
     const switches = document.querySelectorAll("#cheat-groups .switch");
     note([...switches].every((s) => !s.disabled),
@@ -547,6 +567,8 @@ PROBE = r"""
     .map(n => n.textContent);
   note(names.length === 1 && names[0].startsWith("Unlock Chapters"),
        "and the new game's cheats replace them (" + JSON.stringify(names) + ")");
+  note(!visible("table-credit"),
+       "a table with nobody's name on it credits nobody");
 
   // searching within a table
   document.getElementById("cheat-filter").value = "zzz";

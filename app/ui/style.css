@@ -620,6 +620,26 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 
 .dim { color: var(--dim); font-size: 12.5px; }
 
+/* sits under the Cheats heading. whoever found the addresses did the work and
+   is usually not whoever uploaded the table */
+.credit {
+  margin: -8px 0 16px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+
+.credit b { color: var(--text); font-weight: 600; }
+
+.credit a {
+  color: var(--dim);
+  margin-left: 8px;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--dim) 40%, transparent);
+  cursor: pointer;
+}
+
+.credit a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
 .filter, input[type="text"], select {
   height: 32px;
   padding: 0 11px;

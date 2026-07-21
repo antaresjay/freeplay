@@ -737,6 +737,36 @@ async function doDetach() {
 
 /* ---------- cheats ---------- */
 
+/* whoever found these addresses is almost never whoever uploaded the table
+   here, and the person who did the work is the one worth naming */
+async function showCredit(exe) {
+  const line = $("table-credit");
+  const link = $("credit-source");
+  let credit = {};
+  try {
+    credit = await invoke("credit", { exe });
+  } catch {
+    credit = {};
+  }
+
+  const author = (credit.author || "").trim();
+  line.hidden = !author;
+  if (!author) return;
+
+  $("credit-author").textContent = author;
+  const source = (credit.source || "").trim();
+  link.hidden = !source;
+  if (source) {
+    link.dataset.open = source;
+    link.title = source;
+    try {
+      link.textContent = new URL(source).hostname.replace(/^www\./, "");
+    } catch {
+      link.textContent = "where it came from";
+    }
+  }
+}
+
 async function refreshCheats() {
   const game = gameFor(open);
   if (!game || $("view-game").hidden) return;
@@ -787,6 +817,9 @@ async function refreshCheats() {
   if (shape !== refreshCheats.shape) {
     refreshCheats.shape = shape;
     refreshCheats.cards = new Map();
+    // only when the table itself changes. this function runs on a timer and
+    // the credit does not move between ticks
+    showCredit(game.exe);
 
     const host = $("cheat-groups");
     host.innerHTML = "";
@@ -1337,6 +1370,14 @@ document.querySelectorAll("[data-open]").forEach((button) => {
   button.addEventListener("click", () =>
     invoke("open_url", { url: button.dataset.open }).catch((e) => toast(String(e), true))
   );
+});
+
+// this one gets its address when a table loads, so it is not there to be found
+// in the sweep above
+$("credit-source").addEventListener("click", (e) => {
+  e.preventDefault();
+  const url = $("credit-source").dataset.open;
+  if (url) invoke("open_url", { url }).catch((err) => toast(String(err), true));
 });
 
 /* ---------- the cheat dock ---------- */

@@ -1503,6 +1503,44 @@ fn cheat_row(cheat: &freeplay_table::schema::Cheat, typed: Option<&String>) -> C
     }
 }
 
+#[derive(Serialize, Default)]
+struct Credit {
+    // whoever worked the addresses out, which is almost never whoever uploaded
+    // it here
+    author: String,
+    // the thread it was converted from, if the table says
+    source: String,
+    notes: String,
+}
+
+// the first https link in a free text field
+fn link_in(text: &str) -> String {
+    text.split_whitespace()
+        .find(|word| word.starts_with("https://"))
+        .map(|word| word.trim_end_matches(['.', ',', ')']).to_string())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn credit(state: tauri::State<'_, App>, exe: String) -> Credit {
+    let held = state.session.lock().unwrap();
+    let open = held.as_ref().map(|s| s.table().clone());
+    drop(held);
+
+    let table = open
+        .filter(|t| t.matches_process(&exe))
+        .or_else(|| tables(&state).into_iter().find(|t| t.matches_process(&exe)));
+
+    match table {
+        Some(table) => Credit {
+            author: table.game.author.trim().to_string(),
+            source: link_in(&table.game.notes),
+            notes: table.game.notes.clone(),
+        },
+        None => Credit::default(),
+    }
+}
+
 #[tauri::command]
 fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
     let typed = values_for(&state, &exe);
@@ -2096,6 +2134,7 @@ fn main() {
             diagnostics,
             open_log,
             table_count,
+            credit,
             import_table,
             find_table,
             shared_tables,
