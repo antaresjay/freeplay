@@ -1645,13 +1645,15 @@ function sharedRow(row) {
   if (row.by) {
     /* this says the name is registered to a key and nobody else can publish
        under it. it says nothing at all about whether the table works, and the
-       old wording, "signed", read like it did */
+       old wording, "signed", read like it did. it does not say "author"
+       either, because whoever uploaded a converted table is usually not the
+       person who found the addresses in it */
     const tick = document.createElement("span");
     tick.className = "verified";
-    tick.textContent = "author verified";
+    tick.textContent = "name verified";
     tick.title =
       "This name is registered to a key, so only its owner can publish under it. " +
-      "It is not a claim that the table works.";
+      "It is not a claim that the table works, or that they wrote it.";
     title.appendChild(tick);
   }
 

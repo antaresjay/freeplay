@@ -487,10 +487,14 @@ PROBE = r"""
     // must not blur them
     const badge = document.querySelector("#shared-list .shared-row .verified");
     note(badge !== null, "a registered name is marked");
-    note(badge.textContent === "author verified",
-         "the badge is about the author, not the table (" + badge.textContent + ")");
+    note(badge.textContent === "name verified",
+         "the badge is about the name, not the table (" + badge.textContent + ")");
     note(badge.title.toLowerCase().includes("not a claim that the table works"),
          "and says so outright");
+    // whoever uploaded a converted table is not whoever wrote it, and the
+    // badge used to say "author verified" over the uploader's name
+    note(!badge.textContent.includes("author"),
+         "and does not call the uploader the author");
 
     // which build it was tested on is what decides whether it does anything
     const fits = [...document.querySelectorAll("#shared-list .shared-fit")];
