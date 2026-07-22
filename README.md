@@ -176,6 +176,16 @@ cargo run --release --bin freeplay -- scan --process game.exe --type i32 --value
 then type the new value or one of `up`, `down`, `changed`, `unchanged` to narrow
 the list until one address is left.
 
+`check` reads a table over without the game running, which is the fastest way
+to find out whether one you wrote or converted actually holds together. It
+parses every script, refuses the ones that reach outside the process, and takes
+a folder as happily as a file.
+
+```
+cargo run --release --bin freeplay -- check tables/
+cargo run --release --bin freeplay -- check mytable.toml --json
+```
+
 ## Things you should know
 
 **Windows will complain.** The binary is unsigned, so SmartScreen warns on first
