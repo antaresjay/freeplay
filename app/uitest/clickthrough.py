@@ -81,7 +81,9 @@ const SHARED = [
    installed:true, fit:"unknown",
    fit_note:"Nobody recorded which version this was tested on",
    recommended:false},
-  {id:9, game:"The Witcher 2", by:"SomeoneElse", cheats:31, up:2, down:0,
+  // a different game that happens to ship the same executable name, uploaded
+  // by the account everything converted goes up under
+  {id:9, game:"Some Other Game", by:"SomeoneElse", cheats:31, up:2, down:0,
    downloads:89, built_for:"3.4.0.2", added:1786142235, standing:"",
    installed:false, fit:"older", fit_note:"Tested on 3.4.0.2, you have 3.5.0.1",
    recommended:false}
@@ -441,6 +443,18 @@ PROBE = r"""
     // shared tables
     const rows = document.querySelectorAll("#shared-list .shared-row");
     note(rows.length === 3, "shared tables listed (" + rows.length + ")");
+
+    /* two games can ship the same executable, and everything converted from
+       one place goes up under one account. the game the table is for is the
+       only thing that tells those rows apart, so it is the heading */
+    const names = [...rows].map(r => r.querySelector(".shared-name").textContent);
+    note(names[0] === "The Witcher 2",
+         "a shared row is headed by the game, not the uploader (" + names[0] + ")");
+    note(names.includes("Some Other Game"),
+         "so two games sharing an exe are told apart (" + JSON.stringify(names) + ")");
+    const byline = rows[0].querySelector(".shared-by");
+    note(byline && byline.textContent.startsWith("by aSwedishMagyar"),
+         "and the uploader moves under it (" + (byline && byline.textContent) + ")");
     note(document.querySelectorAll("#shared-sort option").length === 4,
          "sort options filled in");
 

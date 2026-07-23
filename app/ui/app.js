@@ -1631,16 +1631,23 @@ function sharedRow(row) {
     main.appendChild(star);
   }
 
+  /* the name the table calls its game, not the uploader. plenty of games ship
+     as game.exe and everything converted from one place goes up under one
+     account, so the uploader is the one thing that does not tell them apart */
   const title = document.createElement("div");
   title.className = "shared-name";
-  title.textContent = row.by ? row.by : "shared anonymously";
+  title.textContent = row.game || (row.by ? row.by : "shared anonymously");
+
+  const byline = document.createElement("div");
+  byline.className = "shared-by";
+  byline.textContent = row.by ? "by " + row.by : "shared anonymously";
 
   /* your own upload coming back at you looks like a stranger's otherwise */
   if (row.by && me && row.by.toLowerCase() === me.toLowerCase()) {
     const yours = document.createElement("span");
     yours.className = "mine";
     yours.textContent = " (you)";
-    title.appendChild(yours);
+    byline.appendChild(yours);
   }
   if (row.by) {
     /* this says the name is registered to a key and nobody else can publish
@@ -1654,7 +1661,7 @@ function sharedRow(row) {
     tick.title =
       "This name is registered to a key, so only its owner can publish under it. " +
       "It is not a claim that the table works, or that they wrote it.";
-    title.appendChild(tick);
+    byline.appendChild(tick);
   }
 
   /* the version is what decides whether a table does anything at all, so it
@@ -1677,7 +1684,7 @@ function sharedRow(row) {
   facts.textContent = bits.join("  .  ");
   if (row.standing) card.title = row.standing;
 
-  main.append(title, fit, facts);
+  main.append(title, byline, fit, facts);
 
   const actions = document.createElement("div");
   actions.className = "row-actions";
