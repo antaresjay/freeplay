@@ -98,9 +98,91 @@ pub fn steam(_app_id: &str) -> Art {
     Art::default()
 }
 
+// what galaxy calls each picture. the padding number on the background has
+// changed before, so that one is matched on its stem
+const GOG_KINDS: [(&str, &str); 3] = [
+    ("cover", "_glx_vertical_cover"),
+    ("hero", "_glx_bg_top_padding"),
+    ("logo", "_glx_square_icon"),
+];
+
+// webcache/<user>/gog/<gameid>/<hash>_glx_<kind>.webp. the user folder is a
+// number nobody knows in advance, so every one of them gets looked in
+fn in_webcache(root: &Path, game_id: &str) -> Art {
+    let Ok(users) = std::fs::read_dir(root) else {
+        return Art::default();
+    };
+
+    for user in users.flatten() {
+        let dir = user.path().join("gog").join(game_id);
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+
+        let mut art = Art::default();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            let lower = name.to_lowercase();
+            for (slot, marker) in GOG_KINDS {
+                if !lower.contains(marker) {
+                    continue;
+                }
+                let held = match slot {
+                    "cover" => &mut art.cover,
+                    "hero" => &mut art.hero,
+                    _ => &mut art.logo,
+                };
+                if held.is_none() {
+                    *held = Some(path.clone());
+                }
+            }
+        }
+        if !art.is_empty() {
+            return art;
+        }
+    }
+    Art::default()
+}
+
+#[cfg(windows)]
+fn webcache() -> Option<PathBuf> {
+    let program_data = std::env::var("PROGRAMDATA").ok()?;
+    Some(
+        PathBuf::from(program_data)
+            .join("GOG.com")
+            .join("Galaxy")
+            .join("webcache"),
+    )
+}
+
+#[cfg(not(windows))]
+fn webcache() -> Option<PathBuf> {
+    None
+}
+
+// galaxy has proper artwork but only if it is installed. buy from gog and run
+// the offline installer and none of it exists, so the icon the installer drops
+// in the game folder is the fallback. it is square and 256 across, which is
+// not a cover, but it beats two letters on a grey tile
+pub fn gog(game_id: &str, install_dir: &Path) -> Art {
+    let mut art = webcache()
+        .map(|root| in_webcache(&root, game_id))
+        .unwrap_or_default();
+
+    if art.cover.is_none() {
+        let ico = install_dir.join(format!("goggame-{game_id}.ico"));
+        if ico.is_file() {
+            art.cover = Some(ico);
+        }
+    }
+    art
+}
+
 pub fn find(game: &InstalledGame) -> Art {
     match (game.store, game.app_id.as_deref()) {
         (Store::Steam, Some(id)) => steam(id),
+        (Store::Gog, Some(id)) => gog(id, &game.install_dir),
         _ => Art::default(),
     }
 }
@@ -121,6 +203,75 @@ mod tests {
             std::fs::create_dir_all(parent).unwrap();
         }
         std::fs::write(path, b"not really a jpeg").unwrap();
+    }
+
+    #[test]
+    fn reads_what_galaxy_cached() {
+        let root = scratch("webcache");
+        let dir = root
+            .join("56125266018961573")
+            .join("gog")
+            .join("1438861093");
+        touch(&dir.join("cfade37f_glx_vertical_cover.webp"));
+        touch(&dir.join("d4af52eb_glx_bg_top_padding_7.webp"));
+        touch(&dir.join("7b5c518c_glx_square_icon_v2.webp"));
+
+        let art = in_webcache(&root, "1438861093");
+        assert!(art
+            .cover
+            .unwrap()
+            .ends_with("cfade37f_glx_vertical_cover.webp"));
+        assert!(art
+            .hero
+            .unwrap()
+            .ends_with("d4af52eb_glx_bg_top_padding_7.webp"));
+        assert!(art
+            .logo
+            .unwrap()
+            .ends_with("7b5c518c_glx_square_icon_v2.webp"));
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    // the padding number is part of the file name and has moved before
+    #[test]
+    fn the_background_matches_whatever_padding_it_was_saved_with() {
+        let root = scratch("padding");
+        let dir = root.join("1").join("gog").join("55");
+        touch(&dir.join("aa_glx_bg_top_padding_12.webp"));
+
+        assert!(in_webcache(&root, "55").hero.is_some());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_game_galaxy_never_saw_is_not_art() {
+        let root = scratch("unseen");
+        std::fs::create_dir_all(root.join("1").join("gog").join("999")).unwrap();
+
+        assert!(in_webcache(&root, "999").is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    // bought from gog, installed with the offline installer, galaxy never
+    // involved. the id is made up so the real webcache cannot match it
+    #[test]
+    fn falls_back_to_the_icon_the_installer_left() {
+        let dir = scratch("offline");
+        touch(&dir.join("goggame-4040404040.ico"));
+
+        let art = gog("4040404040", &dir);
+        assert!(art.cover.unwrap().ends_with("goggame-4040404040.ico"));
+        assert!(art.hero.is_none(), "an icon is not a background");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn nothing_on_disk_is_no_art_rather_than_a_panic() {
+        let dir = scratch("bare");
+        assert!(gog("4040404041", &dir).is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -216,12 +367,25 @@ mod tests {
     }
 
     #[test]
-    fn only_steam_has_art_for_now() {
+    fn a_folder_with_nothing_in_it_has_no_art() {
         let game = InstalledGame {
             name: "Some GOG Game".into(),
             store: Store::Gog,
             install_dir: PathBuf::from("C:\\g"),
             app_id: Some("1234".into()),
+            executables: vec![],
+            version: None,
+        };
+        assert!(find(&game).is_empty());
+    }
+
+    #[test]
+    fn a_store_we_do_not_read_art_for_is_not_a_panic() {
+        let game = InstalledGame {
+            name: "Something".into(),
+            store: Store::Epic,
+            install_dir: PathBuf::from("C:\\g"),
+            app_id: None,
             executables: vec![],
             version: None,
         };
