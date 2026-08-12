@@ -40,9 +40,10 @@ jobs:
           releaseDraft: true
           releaseBody: |
             Freeplay finds your installed games, attaches to one and turns
-            cheats on. Tables other people have shared arrive on their own. If
-            nobody has written one for your game, import a Cheat Engine `.CT`
-            file or search the game's memory and make one yourself.
+            cheats on. Open a game and it shows what people have shared for
+            that one, sorted by what worked for them. If nobody has written a
+            table for your game, import a Cheat Engine `.CT` file or search
+            the game's memory and make one yourself.
 
             Single player only. It will not attach to anything running an
             anti-cheat.
@@ -63,10 +64,13 @@ jobs:
             exactly what malware does. Fork this and press Run workflow on the
             release action if you would rather build it than trust a download.
 
-            ### What it does not come with
+            ### About the tables
 
-            Cheats for many games. It comes with the engine, the table format,
-            and the finder for working out where a game keeps its numbers.
+            Nobody has run all of them against every game. A table is written
+            against one build and the addresses move when a game patches, so
+            some will not work. That is what the voting is for. Whoever worked
+            the addresses out is named on the game page with a link back to
+            where the table came from.
 
       - name: Installer, for a run by hand
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
