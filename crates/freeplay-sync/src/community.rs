@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::http;
 
-pub const ENDPOINT: &str = "https://freeplay-tables.antaresjeet.workers.dev";
+pub const ENDPOINT: &str = "https://freeplay-tables.antaresjay.workers.dev";
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Listing {

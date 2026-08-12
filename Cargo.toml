@@ -6,7 +6,7 @@ members = ["crates/*", "app/src-tauri"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-authors = ["antaresjeet"]
+authors = ["antaresjay"]
 repository = "https://github.com/antaresjay/freeplay"
 rust-version = "1.82"
 
