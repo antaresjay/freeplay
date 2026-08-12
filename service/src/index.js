@@ -84,8 +84,8 @@ async function list(url, env) {
   const order = ORDER[sort];
 
   const statement = env.DB.prepare(
-    `select id, exe, game, fingerprint, cheats, bytes, submitted_by, built_for,
-            up, down, downloads, created_at
+    `select id, exe, game, fingerprint, cheats, bytes, submitted_by, author,
+            built_for, up, down, downloads, created_at
        from tables
       where exe = ?1 and blocked = 0
       order by ${order}
@@ -224,6 +224,9 @@ async function submit(request, env) {
   if (!body) return bad("send json");
 
   const { fingerprint, exe, game, toml, submitted_by, built_for, cheats } = body;
+  // free text, and it stays free text. it says where a table came from, not
+  // who is uploading it, and there is nothing to check it against
+  const author = String(body.author || "").slice(0, 80);
 
   if (!fingerprint || !/^[0-9a-f]{64}$/.test(fingerprint)) return bad("bad fingerprint");
   if (!exe || typeof exe !== "string" || exe.length > 128) return bad("bad exe");
@@ -254,8 +257,8 @@ async function submit(request, env) {
 
   const inserted = await env.DB.prepare(
     `insert into tables (fingerprint, exe, game, toml, bytes, cheats, submitted_by,
-                         built_for, created_at)
-     values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                         author, built_for, created_at)
+     values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
      returning id`
   )
     .bind(
@@ -266,6 +269,7 @@ async function submit(request, env) {
       toml.length,
       Number(cheats) || 0,
       handle,
+      author,
       String(built_for || "").slice(0, 60),
       now
     )
@@ -372,7 +376,7 @@ async function mirror(env) {
   }
 
   const everything = await env.DB.prepare(
-    `select exe, game, fingerprint, cheats, up, down, downloads, submitted_by, created_at
+    `select exe, game, fingerprint, cheats, up, down, downloads, submitted_by, author, created_at
        from tables where blocked = 0 order by exe, (up - down) desc`
   ).all();
 
@@ -389,6 +393,7 @@ async function mirror(env) {
       down: row.down,
       downloads: row.downloads,
       by: row.submitted_by,
+      author: row.author,
       added: row.created_at,
     })),
   };

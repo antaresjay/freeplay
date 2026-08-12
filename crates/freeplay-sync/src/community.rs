@@ -16,8 +16,12 @@ pub struct Listing {
     pub cheats: u32,
     #[serde(default)]
     pub bytes: u64,
+    // who uploaded it
     #[serde(default)]
     pub submitted_by: String,
+    // who worked the addresses out, which is usually somebody else
+    #[serde(default)]
+    pub author: String,
     #[serde(default)]
     pub built_for: String,
     #[serde(default)]
@@ -222,6 +226,10 @@ impl<'a> Community<'a> {
             "toml": toml,
             "built_for": built_for,
             "cheats": table.cheats.len(),
+            // whoever worked the addresses out, which for anything converted
+            // is not whoever is uploading it. goes up alongside so the list
+            // can say who wrote a table before you download it
+            "author": table.game.author,
         });
 
         if let Some(me) = who {

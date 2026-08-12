@@ -7,6 +7,10 @@ create table if not exists tables (
   bytes integer not null,
   cheats integer not null default 0,
   submitted_by text not null default '',
+  -- whoever worked the addresses out. free text off the table itself, and
+  -- nothing checks it, because it says where a table came from rather than
+  -- who is standing behind it. submitted_by is the one tied to a key
+  author text not null default '',
   built_for text not null default '',
   up integer not null default 0,
   down integer not null default 0,

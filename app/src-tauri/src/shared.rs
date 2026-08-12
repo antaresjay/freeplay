@@ -30,7 +30,10 @@ pub fn me() -> Option<Identity> {
 pub struct Shared {
     pub id: i64,
     pub game: String,
+    // who uploaded it
     pub by: String,
+    // who worked the addresses out, if the table says
+    pub author: String,
     pub cheats: u32,
     pub up: i64,
     pub down: i64,
@@ -61,6 +64,7 @@ impl Shared {
             id: listing.id,
             game: listing.game,
             by: listing.submitted_by,
+            author: listing.author,
             cheats: listing.cheats,
             up: listing.up,
             down: listing.down,

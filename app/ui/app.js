@@ -1598,9 +1598,13 @@ function applySharedFilter() {
 
   cards.forEach((card, at) => {
     const row = sharedRows[at];
+    /* the author counts as much as the uploader. searching for the person
+       who worked a game out should find their tables, and for anything
+       converted they are not the one who uploaded it */
     const hit =
       !needle ||
       (row && ((row.by || "").toLowerCase().includes(needle) ||
+               (row.author || "").toLowerCase().includes(needle) ||
                (row.built_for || "").toLowerCase().includes(needle)));
     card.hidden = !hit;
     if (hit) shown++;
@@ -1638,9 +1642,13 @@ function sharedRow(row) {
   title.className = "shared-name";
   title.textContent = row.game || (row.by ? row.by : "shared anonymously");
 
+  /* two different people. the author worked the addresses out, the uploader
+     put the table here, and for anything converted they are never the same.
+     the author is the one worth reading, so it leads */
   const byline = document.createElement("div");
   byline.className = "shared-by";
-  byline.textContent = row.by ? "by " + row.by : "shared anonymously";
+  const uploader = row.by ? "uploaded by " + row.by : "uploaded anonymously";
+  byline.textContent = row.author ? `by ${row.author}, ${uploader}` : uploader;
 
   /* your own upload coming back at you looks like a stranger's otherwise */
   if (row.by && me && row.by.toLowerCase() === me.toLowerCase()) {

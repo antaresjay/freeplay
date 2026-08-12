@@ -82,18 +82,18 @@ const SORTS = [
 ];
 
 const SHARED = [
-  {id:7, game:"The Witcher 2", by:"aSwedishMagyar", cheats:23, up:9, down:1,
+  {id:7, game:"The Witcher 2", by:"neo", author:"aSwedishMagyar", cheats:23, up:9, down:1,
    downloads:140, built_for:"3.5.0.1", added:1786142235, standing:"",
    installed:false, fit:"same", fit_note:"Tested on your version, 3.5.0.1",
    recommended:true},
-  {id:8, game:"The Witcher 2", by:"aSwedishMagyar", cheats:11, up:0, down:0,
+  {id:8, game:"The Witcher 2", by:"aSwedishMagyar", author:"aSwedishMagyar", cheats:11, up:0, down:0,
    downloads:0, built_for:"", added:1786142235, standing:"",
    installed:true, fit:"unknown",
    fit_note:"Nobody recorded which version this was tested on",
    recommended:false},
   // a different game that happens to ship the same executable name, uploaded
   // by the account everything converted goes up under
-  {id:9, game:"Some Other Game", by:"SomeoneElse", cheats:31, up:2, down:0,
+  {id:9, game:"Some Other Game", by:"SomeoneElse", author:"", cheats:31, up:2, down:0,
    downloads:89, built_for:"3.4.0.2", added:1786142235, standing:"",
    installed:false, fit:"older", fit_note:"Tested on 3.4.0.2, you have 3.5.0.1",
    recommended:false}
@@ -494,9 +494,19 @@ PROBE = r"""
          "a shared row is headed by the game, not the uploader (" + names[0] + ")");
     note(names.includes("Some Other Game"),
          "so two games sharing an exe are told apart (" + JSON.stringify(names) + ")");
+    /* the person who worked the addresses out leads, the account that put it
+       here follows. for anything converted they are different people, and the
+       uploader on its own told you nothing */
     const byline = rows[0].querySelector(".shared-by");
     note(byline && byline.textContent.startsWith("by aSwedishMagyar"),
-         "and the uploader moves under it (" + (byline && byline.textContent) + ")");
+         "the author leads the byline (" + (byline && byline.textContent) + ")");
+    note(byline && byline.textContent.includes("uploaded by neo"),
+         "and the account that uploaded it follows");
+    // a table nobody put a name on should not say "by , uploaded by"
+    const noName = [...rows].map(r => r.querySelector(".shared-by").textContent)
+      .find(t => t.includes("SomeoneElse"));
+    note(noName.startsWith("uploaded by SomeoneElse"),
+         "with no author it just says who uploaded it (" + noName + ")");
     note(document.querySelectorAll("#shared-sort option").length === 4,
          "sort options filled in");
 
