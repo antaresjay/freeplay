@@ -884,6 +884,8 @@ function whyFor(item) {
   if (item.armed) return ["Waiting for the game to get there", "wait"];
   if (item.description) return [item.description, ""];
   if (item.does === "Script") return ["Finds the addresses the other cheats here need.", ""];
+  // the box on its own looks like it does something when you type in it
+  if (item.editable) return ["Type a number, then turn it on.", ""];
   return ["", ""];
 }
 
@@ -1028,7 +1030,9 @@ function valueBox(item, exe) {
     input.type = "text";
     input.spellcheck = false;
     input.value = item.value;
-    input.placeholder = item.hex ? "hex" : item.kind || "value";
+    // "i32" is the table's word for it. nobody typing in a health box wants it
+    input.placeholder = item.hex ? "hex" : item.kind.startsWith("f") ? "decimal" : "number";
+    if (item.kind) input.title = `the table stores this as ${item.kind}`;
     input.addEventListener("change", () => send(input.value, () => (input.value = item.value)));
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") input.blur();

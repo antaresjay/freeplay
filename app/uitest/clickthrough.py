@@ -396,6 +396,15 @@ PROBE = r"""
          "the box says what the game is holding now");
     note(document.querySelectorAll(".cheat-once").length === 1,
          "a cheat that does not hold its value says so");
+    note(boxes[0].placeholder === "decimal", "a box that takes a decimal says decimal");
+    note(boxes[1].placeholder === "number", "and a whole one says number, not i32");
+    const named = (want) => [...document.querySelectorAll("#cheat-groups .cheat")]
+      .find((c) => c.querySelector(".cheat-name").textContent.startsWith(want));
+    note(named("Difficulty").querySelector(".cheat-why").textContent ===
+         "Type a number, then turn it on.",
+         "a value cheat with nothing else to say tells you how to work it");
+    note(named("Orens").querySelector(".cheat-why").textContent === "money",
+         "and one with a description keeps it");
 
     boxes[1].value = "12345";
     boxes[1].dispatchEvent(new Event("change"));
