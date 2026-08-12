@@ -678,6 +678,11 @@ function drawGamePage() {
     sharedFor = null;
     $("cheat-filter").value = "";
     $("shared-search").value = "";
+    // a search is about the game you were on, not the one you just opened
+    $("table-search").value = "";
+    searchFor = "";
+    ownRows = null;
+    $("search-note").hidden = true;
     skeletons();
   }
   const images = artFor(game) || {};
@@ -717,7 +722,7 @@ function drawGamePage() {
     genre.title = kinds.join(", ");
     facts.appendChild(genre);
   }
-  if (attached && attached.process === game.exe) {
+  if (attached && sameExe(attached.process, game.exe)) {
     facts.appendChild(fact("Status", `Attached, pid ${attached.pid}`, true));
     if (attached.arch) facts.appendChild(fact("Build", attached.arch));
   } else if (game.running) {
@@ -742,7 +747,7 @@ function drawGamePage() {
   fav.classList.toggle("on", game.favourite);
   fav.title = game.favourite ? "Remove from favourites" : "Add to favourites";
 
-  const isAttached = attached && attached.process === game.exe;
+  const isAttached = attached && sameExe(attached.process, game.exe);
   const attach = $("game-attach");
   attach.textContent = isAttached ? "Detach" : "Attach";
   attach.disabled = !!game.guard || (!game.running && !isAttached);
@@ -1395,7 +1400,7 @@ $("game-play").addEventListener("click", async () => {
 $("game-attach").addEventListener("click", () => {
   const game = gameFor(open);
   if (!game) return;
-  if (attached && attached.process === game.exe) doDetach();
+  if (attached && sameExe(attached.process, game.exe)) doDetach();
   else if (game.exe) doAttach(game.exe);
   else toast("Could not work out which file to attach to", true);
 });
@@ -1646,6 +1651,10 @@ async function loadShared(force = false) {
   await loadSortOptions();
   /* whatever is up stays up while the next answer is on its way. emptying it
      first is what made the panel collapse and spring back, and holding it open
+  // a search owns the list while there is one. this also runs on a timer, and
+  // without this it wipes the results out from under whoever is reading them
+  if (searchFor.length >= 2) return;
+
      at a fixed height just moved the problem to a panel full of nothing */
   const host = $("shared-list");
   host.classList.add("waiting");
@@ -1702,6 +1711,80 @@ function applySharedFilter() {
        converted they are not the one who uploaded it */
     const hit =
       !needle ||
+let searchTimer = null;
+let searchFor = "";
+// this game's own tables, held while a search is covering them up
+let ownRows = null;
+
+function fillDock(rows) {
+  const host = $("shared-list");
+  host.classList.remove("waiting");
+  host.innerHTML = "";
+  sharedRows = rows;
+  for (const row of rows) host.appendChild(sharedRow(row));
+}
+
+/* the way out when we picked the wrong binary for a game. matching a table to
+   a game is an exact compare on the executable name, and no rule gets that
+   right every time, so this ignores executables and looks by name instead */
+async function searchEveryGame() {
+  const wanted = $("table-search").value.trim();
+  const was = searchFor;
+  searchFor = wanted;
+
+  if (wanted.length < 2) {
+    $("search-note").hidden = true;
+    /* put back what the search covered rather than asking the service for it
+       again. going back to the network left somebody else's game sitting in
+       the panel for half a second after the box was already empty */
+    if (was.length >= 2 && ownRows) {
+      fillDock(ownRows);
+      $("shared-empty").hidden = ownRows.length > 0;
+      $("shared-empty").textContent =
+        "Nobody has shared a table for this game yet. If yours works, share it and you will be the first.";
+      ownRows = null;
+      applySharedFilter();
+      return;
+    }
+    await loadShared(true);
+    return;
+  }
+
+  // the keystroke that starts a search is the one that has to remember what
+  // was on screen before it
+  if (was.length < 2) ownRows = sharedRows;
+
+  const host = $("shared-list");
+  host.classList.add("waiting");
+  $("search-note").hidden = false;
+  $("search-note").textContent = "Looking through every table";
+
+  let rows = [];
+  try {
+    rows = await invoke("search_tables", { query: wanted });
+  } catch (e) {
+    if (searchFor !== wanted) return;
+    host.classList.remove("waiting");
+    // leaving this game's tables sitting under the error reads as though the
+    // search returned them
+    host.innerHTML = "";
+    sharedRows = [];
+    $("shared-empty").hidden = true;
+    $("search-note").textContent = String(e);
+    return;
+  }
+  // typed on while that was in the air
+  if (searchFor !== wanted) return;
+
+  $("shared-empty").hidden = true;
+  fillDock(rows.map((row) => ({ ...row, found_by_search: true })));
+
+  const game = gameFor(open);
+  $("search-note").textContent = rows.length
+    ? `${many(rows.length, "table")} matching "${wanted}". Using one points it at ` +
+      `${(game && game.exe) || "this game"}.`
+    : `Nothing matches "${wanted}".`;
+}
       (row && ((row.by || "").toLowerCase().includes(needle) ||
                (row.author || "").toLowerCase().includes(needle) ||
                (row.built_for || "").toLowerCase().includes(needle)));
@@ -1736,6 +1819,13 @@ function sharedRow(row) {
 
   /* the name the table calls its game, not the uploader. plenty of games ship
      as game.exe and everything converted from one place goes up under one
+$("table-search").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  // waiting is for not firing a request per keystroke. emptying the box sends
+  // nothing, so there is nothing to wait for and the panel snaps straight back
+  const wait = $("table-search").value.trim().length < 2 ? 0 : 260;
+  searchTimer = setTimeout(searchEveryGame, wait);
+});
      account, so the uploader is the one thing that does not tell them apart */
   const title = document.createElement("div");
   title.className = "shared-name";
@@ -1804,7 +1894,16 @@ function sharedRow(row) {
     button.disabled = true;
     button.textContent = "Getting it";
     try {
-      toast(await invoke("install_shared", { id: row.id }));
+      /* a table found by searching is filed under some other game's binary,
+         so it has to be pointed at this one or it lands on disk and never
+         shows up anywhere */
+      const game = gameFor(open);
+      const borrowed = row.found_by_search && game && game.exe ? game.exe : null;
+      toast(await invoke("install_shared", { id: row.id, forExe: borrowed }));
+      if (borrowed) {
+        $("table-search").value = "";
+        $("search-note").hidden = true;
+      }
       await loadGames(false);
       await refreshCheats();
       await loadShared(true);

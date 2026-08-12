@@ -585,11 +585,29 @@ fn sort_options() -> Vec<shared::SortOption> {
     shared::sorts()
 }
 
+// every table whose game name looks like this, whatever binary it is filed
+// under. the way out when we guessed the wrong executable for a game
 #[tauri::command]
-async fn install_shared(state: tauri::State<'_, App>, id: i64) -> Result<String, String> {
+async fn search_tables(
+    state: tauri::State<'_, App>,
+    query: String,
+) -> Result<Vec<shared::Shared>, String> {
+    online(&state)?;
+    shared::search(&query)
+}
+
+// for_exe is set when the table was found by searching rather than offered
+// for this game, so it is filed under a different binary and has to be
+// pointed at this one or it will never show up
+#[tauri::command]
+async fn install_shared(
+    state: tauri::State<'_, App>,
+    id: i64,
+    for_exe: Option<String>,
+) -> Result<String, String> {
     online(&state)?;
     let install_id = state.settings.lock().unwrap().install_id.clone();
-    let (_, table) = shared::install(id, &install_id, &synced_dir())?;
+    let (_, table) = shared::install(id, &install_id, &synced_dir(), for_exe.as_deref())?;
 
     {
         let mut settings = state.settings.lock().unwrap();
@@ -906,7 +924,7 @@ async fn apply_profile(
     let install_id = state.settings.lock().unwrap().install_id.clone();
     let mut pulled = 0usize;
     for id in applied.tables {
-        match shared::install(id, &install_id, &synced_dir()) {
+        match shared::install(id, &install_id, &synced_dir(), None) {
             Ok(_) => pulled += 1,
             Err(e) => tracing::warn!("could not fetch table {id}: {e}"),
         }
@@ -1803,7 +1821,10 @@ async fn answer_question(
     };
 
     let build = build_of(&state, &exe);
-    shared::rate(id, up, &install_id, &build)?;
+    // the executable it was actually played as. when that is not the one the
+    // table is filed under, saying so is what teaches the service the two go
+    // together and spares the next person the search
+    shared::rate(id, up, &install_id, &build, &exe)?;
 
     let mut settings = state.settings.lock().unwrap();
     if !settings.rated.contains(&id) {
@@ -2187,6 +2208,7 @@ fn main() {
             find_table,
             shared_tables,
             sort_options,
+            search_tables,
             install_shared,
             remove_table,
             pending_question,

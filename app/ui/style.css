@@ -1507,6 +1507,7 @@ input::placeholder { color: var(--faint); }
 .shared-facts { margin-top: 2px; font-size: 12px; color: var(--faint); }
 
 .verified {
+  display: inline-block;
   margin-left: 8px;
   padding: 1px 6px;
   border: 1px solid var(--accent-line);
@@ -1870,6 +1871,7 @@ body.maximised .win .when-big { display: block; }
 
 /* it says who wrote it, not that it works */
 .verified {
+  display: inline-block;
   margin-left: 7px;
   padding: 1px 6px;
   border: 1px solid var(--line);

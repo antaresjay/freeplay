@@ -142,11 +142,60 @@ fn now() -> i64 {
         .unwrap_or_default()
 }
 
+// point a table at a different executable.
+//
+// somebody searched by name, found the table filed under falloutw.exe and
+// asked for it on a game running falloutwHR.exe. matching is an exact compare
+// on the file name, so without this the table downloads perfectly and then
+// never appears anywhere, which looks far more broken than an error would.
+//
+// only the one line under [game] moves. rewriting the whole file from the
+// parsed table would drop anything the parser does not keep
+fn point_at(toml: &str, exe: &str) -> String {
+    let mut out = String::with_capacity(toml.len() + exe.len());
+    let mut in_game = false;
+    let mut done = false;
+
+    for line in toml.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('[') {
+            in_game = trimmed.starts_with("[game]");
+        }
+        if !done && in_game && trimmed.starts_with("exe") {
+            if let Some(at) = line.find("exe") {
+                out.push_str(&line[..at]);
+                out.push_str(&format!("exe = {exe:?}"));
+                out.push('\n');
+                done = true;
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 // what comes back has already been parsed and validated by the client before
 // it lands anywhere the app will load from
-pub fn install(id: i64, install_id: &str, into: &PathBuf) -> Result<(String, Table), String> {
+pub fn install(
+    id: i64,
+    install_id: &str,
+    into: &PathBuf,
+    for_exe: Option<&str>,
+) -> Result<(String, Table), String> {
     let wire = Live;
-    let (text, table) = Community::new(&endpoint(), &wire).fetch(id, install_id)?;
+    let (mut text, mut table) = Community::new(&endpoint(), &wire).fetch(id, install_id)?;
+
+    // asked for on a game whose binary is called something else
+    if let Some(wanted) = for_exe.filter(|w| !w.eq_ignore_ascii_case(&table.game.exe)) {
+        let moved = point_at(&text, wanted);
+        // parse it again rather than trusting the edit. a table that no longer
+        // reads is worse than one filed under the wrong name
+        table = Table::parse(&moved)
+            .map_err(|e| format!("could not point that table at {wanted}: {e}"))?;
+        text = moved;
+    }
 
     std::fs::create_dir_all(into).map_err(|e| e.to_string())?;
     let name = format!(
@@ -157,9 +206,33 @@ pub fn install(id: i64, install_id: &str, into: &PathBuf) -> Result<(String, Tab
     Ok((text, table))
 }
 
-pub fn rate(id: i64, up: bool, install_id: &str, build: &str) -> Result<(), String> {
+// for_exe is what the game was really running. an upvote from somebody who
+// took a table filed under one name and used it under another is the only
+// thing that tells the service the two go together, which is what saves the
+// next person the search
+pub fn rate(id: i64, up: bool, install_id: &str, build: &str, for_exe: &str) -> Result<(), String> {
     let wire = Live;
-    Community::new(&endpoint(), &wire).vote(id, install_id, up, build, "")
+    Community::new(&endpoint(), &wire).vote(id, install_id, up, build, for_exe)
+}
+
+pub fn search(query: &str) -> Result<Vec<Shared>, String> {
+    let wire = Live;
+    let found = Community::new(&endpoint(), &wire).search(query)?;
+    Ok(found
+        .into_iter()
+        .map(|listing| {
+            Shared::from(
+                freeplay_sync::rank::Scored {
+                    fit: freeplay_sync::rank::Fit::Unknown,
+                    listing,
+                    score: 0.0,
+                    recommended: false,
+                },
+                false,
+                "",
+            )
+        })
+        .collect())
 }
 
 pub fn share(
@@ -205,4 +278,65 @@ pub fn forget() -> Result<(), String> {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TABLE: &str = r#"[game]
+name = "Fallout"
+exe = "falloutw.exe"
+verified = ["1.2"]
+notes = "exe = \"decoy.exe\" in the notes"
+
+[[cheat]]
+id = "caps"
+name = "Caps"
+category = "resources"
+type = "freeze"
+value_type = "i32"
+value = 9999
+
+[cheat.locator]
+find = "pattern"
+pattern = "48 8B 05 ?? ?? ?? ??"
+offset = 3
+"#;
+
+    #[test]
+    fn pointing_a_table_at_another_binary_moves_one_line() {
+        let moved = point_at(TABLE, "falloutwHR.exe");
+        let table = Table::parse(&moved).expect("still reads");
+
+        assert_eq!(table.game.exe, "falloutwHR.exe");
+        assert_eq!(table.game.name, "Fallout");
+        assert_eq!(table.cheats.len(), 1, "the cheat survived");
+    }
+
+    // only the one under [game]. a cheat with its own exe key, or the word in
+    // a note, is none of its business
+    // only the one under [game]. the word turning up in a note is none of
+    // its business, and neither is anything in a [[cheat]]
+    #[test]
+    fn it_leaves_everything_outside_the_game_block_alone() {
+        let moved = point_at(TABLE, "other.exe");
+
+        assert!(moved.contains(r#"exe = \"decoy.exe\" in the notes"#));
+        assert!(moved.contains(r#"pattern = "48 8B 05 ?? ?? ?? ??""#));
+        assert_eq!(moved.matches("other.exe").count(), 1);
+    }
+
+    #[test]
+    fn a_name_with_awkward_characters_is_quoted_properly() {
+        let moved = point_at(TABLE, r#"od d"name.exe"#);
+        let table = Table::parse(&moved).expect("still reads");
+        assert_eq!(table.game.exe, r#"od d"name.exe"#);
+    }
+
+    #[test]
+    fn a_table_with_no_game_exe_is_left_as_it_was() {
+        let bare = "[game]\nname = \"Thing\"\n";
+        assert_eq!(point_at(bare, "thing.exe"), bare);
+    }
 }
