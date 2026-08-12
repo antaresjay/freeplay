@@ -8,8 +8,11 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::play::Play;
+
+static TAKEN: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Details {
@@ -60,7 +63,16 @@ fn snapshot(storage: &Path) -> Option<Snapshot> {
         return None;
     }
 
-    let dir = std::env::temp_dir().join(format!("freeplay-galaxy-{}", std::process::id()));
+    // the library page asks for this on a timer and again whenever it is
+    // drawn, so two of these are in flight constantly. one directory shared
+    // between them means the second call deletes the copy the first is still
+    // reading and both come back with nothing
+    let dir = std::env::temp_dir().join(format!(
+        "freeplay-galaxy-{}-{}",
+        std::process::id(),
+        TAKEN.fetch_add(1, Ordering::Relaxed)
+    ));
+    // a pid gets reused after a crash, and the count starts again with it
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).ok()?;
 
@@ -111,51 +123,82 @@ pub fn details() -> HashMap<String, Details> {
 }
 
 #[cfg(windows)]
-fn read(path: &Path) -> rusqlite::Result<HashMap<String, Details>> {
-    let db = rusqlite::Connection::open(path)?;
-    let mut out: HashMap<String, Details> = HashMap::new();
+type Found = HashMap<String, Details>;
 
-    // more than one windows account can have played the same game, same as
-    // steam. the bigger number is the interesting one
-    let mut minutes = db.prepare("select releaseKey, minutesInGame from GameTimes")?;
-    for row in minutes.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))? {
-        let (key, played) = row?;
+// galaxy has changed column types between versions and will again. these are
+// three separate reads on purpose: a surprise in one table costs that one
+// field, not the other two. reading the date as a number instead of a string
+// once took every game's genre down with it
+#[cfg(windows)]
+fn read(path: &Path) -> rusqlite::Result<Found> {
+    let db = rusqlite::Connection::open(path)?;
+    let mut out = Found::new();
+
+    let _ = minutes(&db, &mut out);
+    let _ = last_played(&db, &mut out);
+    let _ = genres(&db, &mut out);
+
+    out.retain(|_, d| !d.is_empty());
+    Ok(out)
+}
+
+// more than one windows account can have played the same game, same as steam.
+// the bigger number is the interesting one
+#[cfg(windows)]
+fn minutes(db: &rusqlite::Connection, out: &mut Found) -> rusqlite::Result<()> {
+    let mut stmt = db.prepare("select releaseKey, minutesInGame from GameTimes")?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+    for (key, played) in rows.flatten() {
         let (Some(id), true) = (game_id(&key), played > 0) else {
             continue;
         };
         let held = &mut out.entry(id.to_string()).or_default().play.minutes;
         *held = Some((*held).unwrap_or(0).max(played as u32));
     }
+    Ok(())
+}
 
-    let mut dates = db.prepare("select gameReleaseKey, lastPlayedDate from LastPlayedDates")?;
-    for row in dates.query_map([], |r| {
+// stored as 'YYYY-MM-DD HH:MM:SS' in utc, not as seconds, whatever the older
+// galaxy builds did. sqlite already knows how to read both, so it does the
+// conversion rather than this growing a calendar
+#[cfg(windows)]
+fn last_played(db: &rusqlite::Connection, out: &mut Found) -> rusqlite::Result<()> {
+    let mut stmt = db.prepare(
+        "select gameReleaseKey, case typeof(lastPlayedDate) \
+           when 'integer' then lastPlayedDate \
+           else cast(strftime('%s', lastPlayedDate) as integer) \
+         end from LastPlayedDates",
+    )?;
+    let rows = stmt.query_map([], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
-    })? {
-        let (key, when) = row?;
+    })?;
+    for (key, when) in rows.flatten() {
         let (Some(id), Some(at)) = (game_id(&key), when.and_then(a_real_date)) else {
             continue;
         };
         let held = &mut out.entry(id.to_string()).or_default().play.last_played;
         *held = Some((*held).unwrap_or(0).max(at));
     }
+    Ok(())
+}
 
-    // genre sits in a json blob under a type id that is not stable across
-    // galaxy versions, so it gets looked up by name
-    let mut meta = db.prepare(
+// genre sits in a json blob under a type id that is not stable across galaxy
+// versions, so it gets looked up by name
+#[cfg(windows)]
+fn genres(db: &rusqlite::Connection, out: &mut Found) -> rusqlite::Result<()> {
+    let mut stmt = db.prepare(
         "select p.releaseKey, p.value from GamePieces p \
          join GamePieceTypes t on t.id = p.gamePieceTypeId where t.type = 'meta'",
     )?;
-    for row in meta.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
-        let (key, json) = row?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    for (key, json) in rows.flatten() {
         let Some(id) = game_id(&key) else { continue };
-        let genres = genres_in(&json);
-        if !genres.is_empty() {
-            out.entry(id.to_string()).or_default().genres = genres;
+        let found = genres_in(&json);
+        if !found.is_empty() {
+            out.entry(id.to_string()).or_default().genres = found;
         }
     }
-
-    out.retain(|_, d| !d.is_empty());
-    Ok(out)
+    Ok(())
 }
 
 fn genres_in(json: &str) -> Vec<String> {
@@ -210,5 +253,162 @@ mod tests {
     fn no_galaxy_is_no_snapshot() {
         let nowhere = std::env::temp_dir().join("freeplay-galaxy-does-not-exist");
         assert!(snapshot(&nowhere).is_none());
+    }
+
+    // two of these overlapping used to share one directory, and the second
+    // deleted the copy the first was reading. every caller got nothing
+    #[test]
+    fn overlapping_snapshots_do_not_delete_each_other() {
+        let storage = std::env::temp_dir().join(format!("freeplay-fake-galaxy-{}", id()));
+        std::fs::create_dir_all(&storage).unwrap();
+        std::fs::write(storage.join("galaxy-2.0.db"), b"pretend this is sqlite").unwrap();
+
+        let held: Vec<_> = (0..4).filter_map(|_| snapshot(&storage)).collect();
+        assert_eq!(held.len(), 4, "every call got a snapshot");
+
+        for taken in &held {
+            assert!(
+                taken.db.is_file(),
+                "{} was deleted underneath us",
+                taken.db.display()
+            );
+        }
+        let places: std::collections::HashSet<_> = held.iter().map(|t| &t.dir).collect();
+        assert_eq!(places.len(), 4, "each one got its own directory");
+
+        drop(held);
+        let _ = std::fs::remove_dir_all(&storage);
+    }
+
+    fn id() -> u32 {
+        std::process::id()
+    }
+
+    // galaxy declares lastPlayedDate TEXT NOT NULL and writes
+    // '2026-08-12 03:10:10'. reading it as a number failed the statement, and
+    // because that error came back out of read() every game lost its genre
+    // and its playtime too. the column was empty when this was written, so
+    // nothing caught it until a game had actually been launched
+    #[cfg(windows)]
+    #[test]
+    fn a_date_stored_as_text_costs_nothing_else() {
+        let dir = std::env::temp_dir().join(format!("freeplay-galaxy-text-{}", id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("galaxy-2.0.db");
+
+        let db = rusqlite::Connection::open(&path).unwrap();
+        db.execute_batch(
+            "create table GameTimes (userId int64, releaseKey text, minutesInGame int64);
+             create table LastPlayedDates (userId int64, gameReleaseKey text,
+                 lastPlayedDate text not null);
+             create table GamePieceTypes (id int64, type text);
+             create table GamePieces (releaseKey text, gamePieceTypeId int64, value text);
+             insert into GameTimes values (1, 'gog_1438861093', 3);
+             insert into LastPlayedDates values (1, 'gog_1438861093', '2026-08-12 03:10:10');
+             insert into GamePieceTypes values (71, 'meta');
+             insert into GamePieces values ('gog_1438861093', 71,
+                 '{\"genres\":[\"Adventure\",\"Indie\"]}');",
+        )
+        .unwrap();
+        drop(db);
+
+        let found = read(&path).unwrap();
+        let one = found.get("1438861093").expect("the game came back");
+        assert_eq!(one.play.minutes, Some(3));
+        assert_eq!(one.play.last_played, Some(1_786_504_210), "utc, not local");
+        assert_eq!(
+            one.genres,
+            ["Adventure", "Indie"],
+            "a date did not eat these"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // if a galaxy build ever declares that column a number instead. it takes
+    // integer affinity to reach that branch at all: a number written into a
+    // text column comes back as the string, which is the case below
+    #[cfg(windows)]
+    #[test]
+    fn a_date_in_a_number_column_still_reads() {
+        let dir = std::env::temp_dir().join(format!("freeplay-galaxy-int-{}", id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("galaxy-2.0.db");
+
+        let db = rusqlite::Connection::open(&path).unwrap();
+        db.execute_batch(
+            "create table LastPlayedDates (userId int64, gameReleaseKey text,
+                 lastPlayedDate int64);
+             insert into LastPlayedDates values (1, 'gog_55', 1786504210);",
+        )
+        .unwrap();
+        drop(db);
+
+        let found = read(&path).unwrap();
+        assert_eq!(
+            found.get("55").map(|d| d.play.last_played),
+            Some(Some(1_786_504_210))
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // anything it cannot read as a date comes back blank, including a number
+    // dropped into the text column. a wrong "last played" is worse than none
+    #[cfg(windows)]
+    #[test]
+    fn a_date_it_cannot_read_is_left_blank() {
+        let dir = std::env::temp_dir().join(format!("freeplay-galaxy-junk-{}", id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("galaxy-2.0.db");
+
+        let db = rusqlite::Connection::open(&path).unwrap();
+        db.execute_batch(
+            "create table LastPlayedDates (userId int64, gameReleaseKey text,
+                 lastPlayedDate text not null);
+             insert into LastPlayedDates values (1, 'gog_56', 'not a date at all');
+             insert into LastPlayedDates values (1, 'gog_57', 1786504210);
+             insert into LastPlayedDates values (1, 'gog_58', '');",
+        )
+        .unwrap();
+        drop(db);
+
+        let found = read(&path).unwrap();
+        for key in ["56", "57", "58"] {
+            assert!(!found.contains_key(key), "{key} was guessed at");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // a table galaxy renamed or removed should cost that field only
+    #[cfg(windows)]
+    #[test]
+    fn a_missing_table_does_not_take_the_others_with_it() {
+        let dir = std::env::temp_dir().join(format!("freeplay-galaxy-gone-{}", id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("galaxy-2.0.db");
+
+        let db = rusqlite::Connection::open(&path).unwrap();
+        db.execute_batch(
+            "create table GamePieceTypes (id int64, type text);
+             create table GamePieces (releaseKey text, gamePieceTypeId int64, value text);
+             insert into GamePieceTypes values (71, 'meta');
+             insert into GamePieces values ('gog_99', 71, '{\"genres\":[\"Puzzle\"]}');",
+        )
+        .unwrap();
+        drop(db);
+
+        let found = read(&path).unwrap();
+        assert_eq!(
+            found.get("99").map(|d| d.genres.clone()),
+            Some(vec!["Puzzle".to_string()])
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
