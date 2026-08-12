@@ -44,9 +44,12 @@ const GAMES = [
   {key:"steam:1222140", name:"Detroit Become Human", store:"Steam", exe:"Detroit.exe",
    dir:"D:/games/detroit", app_id:"1222140", running:false, has_table:false,
    guard:null, minutes:1065, last_played:1783896512, favourite:false},
+  // gog: no playtime, because that only exists if galaxy is installed, but a
+  // version and genres out of the registry and galaxy's database
   {key:"gog:noexe", name:"Some GOG Game", store:"GOG", exe:null,
    dir:"D:/games/gog", app_id:null, running:false, has_table:false,
-   guard:null, minutes:null, last_played:null, favourite:false},
+   guard:null, minutes:null, last_played:null, favourite:false,
+   version:"2.2.3", genres:["Adventure","Indie","Platform","Arcade"]},
   {key:"steam:2073850", name:"THE FINALS", store:"Steam", exe:"Discovery.exe",
    dir:"D:/games/finals", app_id:"2073850", running:false, has_table:false,
    guard:"easyanticheat", minutes:73451, last_played:1786142235, favourite:false}
@@ -701,6 +704,24 @@ PROBE = r"""
   note(document.querySelectorAll("#cheat-groups .bone").length === 0,
        "a game with no executable does not sit on placeholders");
   note(visible("no-table"), "it says there is no table instead");
+
+  // what gog knows and steam does not, and what it does not know either
+  const labels = [...document.querySelectorAll("#game-facts .fact span")]
+    .map(s => s.textContent);
+  const valueOf = (want) => {
+    const box = [...document.querySelectorAll("#game-facts .fact")]
+      .find(f => f.querySelector("span").textContent === want);
+    return box && box.querySelector("b").textContent;
+  };
+  note(valueOf("Store") === "GOG", "the store is named");
+  note(valueOf("Version") === "2.2.3", "the installed version is shown");
+  note(valueOf("Genre") === "Adventure, Indie",
+       "genre is cut to two so it does not run the row over");
+  note(document.querySelector("#game-facts .fact[title]").title ===
+       "Adventure, Indie, Platform, Arcade",
+       "with the rest on hover rather than thrown away");
+  note(!labels.includes("Play time") && !labels.includes("Last played"),
+       "and nothing is invented for the two gog cannot answer");
 
   // a game with an anti-cheat is refused outright
   const finals = [...rail].find(r => r.textContent.includes("FINALS"));

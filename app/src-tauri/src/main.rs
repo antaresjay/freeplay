@@ -11,7 +11,7 @@ use freeplay_core::target::Target;
 use freeplay_core::value::ValueKind;
 use freeplay_core::windows_target::{processes, WindowsTarget};
 use freeplay_core::Error as CoreError;
-use freeplay_library::{discover, InstalledGame};
+use freeplay_library::{discover, InstalledGame, Store};
 use freeplay_session::Session;
 use freeplay_table::resolve::State as CheatState;
 use freeplay_table::Table;
@@ -35,9 +35,10 @@ struct App {
     target: Mutex<Option<Arc<dyn Target>>>,
     session: Mutex<Option<Session>>,
     search: Mutex<Option<Search>>,
-    // which art each game has, keyed by app id. the bytes go over the art
-    // protocol, this is just the three exists checks
-    art: Mutex<HashMap<String, ArtUrls>>,
+    // where each game's pictures are, keyed by app id. resolved once here
+    // because working it out needs the store and the install dir, and the
+    // protocol handler serving the bytes has neither
+    art: Mutex<HashMap<String, freeplay_library::art::Art>>,
     // anti-cheat found in a game's folder, keyed by install dir
     guards: Mutex<HashMap<PathBuf, Option<Guard>>>,
     // walking every install dir takes seconds, so do it once and then only
@@ -83,9 +84,13 @@ struct GameRow {
     // the file it was found in, kept only when the product could not be named,
     // so the page can show what it actually saw instead of a shrug
     guard_file: Option<String>,
-    // minutes played and when, straight out of steam
+    // minutes played and when. steam keeps both in a config file, gog only in
+    // galaxy's database, so an offline gog install has neither
     minutes: Option<u32>,
     last_played: Option<u64>,
+    // gog is the only one that tells us either of these
+    version: Option<String>,
+    genres: Vec<String>,
     favourite: bool,
 }
 
@@ -245,14 +250,19 @@ fn table_for(exe: &str) -> Option<Table> {
 // carries the build it was judged on
 fn build_of(state: &tauri::State<'_, App>, exe: &str) -> String {
     let wanted = exe.to_lowercase();
-    library(state, false)
-        .into_iter()
-        .find(|game| {
-            game.main_exe()
-                .is_some_and(|found| found.to_lowercase() == wanted)
-        })
-        .and_then(|game| game.executables.first().cloned())
-        .and_then(|path| freeplay_library::build::of(&path))
+    let Some(game) = library(state, false).into_iter().find(|game| {
+        game.main_exe()
+            .is_some_and(|found| found.to_lowercase() == wanted)
+    }) else {
+        return String::new();
+    };
+
+    game.executables
+        .first()
+        .and_then(|path| freeplay_library::build::of(path))
+        // plenty of games carry no version resource at all. gog writes one to
+        // the registry, which is the only thing those have
+        .or(game.version)
         .unwrap_or_default()
 }
 
@@ -402,6 +412,7 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
         .collect();
     let tables = tables(&state);
     let played = freeplay_library::play::steam();
+    let galaxy = freeplay_library::galaxy::details();
     let favourites = state.settings.lock().unwrap().favourites.clone();
 
     Ok(library(&state, refresh)
@@ -410,11 +421,18 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
             let exe = game.main_exe();
             let lower = exe.as_deref().unwrap_or_default().to_lowercase();
             let key = key_for(&game);
-            let play = game
-                .app_id
-                .as_deref()
+            // a steam app id and a gog game id are both just numbers, so the
+            // store has to pick which list to look in
+            let mine = game.app_id.as_deref().filter(|_| game.store != Store::Gog);
+            let theirs = game.app_id.as_deref().filter(|_| game.store == Store::Gog);
+            let play = mine
                 .and_then(|id| played.get(id))
                 .copied()
+                .or_else(|| theirs.and_then(|id| galaxy.get(id)).map(|d| d.play))
+                .unwrap_or_default();
+            let genres = theirs
+                .and_then(|id| galaxy.get(id))
+                .map(|d| d.genres.clone())
                 .unwrap_or_default();
 
             let guard = guard_for(&state, &game.install_dir);
@@ -428,6 +446,8 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
                     .is_some_and(|e| tables.iter().any(|t| t.matches_process(e))),
                 minutes: play.minutes,
                 last_played: play.last_played,
+                version: game.version,
+                genres,
                 favourite: favourites.contains(&key),
                 key,
                 name: game.name,
@@ -1287,26 +1307,40 @@ fn art_url(app_id: &str, kind: &str) -> String {
     }
 }
 
-#[tauri::command]
-fn game_art(state: tauri::State<'_, App>, app_id: String) -> ArtUrls {
-    if let Some(cached) = state.art.lock().unwrap().get(&app_id) {
-        return cached.clone();
-    }
-
-    let found = freeplay_library::art::steam(&app_id);
-    let url = |present: bool, kind: &str| present.then(|| art_url(&app_id, kind));
-    let urls = ArtUrls {
+fn urls_for(app_id: &str, found: &freeplay_library::art::Art) -> ArtUrls {
+    let url = |present: bool, kind: &str| present.then(|| art_url(app_id, kind));
+    ArtUrls {
         cover: url(found.cover.is_some(), "cover"),
         hero: url(found.hero.is_some(), "hero"),
         logo: url(found.logo.is_some(), "logo"),
-    };
+    }
+}
 
-    state.art.lock().unwrap().insert(app_id, urls.clone());
+#[tauri::command]
+fn game_art(state: tauri::State<'_, App>, app_id: String) -> ArtUrls {
+    if let Some(cached) = state.art.lock().unwrap().get(&app_id) {
+        return urls_for(&app_id, cached);
+    }
+
+    // steam art needs the id, gog art needs the store and the folder too, so
+    // go back to the game rather than guessing from the id alone
+    let found = library(&state, false)
+        .iter()
+        .find(|g| g.app_id.as_deref() == Some(app_id.as_str()))
+        .map(freeplay_library::art::find)
+        .unwrap_or_default();
+
+    let urls = urls_for(&app_id, &found);
+    state.art.lock().unwrap().insert(app_id, found);
     urls
 }
 
-// serves what steam already cached. path is /<appid>/<kind>
-fn serve_art(path: &str) -> tauri::http::Response<Vec<u8>> {
+// serves what the store already cached. path is /<appid>/<kind>, and the
+// pictures themselves were located when the page asked for them
+fn serve_art(
+    path: &str,
+    found: Option<freeplay_library::art::Art>,
+) -> tauri::http::Response<Vec<u8>> {
     let deny = || {
         tauri::http::Response::builder()
             .status(404)
@@ -1323,7 +1357,7 @@ fn serve_art(path: &str) -> tauri::http::Response<Vec<u8>> {
         return deny();
     }
 
-    let found = freeplay_library::art::steam(app_id);
+    let Some(found) = found else { return deny() };
     let file = match kind {
         "cover" => found.cover,
         "hero" => found.hero,
@@ -1335,8 +1369,17 @@ fn serve_art(path: &str) -> tauri::http::Response<Vec<u8>> {
     let Ok(bytes) = std::fs::read(&file) else {
         return deny();
     };
-    let mime = match file.extension().and_then(|e| e.to_str()) {
+    let mime = match file
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
         Some("png") => "image/png",
+        // galaxy caches everything as webp, and the offline installer leaves
+        // an ico. served as jpeg both render as a broken picture
+        Some("webp") => "image/webp",
+        Some("ico") => "image/x-icon",
         _ => "image/jpeg",
     };
 
@@ -2082,9 +2125,14 @@ fn main() {
             settings: Mutex::new(settings::load()),
             ..Default::default()
         })
-        .register_asynchronous_uri_scheme_protocol("art", |_ctx, request, responder| {
+        .register_asynchronous_uri_scheme_protocol("art", |ctx, request, responder| {
             let path = request.uri().path().to_string();
-            std::thread::spawn(move || responder.respond(serve_art(&path)));
+            let handle = ctx.app_handle().clone();
+            std::thread::spawn(move || {
+                let id = path.trim_matches('/').split('/').next().unwrap_or_default();
+                let found = handle.state::<App>().art.lock().unwrap().get(id).cloned();
+                responder.respond(serve_art(&path, found))
+            });
         })
         .setup(|app| {
             // the window is built hidden, so this is what puts it on screen.

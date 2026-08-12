@@ -618,10 +618,18 @@ function drawGamePage() {
   const facts = $("game-facts");
   facts.innerHTML = "";
   facts.appendChild(fact("Store", game.store));
+  if (game.version) facts.appendChild(fact("Version", game.version));
   const played = playedFor(game.minutes);
   if (played) facts.appendChild(fact("Play time", played));
   const seen = lastPlayed(game.last_played);
   if (seen) facts.appendChild(fact("Last played", seen));
+  // four of them is a paragraph, and the row has the title sitting next to it
+  const kinds = game.genres || [];
+  if (kinds.length) {
+    const genre = fact("Genre", kinds.slice(0, 2).join(", "));
+    genre.title = kinds.join(", ");
+    facts.appendChild(genre);
+  }
   if (attached && attached.process === game.exe) {
     facts.appendChild(fact("Status", `Attached, pid ${attached.pid}`, true));
     if (attached.arch) facts.appendChild(fact("Build", attached.arch));
