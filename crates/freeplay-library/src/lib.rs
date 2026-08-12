@@ -4,6 +4,7 @@
 //! in its own place. None of them agree, so this reads all of them and returns
 //! one list.
 
+pub mod appinfo;
 pub mod art;
 pub mod build;
 pub mod galaxy;

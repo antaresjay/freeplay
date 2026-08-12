@@ -413,6 +413,9 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
     let tables = tables(&state);
     let played = freeplay_library::play::steam();
     let galaxy = freeplay_library::galaxy::details();
+    let steam_genres = freeplay_library::steam::root()
+        .map(|root| freeplay_library::appinfo::genres(&root))
+        .unwrap_or_default();
     let favourites = state.settings.lock().unwrap().favourites.clone();
 
     Ok(library(&state, refresh)
@@ -433,6 +436,7 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
             let genres = theirs
                 .and_then(|id| galaxy.get(id))
                 .map(|d| d.genres.clone())
+                .or_else(|| mine.and_then(|id| steam_genres.get(id)).cloned())
                 .unwrap_or_default();
 
             let guard = guard_for(&state, &game.install_dir);
