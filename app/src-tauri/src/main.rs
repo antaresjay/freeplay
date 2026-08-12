@@ -1044,7 +1044,15 @@ fn set_overlay(
         settings::save(&settings)?;
     }
 
-    if !state.settings.lock().unwrap().overlay {
+    /* the window has to exist before the first press, not because of the
+    delay but because building one steals the foreground. press the key in a
+    game and windows would hand focus to whatever was behind it, drop the game
+    out of fullscreen, and then the check would refuse because the game was no
+    longer in front. only startup was building it, and only if the setting was
+    already on. */
+    if state.settings.lock().unwrap().overlay {
+        overlay::prepare(&app)?;
+    } else {
         overlay::hide(&app);
     }
     rebind_hotkey(&app)?;

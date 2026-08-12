@@ -1070,6 +1070,7 @@ version = "0.1.1"
 dependencies = [
  "clap",
  "freeplay-aa",
+ "freeplay-asm",
  "freeplay-core",
  "freeplay-id",
  "freeplay-library",

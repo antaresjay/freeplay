@@ -66,6 +66,12 @@ pub fn show(app: &tauri::AppHandle, pid: Option<u32>) -> Result<(), String> {
         tracing::info!("overlay: {} is in front, wanted {pid}", whats_in_front());
         return Err("bring the game to the front first".into());
     }
+    // nothing gets composited over an exclusive fullscreen game, and taking
+    // focus off one drops it to the taskbar. better to say so than to
+    // minimise the game and show a panel behind it
+    if exclusive_fullscreen() {
+        return Err("this game is in exclusive fullscreen, so nothing can draw over it. switch it to borderless".into());
+    }
 
     prepare(app)?;
     let Some(window) = app.get_webview_window(LABEL) else {
@@ -107,6 +113,22 @@ pub fn belongs_here(app: &tauri::AppHandle, pid: u32) -> bool {
     app.get_webview_window(LABEL)
         .and_then(|w| w.hwnd().ok())
         .is_some_and(|ours| ours == front)
+}
+
+// the shell is asked rather than measured. a borderless window fills the
+// screen too, so the rectangle says nothing, but windows already tracks this
+// to know when to hold back notifications
+#[cfg(windows)]
+fn exclusive_fullscreen() -> bool {
+    use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_RUNNING_D3D_FULL_SCREEN};
+
+    unsafe { SHQueryUserNotificationState() }
+        .is_ok_and(|state| state == QUNS_RUNNING_D3D_FULL_SCREEN)
+}
+
+#[cfg(not(windows))]
+fn exclusive_fullscreen() -> bool {
+    false
 }
 
 #[cfg(windows)]
