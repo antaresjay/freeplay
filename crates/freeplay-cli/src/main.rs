@@ -2,6 +2,7 @@
 //! way to try the engine against a real game, and because finding an address is
 //! a conversation rather than one command
 
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -325,6 +326,8 @@ fn rate(id: i64, up: bool, install: &str) -> Result<(), String> {
         install.to_string()
     };
 
+    // the cli votes on a table by id without a game in front of it, so it has
+    // nothing to say about which executable it was used on
     let wire = freeplay_sync::community::Live;
     service(&wire).vote(id, &install, up, "", "")?;
     println!(
@@ -470,6 +473,78 @@ fn import(file: &PathBuf, exe: Option<&str>, out: Option<&Path>) -> Result<(), S
 
 // everything that can be said about a table with no game in front of you:
 // does it parse, does it hold together, and would the scripts be refused
+// actually run the assembler over a script rather than only parsing it.
+//
+// parsing catches a malformed script. it says nothing about whether the
+// instructions inside can be encoded, and that is where cheat engine tables
+// really break: a cast, a jump hint, a mnemonic nobody implemented. those only
+// showed up when somebody launched the game and armed the cheat, which is a
+// terrible place to find out.
+//
+// no process is needed for this. addresses are made up and every symbol the
+// script never defines is stubbed, so what is left is genuine syntax the
+// assembler cannot encode.
+fn will_it_assemble(script: &freeplay_aa::Script) -> Vec<String> {
+    use freeplay_asm::{assemble, AsmError, Bits};
+
+    let mut found = Vec::new();
+    for half in [&script.enable, &script.disable] {
+        for section in &half.sections {
+            // both, because a table is written for one architecture and
+            // nothing here says which. only a failure under both is real
+            // no process here, so readmem gets nops of the right length. the
+            // point is whether the rest of the section encodes, not what the
+            // bytes turn out to be
+            let body = freeplay_aa::expand_readmem(&section.body, |_, _| None);
+
+            let complained = [Bits::X64, Bits::X86].map(|bits| {
+                let mut symbols: HashMap<String, u64> = HashMap::new();
+                // feeding undefined symbols back in converges: every pass
+                // either names one more or fails on something that is not a
+                // symbol at all
+                for _ in 0..64 {
+                    match assemble(&body, 0x1000_0000, bits, &symbols) {
+                        Ok(_) => return None,
+                        Err(e) => match deepest(&e) {
+                            AsmError::UndefinedSymbol(name) => {
+                                symbols.insert(name.clone(), 0x2000_0000);
+                            }
+                            // a made up origin can put a jump out of reach,
+                            // which says nothing about the script
+                            AsmError::OutOfRange { .. } => return None,
+                            _ => return Some(format!("{e}{}", blamed(&body, &e))),
+                        },
+                    }
+                }
+                None
+            });
+
+            if let [Some(a), Some(_)] = &complained {
+                found.push(a.clone());
+            }
+        }
+    }
+    found
+}
+
+fn deepest(e: &freeplay_asm::AsmError) -> &freeplay_asm::AsmError {
+    match e {
+        freeplay_asm::AsmError::At { source, .. } => deepest(source),
+        other => other,
+    }
+}
+
+// a line number on its own means opening the table to find out what is on it
+fn blamed(body: &str, e: &freeplay_asm::AsmError) -> String {
+    let freeplay_asm::AsmError::At { line, .. } = e else {
+        return String::new();
+    };
+    match body.lines().nth(line.saturating_sub(1)) {
+        Some(text) => format!("   <- {}", text.trim()),
+        None => String::new(),
+    }
+}
+
 fn check(paths: &[PathBuf], quiet: bool, json: bool) -> Result<(), String> {
     let mut files = Vec::new();
     for path in paths {
@@ -515,11 +590,18 @@ fn check(paths: &[PathBuf], quiet: bool, json: bool) -> Result<(), String> {
             if let freeplay_table::schema::Action::Script { source } = &cheat.action {
                 scripts += 1;
                 match freeplay_aa::parse(source) {
-                    Ok(script) => trouble.extend(
-                        freeplay_aa::safety::check(&script)
-                            .iter()
-                            .map(|r| format!("{}: {r}", cheat.id)),
-                    ),
+                    Ok(script) => {
+                        trouble.extend(
+                            freeplay_aa::safety::check(&script)
+                                .iter()
+                                .map(|r| format!("{}: {r}", cheat.id)),
+                        );
+                        trouble.extend(
+                            will_it_assemble(&script)
+                                .iter()
+                                .map(|r| format!("{}: {r}", cheat.id)),
+                        );
+                    }
                     Err(e) => trouble.push(format!("{}: {e}", cheat.id)),
                 }
             }
