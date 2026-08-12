@@ -1627,6 +1627,14 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
                 row.state = if live { "on".into() } else { label.to_string() };
                 row.reason = reason;
                 row.armed = session.is_armed(&cheat.id);
+                // ready, armed and still not on means we tried and it did not
+                // take. saying so beats leaving it looking like it is waiting
+                if !live && row.armed && row.state == "ready" {
+                    if let Some(why) = session.why_not(&cheat.id) {
+                        row.state = "broken".into();
+                        row.reason = why;
+                    }
+                }
                 row.live = live;
                 if row.editable {
                     row.current = session

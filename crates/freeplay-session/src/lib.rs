@@ -59,7 +59,10 @@ pub struct Session {
     armed: Arc<Mutex<HashSet<String>>>,
     // numbers the player typed, over whatever the table suggests
     chosen: Arc<Mutex<HashMap<String, Scalar>>>,
-    tried: Arc<Mutex<HashMap<String, Instant>>>,
+    // when we last failed to turn a cheat on, and why. the reason is kept
+    // because a script that will not inject looks exactly like one that is
+    // waiting for the game, and the difference is the whole answer
+    tried: Arc<Mutex<HashMap<String, (Instant, String)>>>,
     // whether anything was ever switched on here. asking somebody whether a
     // table worked when they never turned a cheat on is asking them to guess
     used: Arc<AtomicBool>,
@@ -214,7 +217,10 @@ impl Session {
         for cheat in order {
             {
                 let tried = self.tried.lock().unwrap();
-                if tried.get(&cheat.id).is_some_and(|at| at.elapsed() < RETRY) {
+                if tried
+                    .get(&cheat.id)
+                    .is_some_and(|(at, _)| at.elapsed() < RETRY)
+                {
                     continue;
                 }
             }
@@ -232,10 +238,21 @@ impl Session {
                     self.tried
                         .lock()
                         .unwrap()
-                        .insert(cheat.id.clone(), Instant::now());
+                        .insert(cheat.id.clone(), (Instant::now(), e.to_string()));
                 }
             }
         }
+    }
+
+    // why the last attempt to turn this on did not take. a script whose scan
+    // finds nothing sits there saying it is waiting for the game otherwise,
+    // and nobody can tell that apart from it genuinely waiting
+    pub fn why_not(&self, id: &str) -> Option<String> {
+        self.tried
+            .lock()
+            .unwrap()
+            .get(id)
+            .map(|(_, why)| why.clone())
     }
 
     pub fn active_ids(&self) -> Vec<String> {
