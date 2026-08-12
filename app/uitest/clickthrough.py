@@ -27,6 +27,16 @@ window.__errors = [];
 window.addEventListener("error", e => window.__errors.push(String(e.message)));
 window.addEventListener("unhandledrejection", e => window.__errors.push("promise: " + e.reason));
 
+/* this runs where app.js is loaded, after the markup and before any of its
+   timers, so it is the last moment the opening screen is guaranteed to be
+   untouched. recorded rather than looked at later, because a slow machine
+   gets to the probe after app.js has already taken the screen away and that
+   is not the same thing as it never having been there */
+window.__atStart = {
+  splash: !!document.getElementById("splash"),
+  booting: document.body.classList.contains("booting")
+};
+
 const GAMES = [
   {key:"steam:20920", name:"The Witcher 2", store:"Steam", exe:"witcher2.exe",
    dir:"D:/games/witcher2", app_id:"20920", running:true, has_table:false,
@@ -225,21 +235,39 @@ PROBE = r"""
   const settle = ms => new Promise(r => setTimeout(r, ms));
 
   /* the opening screen covers the whole window, so the way it fails is by
-     staying there. it also has to outlast a fast start rather than blinking */
-  note(!!document.getElementById("splash"), "the opening screen is up to begin with");
-  note(document.body.classList.contains("booting"), "and the window knows it is still starting");
+     staying there. it also has to outlast a fast start rather than blinking.
+
+     app.js holds it 1200ms then fades it for 600ms. how much of that is left
+     by the time this runs depends on how quickly the browser got here, and a
+     ci runner is a lot slower than this machine, so everything below is timed
+     off the page's own clock rather than assuming we arrived at zero */
+  const HOLD = 1200, FADE = 600;
+  const left = ms => Math.max(0, ms - performance.now());
+
+  note(window.__atStart.splash, "the opening screen is up to begin with");
+  note(window.__atStart.booting, "and the window knows it is still starting");
+  // the class and the screen have to agree. which of the two states we catch
+  // is a matter of timing, the two disagreeing never is
+  const splash = document.getElementById("splash");
+  const stillUp = !!splash && !splash.classList.contains("gone");
+  note(document.body.classList.contains("booting") === stillUp,
+       "and the booting class says the same as the screen does");
   const winButtons = document.getElementById("win-close").getBoundingClientRect();
   note(document.elementFromPoint(winButtons.x + winButtons.width / 2,
                                  winButtons.y + winButtons.height / 2)
          ?.closest("#win-close") !== null,
        "the close button is still the thing under the cursor while it is up");
 
-  await settle(500);
-  note(!!document.getElementById("splash"), "it holds for a moment on a fast start");
+  // still there a good way into the hold, so it cannot blink past on a fast
+  // start. only worth asserting if we got here early enough to watch it
+  const earlyEnough = performance.now() < HOLD - 400;
+  await settle(Math.min(500, left(HOLD - 100)));
+  note(!earlyEnough || !!document.getElementById("splash"),
+       "it holds for a moment on a fast start");
 
-  await settle(1400);
+  await settle(left(HOLD) + 250);
   note(!document.body.classList.contains("booting"), "then it lets go");
-  await settle(700);
+  await settle(left(HOLD + FADE) + 250);
   note(!document.getElementById("splash"), "and takes itself out of the page");
 
   /* a game with an anti-cheat cannot be used at all, so it goes to the end
