@@ -207,9 +207,89 @@ document.addEventListener("scroll", () => openPicker && openPicker.close(), true
 /* right clicking anywhere offered Back, Refresh, Save as, Print and Send tab
    to your devices, which is the webview underneath saying out loud that it is
    a browser. text boxes keep theirs, that one is cut and paste */
+/* the target of a key or click is not always an element. it can be the
+   document itself, which has no closest() */
+const inABox = (target) =>
+  !!target && typeof target.closest === "function" && !!target.closest("input, textarea");
+
 document.addEventListener("contextmenu", (e) => {
-  if (!e.target.closest("input, textarea")) e.preventDefault();
+  if (!inABox(e.target)) e.preventDefault();
 });
+
+/* the rest of what the webview brings with it. ctrl+f opened a find bar over
+   the window, ctrl+p offered to print the game page, f5 reloaded the whole
+   app back to the library. none of them belong in a desktop program and every
+   one of them is somebody's bug report.
+
+   editing keys are deliberately not here: ctrl+c, ctrl+v, ctrl+x, ctrl+a,
+   ctrl+z and ctrl+y all still work, and the text boxes need them. */
+const BROWSER_KEYS = new Set([
+  "f", // find bar
+  "g", // find next
+  "p", // print
+  "r", // reload
+  "s", // save page
+  "o", // open a file into the webview
+  "u", // view source
+  "j", // downloads
+  "h", // history
+  "d", // bookmark
+  "n", // new window
+  "t", // new tab
+  "=", // zoom in, and the unshifted +
+  "+",
+  "-",
+  "_",
+  "0", // zoom back to normal
+]);
+
+const BROWSER_FKEYS = new Set(["F3", "F5", "F6", "F7", "F11", "F12"]);
+
+document.addEventListener(
+  "keydown",
+  (e) => {
+    const typing = inABox(e.target);
+
+    if (BROWSER_FKEYS.has(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    // devtools, and the reload that ignores the cache
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && "IJCR".includes(e.key.toUpperCase())) {
+      e.preventDefault();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && BROWSER_KEYS.has(e.key.toLowerCase())) {
+      e.preventDefault();
+      return;
+    }
+    // alt+arrow is back and forward, and there is nowhere to go back to
+    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      return;
+    }
+    // backspace outside a text box used to mean back
+    if (e.key === "Backspace" && !typing) e.preventDefault();
+  },
+  true
+);
+
+// ctrl and the wheel zooms the whole window, which throws every layout out
+document.addEventListener(
+  "wheel",
+  (e) => {
+    if (e.ctrlKey) e.preventDefault();
+  },
+  { passive: false, capture: true }
+);
+
+/* windows does not care about case in a file name and neither does anything
+   that matches a table to a game. attaching reports whatever the table calls
+   the executable, which for everything converted is lowercase, while the
+   library reports the real file name. comparing those two exactly is what had
+   an attached game insisting it was not attached */
+const sameExe = (a, b) =>
+  !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
 
 const many = (n, one, more) => `${n} ${n === 1 ? one : more || one + "s"}`;
 
