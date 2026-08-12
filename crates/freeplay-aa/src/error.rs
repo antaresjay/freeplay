@@ -11,6 +11,11 @@ pub enum AaError {
     #[error("this one is written in {0}, not assembly, and Freeplay only runs assembly")]
     NotAssembly(&'static str),
 
+    #[error(
+        "{0} is a Cheat Engine plugin, and Freeplay does not run the Lua a table brings with it"
+    )]
+    NeedsPlugin(String),
+
     #[error("{0} is used but never scanned for, allocated or labelled")]
     UndefinedSymbol(String),
 

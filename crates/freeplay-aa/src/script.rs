@@ -61,6 +61,7 @@ pub fn parse(source: &str) -> Result<Script> {
 
     let mut enable = Vec::new();
     let mut disable = Vec::new();
+    let mut header = Vec::new();
     let mut active = None;
 
     for (index, raw) in source.lines().enumerate() {
@@ -91,8 +92,20 @@ pub fn parse(source: &str) -> Result<Script> {
                         }],
                     });
                 }
+                // a define up here still counts, and tables put them there
+                header.push((index + 1, raw.to_string()));
             }
         }
+    }
+
+    /* `define(ToolDurability,"UDK.exe"+1EECCB)` stands for a piece of text,
+    not only a number, and a table will happily write `ToolDurability:` and
+    expect it to be somewhere to start writing. so the substitution happens
+    before anything is read, on both halves, since the disable side leans on
+    what the enable side named. */
+    let named = named_pieces(header.iter().chain(&enable).chain(&disable));
+    for line in enable.iter_mut().chain(disable.iter_mut()) {
+        line.1 = swap_names(&line.1, &named);
     }
 
     Ok(Script {
@@ -101,58 +114,121 @@ pub fn parse(source: &str) -> Result<Script> {
     })
 }
 
+fn named_pieces<'a>(lines: impl Iterator<Item = &'a (usize, String)>) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = lines
+        .filter_map(|(_, raw)| match read_directive(raw.trim()) {
+            Ok(Some(Directive::Define { name, value })) => Some((name, value)),
+            _ => None,
+        })
+        .filter(|(name, value)| !name.is_empty() && !value.contains(name.as_str()))
+        .collect();
+    // longest first so one name cannot eat the front of another
+    out.sort_by_key(|(name, _)| std::cmp::Reverse(name.len()));
+    out
+}
+
+fn swap_names(line: &str, named: &[(String, String)]) -> String {
+    if matches!(
+        read_directive(line.trim()),
+        Ok(Some(Directive::Define { .. }))
+    ) {
+        return line.to_string();
+    }
+    let whole = |c: char| c.is_alphanumeric() || c == '_';
+    let mut out = line.to_string();
+    for (name, value) in named {
+        let mut built = String::with_capacity(out.len());
+        let mut rest = out.as_str();
+        while let Some(at) = rest.find(name.as_str()) {
+            let before = rest[..at].chars().next_back();
+            let after = rest[at + name.len()..].chars().next();
+            built.push_str(&rest[..at]);
+            built.push_str(if before.is_some_and(whole) || after.is_some_and(whole) {
+                name
+            } else {
+                value
+            });
+            rest = &rest[at + name.len()..];
+        }
+        built.push_str(rest);
+        out = built;
+    }
+    out
+}
+
 fn read_half(lines: &[(usize, String)]) -> Result<Half> {
     let mut half = Half::default();
     let mut depth = 0usize;
+    let mut blocked = false;
     let mut section: Option<Section> = None;
     let inner = declared_labels(lines);
 
     for (line, raw) in lines {
-        let mut text = raw.clone();
-
+        /* three kinds of comment and whichever opens first wins. `{ }` is
+        cheat engine's own, `/* */` came along later, `//` runs to the end of
+        the line. doing them in a fixed order means a `{` inside a `//`
+        comment opens a block that swallows the rest of the script, which is
+        how one table lost forty lines. */
+        let mut kept = String::new();
+        let mut rest = raw.as_str();
         loop {
             if depth > 0 {
-                match text.find('}') {
+                match rest.find('}') {
                     Some(at) => {
                         depth -= 1;
-                        text = text[at + 1..].to_string();
-                    }
-                    None => {
-                        text.clear();
-                        break;
-                    }
-                }
-            } else {
-                match text.find('{') {
-                    Some(at) => {
-                        depth += 1;
-                        text.truncate(at);
-                        break;
+                        rest = &rest[at + 1..];
                     }
                     None => break,
                 }
+            } else if blocked {
+                match rest.find("*/") {
+                    Some(at) => {
+                        rest = &rest[at + 2..];
+                        blocked = false;
+                    }
+                    None => break,
+                }
+            } else {
+                let brace = rest.find('{');
+                let block = rest.find("/*");
+                let ends = rest.find("//");
+                let first = [brace, block, ends].into_iter().flatten().min();
+                let Some(at) = first else {
+                    kept.push_str(rest);
+                    break;
+                };
+                kept.push_str(&rest[..at]);
+                if Some(at) == ends {
+                    break;
+                }
+                blocked = Some(at) == block;
+                depth += usize::from(Some(at) == brace);
+                rest = &rest[at + if blocked { 2 } else { 1 }..];
             }
         }
 
-        let mut body = text.as_str();
-        if let Some(at) = body.find("//") {
-            body = &body[..at];
-        }
-        let trimmed = body.trim();
+        let trimmed = kept.trim();
         if trimmed.is_empty() {
             continue;
         }
 
+        // a directive in the middle of a cave does not end it. they are all
+        // hoisted and run first anyway, and closing the section there left
+        // everything under it with nowhere to go
         if let Some(directive) = read_directive(trimmed)? {
-            if let Some(open) = section.take() {
-                half.sections.push(open);
-            }
             half.directives.push(directive);
             continue;
         }
 
+        // `dbee(aob_hascontent)` and `monoTailCave32(1,"AIAir:Start",5)` come
+        // from lua a table author had installed. saying so beats complaining
+        // that it is not an instruction, which it was never meant to be
+        if let Some(name) = plugin_call(trimmed) {
+            return Err(AaError::NeedsPlugin(name));
+        }
+
         if let Some(name) = anchor_label(trimmed) {
-            if !inner.contains(&name) {
+            if !inner.contains(&name) && (section.is_none() || somewhere_real(&name, lines)) {
                 if let Some(open) = section.take() {
                     half.sections.push(open);
                 }
@@ -183,6 +259,37 @@ fn read_half(lines: &[(usize, String)]) -> Result<Half> {
         half.sections.push(open);
     }
     Ok(half)
+}
+
+/* `end:` on its own in the middle of a cave is a branch target, not somewhere
+to start writing, and plenty of scripts never declare it. splitting the
+section there loses every `@f` that was meant to land on it and leaves an
+anchor pointing at a symbol nothing defines.
+
+so a name only starts a new section if the script says where it is: an
+offset, a scan or an alloc that named it, or a module. */
+fn somewhere_real(name: &str, lines: &[(usize, String)]) -> bool {
+    // a dot or a colon in it makes it a module or a mono name, both of which
+    // are somewhere rather than something to jump to
+    let (head, offset) = split_offset(name);
+    if offset.is_some() || head.contains(['.', ':']) || name.trim_start().starts_with(['"', '[']) {
+        return true;
+    }
+    lines
+        .iter()
+        .any(|(_, raw)| match read_directive(raw.trim()) {
+            Ok(Some(
+                Directive::AobScanModule { symbol, .. }
+                | Directive::AobScan { symbol, .. }
+                | Directive::Alloc { symbol, .. }
+                | Directive::Assert { symbol, .. }
+                | Directive::RegisterSymbol(symbol)
+                // a disable half that unregisters a name is saying it was an
+                // address all along, not a branch target inside a cave
+                | Directive::UnregisterSymbol(symbol),
+            )) => symbol == head,
+            _ => false,
+        })
 }
 
 fn declared_labels(lines: &[(usize, String)]) -> Vec<String> {
@@ -228,24 +335,44 @@ fn other_language(source: &str) -> Option<&'static str> {
 }
 
 fn anchor_label(text: &str) -> Option<String> {
-    let at = text.find(':')?;
-    let name = text[..at].trim();
+    // the last one, since a name lifted from a c++ binary has colons of its own
+    let at = text.rfind(':')?;
+    let mut name = text[..at].trim();
     if !text[at + 1..].trim().is_empty() {
         return None;
+    }
+    // "Terraria.Item::Prefix+2147)", a bracket somebody forgot to open
+    while name.ends_with(')') && name.matches('(').count() < name.matches(')').count() {
+        name = name[..name.len() - 1].trim_end();
     }
 
     // "god+07:" and "game.exe+1A2B3C:" are both somewhere to start writing, and
     // tables use them as freely as a plain label. anything cleverer than one
     // offset, like "aob+(DWORD)[aob+03]+07:", is left for a person to look at
+    // `(DWORD)[tinkerUnlock+17]:` says how wide the pointer is, and where to
+    // write is all that is left of it once that comes off
+    let name = &name
+        .strip_prefix('(')
+        .and_then(|rest| rest.split_once(')'))
+        .filter(|(kind, _)| freeplay_asm::operand::size_keyword(kind).is_some())
+        .map_or(name.to_string(), |(_, rest)| rest.trim().to_string());
     let (base, _) = split_offset(name);
+    // a space only counts once the name has quotes round it or is a module
+    let module = [".exe", ".dll", ".bin"]
+        .iter()
+        .any(|end| base.to_ascii_lowercase().contains(end));
+    let spaced = name.trim_start().starts_with('"') || module;
     if base.is_empty()
         || !base
             .chars()
             .next()
-            .is_some_and(|c| c.is_alphabetic() || c == '_')
-        || !base
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '-')
+            .is_some_and(|c| c.is_alphanumeric() || "_$[<".contains(c) || !c.is_ascii())
+        || !base.chars().all(|c| {
+            c.is_alphanumeric()
+                || "_.-:$<>~=?!@'`[]+\"|&".contains(c)
+                || !c.is_ascii()
+                || (spaced && c == ' ')
+        })
     {
         return None;
     }
@@ -265,7 +392,13 @@ pub fn split_offset(name: &str) -> (&str, Option<&str>) {
     (head.trim().trim_matches('"'), tail)
 }
 
-fn read_directive(text: &str) -> Result<Option<Directive>> {
+fn read_directive(raw: &str) -> Result<Option<Directive>> {
+    // a note after the directive can have brackets of its own in it, and the
+    // closing one is found from the right
+    let text = match raw.find("//") {
+        Some(at) => raw[..at].trim(),
+        None => raw.trim(),
+    };
     let Some(open) = text.find('(') else {
         return Ok(None);
     };
@@ -273,12 +406,11 @@ fn read_directive(text: &str) -> Result<Option<Directive>> {
     if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return Ok(None);
     }
-    let Some(close) = text.rfind(')') else {
-        return Ok(None);
-    };
-    if close < open {
-        return Ok(None);
-    }
+    // one that was never closed still says what it wants
+    let close = text
+        .rfind(')')
+        .filter(|at| *at > open)
+        .unwrap_or(text.len());
     let inner = &text[open + 1..close];
     let args: Vec<String> = split_args(inner);
 
@@ -329,6 +461,21 @@ fn read_directive(text: &str) -> Result<Option<Directive>> {
     };
 
     Ok(Some(directive))
+}
+
+fn plugin_call(text: &str) -> Option<String> {
+    let line = text.trim();
+    let (name, rest) = line.split_once('(')?;
+    // readmem is put back as a `db` once there is a process to read from
+    if !rest.ends_with(')') || name.is_empty() || name.eq_ignore_ascii_case("readmem") {
+        return None;
+    }
+    let ok = name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    ok.then(|| name.to_string())
 }
 
 fn split_args(inner: &str) -> Vec<String> {

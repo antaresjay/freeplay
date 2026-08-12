@@ -95,10 +95,25 @@ impl<'a> Runner<'a> {
         self.apply(plan)
     }
 
+    /* the bytes that were there before enabling are kept, so a [DISABLE] that
+    will not build is not the end of it. plenty of them paste the aob back
+    with the wildcards still in, which cannot be written, and the hook would
+    otherwise stay in place until the game closed. */
     pub fn disable(&self, script: &Script, engaged: &Engaged) -> Result<()> {
-        let plan = self.plan(&script.disable, &engaged.symbols, false)?;
+        let writes = match self.plan(&script.disable, &engaged.symbols, false) {
+            Ok(plan) => plan.writes,
+            Err(e) if engaged.restores.is_empty() => return Err(e),
+            Err(e) => {
+                tracing::warn!("putting the original bytes back instead: {e}");
+                engaged
+                    .restores
+                    .iter()
+                    .map(|r| (r.addr, r.original.clone()))
+                    .collect()
+            }
+        };
 
-        for (addr, bytes) in &plan.writes {
+        for (addr, bytes) in &writes {
             self.write(*addr, bytes)?;
         }
         for addr in &engaged.allocations {
@@ -173,12 +188,22 @@ impl<'a> Runner<'a> {
             for section in &half.sections {
                 let origin = self.locate(&section.anchor, &symbols)?;
 
-                let built = assemble(&section.body, origin, self.bits, &symbols)?;
+                let body = expand_readmem(&section.body, |where_, size| {
+                    let at = self.locate(where_, &symbols).ok()?;
+                    self.target.read_bytes(at as usize, size).ok()
+                });
+                let built = self.build(&body, origin, &mut symbols)?;
                 for (name, addr) in built.labels {
                     symbols.insert(name, addr);
                 }
                 if pass == 1 {
-                    writes.push((origin as usize, built.bytes));
+                    let mut bytes = built.bytes;
+                    for hole in &built.holes {
+                        if let Ok(now) = self.target.read_bytes(origin as usize + hole, 1) {
+                            bytes[*hole] = now[0];
+                        }
+                    }
+                    writes.push((origin as usize, bytes));
                 }
             }
         }
@@ -189,6 +214,43 @@ impl<'a> Runner<'a> {
             allocations,
             registered,
         })
+    }
+
+    /* `mov eax,[game.exe+1A2B3C]` is written straight into a line rather than
+    scanned for first, so the assembler asks for a symbol nobody declared.
+    every name it complains about gets one go at being a module before the
+    error is passed on. */
+    fn build(
+        &self,
+        body: &str,
+        origin: u64,
+        symbols: &mut HashMap<String, u64>,
+    ) -> Result<freeplay_asm::Assembled> {
+        let mut tried = 0;
+        loop {
+            let error = match assemble(body, origin, self.bits, symbols) {
+                Ok(built) => return Ok(built),
+                Err(e) => e,
+            };
+            let freeplay_asm::AsmError::UndefinedSymbol(name) = deepest(&error) else {
+                return Err(error.into());
+            };
+            let (base, _) = script::split_offset(name);
+            tried += 1;
+            if tried > 32 || symbols.contains_key(base) {
+                return Err(error.into());
+            }
+            // a pointer chain is followed here rather than encoded, since one
+            // instruction cannot do two reads
+            let found = match base.starts_with('[') {
+                true => self.locate(base, symbols).ok(),
+                false => self.target.module(base).ok().map(|m| m.base as u64),
+            };
+            match found {
+                Some(addr) => symbols.insert(base.to_string(), addr),
+                None => return Err(error.into()),
+            };
+        }
     }
 
     fn apply(&self, plan: Plan) -> Result<Engaged> {
@@ -243,13 +305,28 @@ impl<'a> Runner<'a> {
         }
 
         let (base, offset) = script::split_offset(anchor);
+
+        // `[gun_addy]:` writes wherever the pointer at gun_addy is pointing
+        if let Some(inner) = base.strip_prefix('[').and_then(|b| b.strip_suffix(']')) {
+            let at = self.locate(inner, symbols)?;
+            let width = self.bits.pointer();
+            let bytes = self.target.read_bytes(at as usize, width)?;
+            let mut value = 0u64;
+            for (n, byte) in bytes.iter().enumerate() {
+                value |= (*byte as u64) << (8 * n);
+            }
+            let shift = offset.map_or(Ok(0), freeplay_asm::operand::number)?;
+            return Ok(value.wrapping_add_signed(shift));
+        }
+
         let start = match symbols.get(base) {
             Some(value) => *value,
-            None => self
-                .target
-                .module(base)
-                .map(|m| m.base as u64)
-                .map_err(|_| AaError::UndefinedSymbol(anchor.to_string()))?,
+            None => match self.target.module(base) {
+                Ok(module) => module.base as u64,
+                // `AmmoPatch+2+4:`, so peel one offset and go round again
+                Err(_) if offset.is_some() && base != anchor => self.locate(base, symbols)?,
+                Err(_) => return Err(AaError::UndefinedSymbol(anchor.to_string())),
+            },
         };
 
         let shift = match offset {
@@ -311,6 +388,13 @@ impl<'a> Runner<'a> {
     }
 }
 
+fn deepest(e: &freeplay_asm::AsmError) -> &freeplay_asm::AsmError {
+    match e {
+        freeplay_asm::AsmError::At { source, .. } => deepest(source),
+        other => other,
+    }
+}
+
 pub fn symbols_defined(script: &Script) -> Vec<String> {
     let mut out = Vec::new();
     for directive in &script.enable.directives {
@@ -327,4 +411,61 @@ pub fn symbols_defined(script: &Script) -> Vec<String> {
     out.sort_unstable();
     out.dedup();
     out
+}
+
+/* `readmem(where,n)` puts the bytes that are at an address right now into the
+script. tables use it in [DISABLE] to put back whatever they overwrote,
+rather than spelling out the original instructions.
+
+the assembler has no process to read from, so it happens here where there
+is one, and what it produces is an ordinary `db`. thirteen thousand of the
+corpus's complaints were this one directive.
+
+an address that cannot be read leaves nops behind rather than failing the
+whole script: a disable that restores nothing is bad, a disable that will
+not assemble at all leaves the hook in place for ever. */
+pub fn expand_readmem(body: &str, mut read: impl FnMut(&str, usize) -> Option<Vec<u8>>) -> String {
+    if !body.to_ascii_lowercase().contains("readmem") {
+        return body.to_string();
+    }
+
+    let mut out = String::with_capacity(body.len());
+    for line in body.lines() {
+        match one_readmem(line) {
+            Some((before, where_, size, after)) => {
+                let bytes = read(where_, size).unwrap_or_else(|| vec![0x90; size]);
+                out.push_str(before);
+                out.push_str("db ");
+                for (n, byte) in bytes.iter().enumerate() {
+                    if n > 0 {
+                        out.push(' ');
+                    }
+                    out.push_str(&format!("{byte:02X}"));
+                }
+                out.push_str(after);
+            }
+            None => out.push_str(line),
+        }
+        out.push('\n');
+    }
+    out
+}
+
+fn one_readmem(line: &str) -> Option<(&str, &str, usize, &str)> {
+    let lower = line.to_ascii_lowercase();
+    let at = lower.find("readmem")?;
+    let open = line[at..].find('(')? + at;
+    let close = line[open..].find(')')? + open;
+
+    let (where_, size) = line[open + 1..close].rsplit_once(',')?;
+    let size = freeplay_asm::operand::number(size.trim()).ok()?;
+    if !(1..=4096).contains(&size) {
+        return None;
+    }
+    Some((
+        &line[..at],
+        where_.trim(),
+        size as usize,
+        &line[close + 1..],
+    ))
 }
