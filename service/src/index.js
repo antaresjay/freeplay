@@ -13,6 +13,12 @@ const MAX_VOTES_PER_HOUR = 40;
 const MAX_VOTERS_PER_DAY = 6;
 const MAX_NAMES_PER_DAY = 3;
 
+// how many separate installs have to report a table working under a different
+// executable before everybody with that executable is shown it. one is not
+// enough: it would let a single voter point any name at any table
+const ALIAS_FLOOR = 2;
+const MAX_SEARCH_HITS = 40;
+
 const HOUR = 3600;
 const DAY = 86400;
 
@@ -43,6 +49,7 @@ export default {
 
     try {
       if (request.method === "GET" && path === "/tables") return list(url, env);
+      if (request.method === "GET" && path === "/search") return search(url, env);
       if (request.method === "GET" && path.startsWith("/table/")) return one(path, url, env);
       if (request.method === "POST" && path === "/submit") return submit(request, env);
       if (request.method === "POST" && path === "/vote") return vote(request, env);
@@ -61,8 +68,12 @@ export default {
 // best puts a table somebody already used on your build first, because tables
 // die when a game patches and twenty votes from two patches ago are worth less
 // than one from the version you are running
+// :build is filled in with whatever number that parameter ends up being. the
+// count in front of it varies with how many executables are being asked about,
+// and d1 rejects a bound parameter the statement never mentions, so best is
+// the only one that gets given the build at all
 const ORDER = {
-  best: "(built_for = ?2) desc, (up - down) desc, downloads desc, created_at desc",
+  best: "(built_for = :build) desc, (up - down) desc, downloads desc, created_at desc",
   votes: "(up - down) desc, up desc, created_at desc",
   downloads: "downloads desc, (up - down) desc, created_at desc",
   new: "created_at desc",
@@ -83,20 +94,66 @@ async function list(url, env) {
   }
   const order = ORDER[sort];
 
-  const statement = env.DB.prepare(
+  // executables other people have proved carry this game's tables. `?3` is
+  // the floor rather than a literal so the query plan stays one statement
+  const named = await env.DB.prepare(
+    `select from_exe from aliases
+      where to_exe = ?1
+      group by from_exe
+     having count(distinct install) >= ?2`
+  )
+    .bind(exe, ALIAS_FLOOR)
+    .all();
+
+  const also = (named.results || []).map((r) => r.from_exe).slice(0, 8);
+  const names = [exe, ...also];
+  const slots = names.map((_, i) => `?${i + 2}`).join(", ");
+
+  // exe is ?1 for the borrowed flag, the names are ?2 onwards, and the build
+  // only exists at all when the order asks for it
+  const wantsBuild = order.includes(":build");
+  const sorted = order.replace(":build", `?${names.length + 2}`);
+  const params = wantsBuild ? [exe, ...names, build] : [exe, ...names];
+
+  const rows = await env.DB.prepare(
+    `select id, exe, game, fingerprint, cheats, bytes, submitted_by, author,
+            built_for, up, down, downloads, created_at,
+            (exe <> ?1) as borrowed
+       from tables
+      where exe in (${slots}) and blocked = 0
+      order by borrowed asc, ${sorted}
+      limit 50`
+  )
+    .bind(...params)
+    .all();
+
+  return json({ tables: rows.results || [], sort });
+}
+
+// every table whose game name looks like what was typed. this is the way out
+// when we picked the wrong binary for a game, or when the table was written
+// against a different edition of it, so it deliberately ignores executables
+async function search(url, env) {
+  const q = (url.searchParams.get("q") || "").trim().toLowerCase();
+  if (q.length < 2) return bad("type at least two letters");
+
+  // like is the only string search d1 gives us without a second index, and
+  // the wildcards have to be escaped or a name with a % in it matches all
+  const needle = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+  const rows = await env.DB.prepare(
     `select id, exe, game, fingerprint, cheats, bytes, submitted_by, author,
             built_for, up, down, downloads, created_at
        from tables
-      where exe = ?1 and blocked = 0
-      order by ${order}
-      limit 50`
-  );
+      where blocked = 0 and lower(game) like ?1 escape '\\'
+      order by (lower(game) = ?2) desc,
+               (up - down) desc, downloads desc, cheats desc
+      limit ?3`
+  )
+    .bind(needle, q, MAX_SEARCH_HITS)
+    .all();
 
-  // only best looks at the build, and d1 refuses a spare bound parameter
-  const bound = order.includes("?2") ? statement.bind(exe, build) : statement.bind(exe);
-  const rows = await bound.all();
-
-  return json({ tables: rows.results || [], sort });
+  return json({ tables: rows.results || [], query: q });
 }
 
 async function one(path, url, env) {
@@ -314,12 +371,13 @@ async function vote(request, env) {
 
   if (before && before.vote === up) return json({ ok: true, unchanged: true });
 
+  const now = Math.floor(Date.now() / 1000);
   await env.DB.batch([
     env.DB.prepare(
       `insert into votes (install, table_id, vote, built_for, created_at)
        values (?1, ?2, ?3, ?4, ?5)
        on conflict (install, table_id) do update set vote = ?3, created_at = ?5`
-    ).bind(install, id, up, String(body.built_for || "").slice(0, 60), Math.floor(Date.now() / 1000)),
+    ).bind(install, id, up, String(body.built_for || "").slice(0, 60), now),
     env.DB.prepare(
       `update tables
           set up = (select count(*) from votes where table_id = ?1 and vote = 1),
@@ -328,8 +386,46 @@ async function vote(request, env) {
     ).bind(id),
   ]);
 
+  if (up === 1) {
+    await remember(env, id, install, up, String(body.for_exe || ""), now);
+  } else {
+    await forget(env, id, install);
+  }
   await noteHit(env, ip, "vote", install);
   return json({ ok: true });
+}
+
+// somebody searched, found a table filed under one executable, used it on a
+// game running another, and said it worked. that pairing is worth keeping:
+// once enough people report it, everyone else with that executable is shown
+// the table without having to go looking
+async function remember(env, id, install, up, forExe, now) {
+  const wanted = forExe.toLowerCase().trim();
+  if (up !== 1 || !/^[\w .()\[\]-]{1,120}\.exe$/.test(wanted)) return;
+
+  const row = await env.DB.prepare("select exe from tables where id = ?1")
+    .bind(id)
+    .first();
+  // nothing to record when it is already filed under that name
+  if (!row || row.exe.toLowerCase() === wanted) return;
+
+  await env.DB.prepare(
+    `insert or ignore into aliases (from_exe, to_exe, install, created_at)
+     values (?1, ?2, ?3, ?4)`
+  )
+    .bind(row.exe.toLowerCase(), wanted, install, now)
+    .run();
+}
+
+// a downvote is a retraction: whatever they said worked, no longer does
+async function forget(env, id, install) {
+  const row = await env.DB.prepare("select exe from tables where id = ?1")
+    .bind(id)
+    .first();
+  if (!row) return;
+  await env.DB.prepare("delete from aliases where from_exe = ?1 and install = ?2")
+    .bind(row.exe.toLowerCase(), install)
+    .run();
 }
 
 // every few minutes, anything new goes into the tables repo in one commit and

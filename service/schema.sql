@@ -22,6 +22,30 @@ create table if not exists tables (
 
 create index if not exists tables_by_exe on tables (exe, blocked);
 create index if not exists tables_to_mirror on tables (mirrored);
+-- searching by name rather than by executable, for when we picked the wrong
+-- binary or the table was written against a different edition
+create index if not exists tables_by_game on tables (game, blocked);
+
+-- one exe's table reported working for another exe's game.
+--
+-- a game can ship more than one binary and no rule picks the right one every
+-- time: fallout has falloutw.exe and falloutwHR.exe a kilobyte apart, and the
+-- tables all name the first. somebody who searches, finds the table and
+-- upvotes it while running the other one has proved they belong together, so
+-- the next person gets it without searching.
+--
+-- keyed on the install so one person counts once, however many times they
+-- vote. an alias only shows up for other people once `alias_floor` of them
+-- agree, because one voter should not get to redirect a name for everybody.
+create table if not exists aliases (
+  from_exe text not null,
+  to_exe text not null,
+  install text not null,
+  created_at integer not null,
+  primary key (from_exe, to_exe, install)
+);
+
+create index if not exists aliases_by_target on aliases (to_exe, from_exe);
 
 create table if not exists votes (
   install text not null,
