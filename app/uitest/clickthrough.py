@@ -1057,6 +1057,16 @@ PROBE = r"""
        "but a file name is left alone");
   document.getElementById("toast").hidden = true;
 
+  // the webview offered Back, Refresh, Save as, Print and Send tab to your
+  // devices on right click, which gives away what it is built on
+  const rightClick = () => new MouseEvent("contextmenu", {bubbles:true, cancelable:true});
+  note(!document.getElementById("game-facts").dispatchEvent(rightClick()),
+       "right clicking the page does not open the browser menu");
+  note(!document.querySelector(".game-hero").dispatchEvent(rightClick()),
+       "nor does right clicking the artwork");
+  note(document.getElementById("cheat-filter").dispatchEvent(rightClick()),
+       "but a text box keeps its own, that one is cut and paste");
+
   note(window.__errors.length === 0,
        "no uncaught errors" + (window.__errors.length ? ": " + window.__errors.join(" | ") : ""));
   } catch (e) {

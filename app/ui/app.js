@@ -204,6 +204,13 @@ window.addEventListener("resize", () => openPicker && openPicker.close());
 // scrolling the page underneath would leave the menu floating on its own
 document.addEventListener("scroll", () => openPicker && openPicker.close(), true);
 
+/* right clicking anywhere offered Back, Refresh, Save as, Print and Send tab
+   to your devices, which is the webview underneath saying out loud that it is
+   a browser. text boxes keep theirs, that one is cut and paste */
+document.addEventListener("contextmenu", (e) => {
+  if (!e.target.closest("input, textarea")) e.preventDefault();
+});
+
 const many = (n, one, more) => `${n} ${n === 1 ? one : more || one + "s"}`;
 
 /* ---------- settings ---------- */
