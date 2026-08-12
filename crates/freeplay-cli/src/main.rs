@@ -326,7 +326,7 @@ fn rate(id: i64, up: bool, install: &str) -> Result<(), String> {
     };
 
     let wire = freeplay_sync::community::Live;
-    service(&wire).vote(id, &install, up, "")?;
+    service(&wire).vote(id, &install, up, "", "")?;
     println!(
         "{} table {id}",
         if up { "recommended" } else { "marked down" }

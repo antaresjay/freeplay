@@ -159,7 +159,7 @@ pub fn install(id: i64, install_id: &str, into: &PathBuf) -> Result<(String, Tab
 
 pub fn rate(id: i64, up: bool, install_id: &str, build: &str) -> Result<(), String> {
     let wire = Live;
-    Community::new(&endpoint(), &wire).vote(id, install_id, up, build)
+    Community::new(&endpoint(), &wire).vote(id, install_id, up, build, "")
 }
 
 pub fn share(

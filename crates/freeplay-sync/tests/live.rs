@@ -54,7 +54,13 @@ fn talks_to_the_worker() {
     assert_eq!(text.trim(), TABLE.trim());
 
     community
-        .vote(sent.id, "0123456789abcdef", true, "1.0")
+        .vote(
+            sent.id,
+            "0123456789abcdef",
+            true,
+            "1.0",
+            "freeplay-live-check.exe",
+        )
         .expect("vote should work");
 
     let after = community.list("freeplay-live-check.exe", "1.0").unwrap();

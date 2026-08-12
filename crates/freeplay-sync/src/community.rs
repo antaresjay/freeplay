@@ -192,6 +192,21 @@ impl<'a> Community<'a> {
         Ok(listings.tables)
     }
 
+    // by game name rather than executable, for when we picked the wrong
+    // binary or the table was written against another edition of the game
+    pub fn search(&self, query: &str) -> Result<Vec<Listing>, String> {
+        let wanted = query.trim();
+        if wanted.chars().count() < 2 {
+            return Ok(Vec::new());
+        }
+        let raw = self
+            .wire
+            .get(&format!("{}/search?q={}", self.endpoint, encode(wanted)))?;
+        let listings: Listings =
+            serde_json::from_slice(&raw).map_err(|e| format!("could not read the list: {e}"))?;
+        Ok(listings.tables)
+    }
+
     // whatever comes back has to parse and validate before it is a table we
     // will hand to anything else
     pub fn fetch(&self, id: i64, install: &str) -> Result<(String, Table), String> {
@@ -259,12 +274,24 @@ impl<'a> Community<'a> {
         }
     }
 
-    pub fn vote(&self, id: i64, install: &str, up: bool, built_for: &str) -> Result<(), String> {
+    // for_exe is what the game was actually running, which is not always what
+    // the table is filed under. an upvote from somebody using a table on a
+    // different binary is the only evidence there is that the two belong
+    // together, so it goes up with the vote
+    pub fn vote(
+        &self,
+        id: i64,
+        install: &str,
+        up: bool,
+        built_for: &str,
+        for_exe: &str,
+    ) -> Result<(), String> {
         let body = serde_json::json!({
             "id": id,
             "install": install,
             "up": up,
             "built_for": built_for,
+            "for_exe": for_exe.to_lowercase(),
         });
         self.wire.post(
             &format!("{}/vote", self.endpoint),
@@ -535,12 +562,53 @@ mod tests {
     fn voting_sends_the_install_and_which_way() {
         let wire = Fake::default().with("/vote", r#"{"ok":true}"#);
         Community::new("https://x", &wire)
-            .vote(4, "deadbeefdeadbeef", false, "3.5")
+            .vote(4, "deadbeefdeadbeef", false, "3.5", "witcher2.exe")
             .unwrap();
 
         let sent = wire.seen.borrow()[0].clone();
         assert!(sent.contains("\"install\":\"deadbeefdeadbeef\""), "{sent}");
         assert!(sent.contains("\"up\":false"), "{sent}");
+    }
+
+    // the service only learns that two executables go together if the vote
+    // says which one the game was actually running
+    #[test]
+    fn voting_says_which_executable_it_was_used_on() {
+        let wire = Fake::default().with("/vote", r#"{"ok":true}"#);
+        Community::new("https://x", &wire)
+            .vote(4, "deadbeefdeadbeef", true, "1.2", "FalloutwHR.exe")
+            .unwrap();
+
+        let sent = wire.seen.borrow()[0].clone();
+        assert!(sent.contains("\"for_exe\":\"falloutwhr.exe\""), "{sent}");
+    }
+
+    #[test]
+    fn searching_asks_by_name_and_not_by_executable() {
+        let wire = Fake::default().with(
+            "/search",
+            r#"{"tables":[{"id":1,"exe":"falloutw.exe","game":"Fallout","fingerprint":"a"}]}"#,
+        );
+        let found = Community::new("https://x", &wire)
+            .search("fall out")
+            .unwrap();
+
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].game, "Fallout");
+        let asked = wire.seen.borrow()[0].clone();
+        assert!(asked.contains("/search?q=fall%20out"), "{asked}");
+    }
+
+    // two letters is the floor the service enforces, so do not spend a
+    // request finding that out
+    #[test]
+    fn one_letter_is_not_a_search() {
+        let wire = Fake::default();
+        assert!(Community::new("https://x", &wire)
+            .search(" f ")
+            .unwrap()
+            .is_empty());
+        assert!(wire.seen.borrow().is_empty(), "it should not have asked");
     }
 
     #[test]
