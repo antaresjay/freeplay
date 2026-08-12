@@ -98,13 +98,13 @@ pub fn steam(_app_id: &str) -> Art {
     Art::default()
 }
 
-// what galaxy calls each picture. the padding number on the background has
-// changed before, so that one is matched on its stem
-const GOG_KINDS: [(&str, &str); 3] = [
-    ("cover", "_glx_vertical_cover"),
-    ("hero", "_glx_bg_top_padding"),
-    ("logo", "_glx_square_icon"),
-];
+// the padding number on the background has changed before, so that one is
+// matched on its stem. there is no wordmark among these: the square icon is
+// the game's icon, and dropping it in the logo slot draws a second little
+// cover on top of the background
+const GOG_COVER: &str = "_glx_vertical_cover";
+const GOG_HERO: &str = "_glx_bg_top_padding";
+const GOG_ICON: &str = "_glx_square_icon";
 
 // webcache/<user>/gog/<gameid>/<hash>_glx_<kind>.webp. the user folder is a
 // number nobody knows in advance, so every one of them gets looked in
@@ -120,23 +120,28 @@ fn in_webcache(root: &Path, game_id: &str) -> Art {
         };
 
         let mut art = Art::default();
+        let mut icon = None;
         for entry in entries.flatten() {
             let path = entry.path();
-            let name = path.file_name().unwrap_or_default().to_string_lossy();
-            let lower = name.to_lowercase();
-            for (slot, marker) in GOG_KINDS {
-                if !lower.contains(marker) {
-                    continue;
-                }
-                let held = match slot {
-                    "cover" => &mut art.cover,
-                    "hero" => &mut art.hero,
-                    _ => &mut art.logo,
-                };
-                if held.is_none() {
-                    *held = Some(path.clone());
-                }
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_lowercase();
+
+            if name.contains(GOG_COVER) {
+                art.cover.get_or_insert(path);
+            } else if name.contains(GOG_HERO) {
+                art.hero.get_or_insert(path);
+            } else if name.contains(GOG_ICON) {
+                icon.get_or_insert(path);
             }
+        }
+
+        // square in a portrait slot is not ideal, but it is the game rather
+        // than a grey tile with two letters on it
+        if art.cover.is_none() {
+            art.cover = icon;
         }
         if !art.is_empty() {
             return art;
@@ -225,10 +230,23 @@ mod tests {
             .hero
             .unwrap()
             .ends_with("d4af52eb_glx_bg_top_padding_7.webp"));
-        assert!(art
-            .logo
-            .unwrap()
-            .ends_with("7b5c518c_glx_square_icon_v2.webp"));
+        // gog has no wordmark. the square icon in this slot gets drawn over
+        // the background as a second tiny cover
+        assert!(art.logo.is_none(), "the square icon is not a logo");
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn the_square_icon_stands_in_when_there_is_no_cover() {
+        let root = scratch("iconly");
+        let dir = root.join("1").join("gog").join("77");
+        touch(&dir.join("aa_glx_square_icon_v2.webp"));
+        touch(&dir.join("bb_glx_bg_top_padding_7.webp"));
+
+        let art = in_webcache(&root, "77");
+        assert!(art.cover.unwrap().ends_with("aa_glx_square_icon_v2.webp"));
+        assert!(art.logo.is_none());
 
         std::fs::remove_dir_all(&root).unwrap();
     }
