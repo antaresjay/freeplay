@@ -21,6 +21,7 @@ pub struct Emitter {
     pub origin: u64,
     pub bytes: Vec<u8>,
     pub fixups: Vec<Fixup>,
+    pub holes: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +40,7 @@ impl Emitter {
             origin,
             bytes: Vec::new(),
             fixups: Vec::new(),
+            holes: Vec::new(),
         }
     }
 
@@ -102,6 +104,19 @@ impl Emitter {
     fn prefix_operand_size(&mut self, size: usize) {
         if size == 2 {
             self.byte(0x66);
+        }
+    }
+
+    fn segment(&mut self, mem: &Mem) {
+        if let Some(which) = mem.seg {
+            self.byte(match which {
+                0 => 0x26,
+                1 => 0x2E,
+                2 => 0x36,
+                3 => 0x3E,
+                4 => 0x64,
+                _ => 0x65,
+            });
         }
     }
 
@@ -223,6 +238,7 @@ impl Emitter {
             Rm::Mem(m) => {
                 let index = m.index.map(|r| r.num).unwrap_or(0);
                 let base = m.base.map(|r| r.num).unwrap_or(0);
+                self.segment(m);
                 self.rex(wide, reg_field, index, base, false);
                 for byte in opcode {
                     self.byte(*byte);
@@ -250,6 +266,7 @@ impl Emitter {
                 let index = m.index.map(|r| r.num).unwrap_or(0);
                 let base = m.base.map(|r| r.num).unwrap_or(0);
                 let force = size == 1 && matches!(reg.class, Class::Gpr8Rex);
+                self.segment(m);
                 self.rex(wide, reg.num, index, base, force);
                 for byte in opcode {
                     self.byte(*byte);
@@ -272,6 +289,13 @@ impl Rm {
         match self {
             Rm::Reg(r) => Some(r.size()),
             Rm::Mem(m) => m.size,
+        }
+    }
+
+    pub fn as_reg(&self) -> Option<Reg> {
+        match self {
+            Rm::Reg(r) => Some(*r),
+            Rm::Mem(_) => None,
         }
     }
 }
@@ -299,6 +323,7 @@ impl Emitter {
             Rm::Mem(m) => {
                 let index = m.index.map(|r| r.num).unwrap_or(0);
                 let base = m.base.map(|r| r.num).unwrap_or(0);
+                self.segment(m);
                 self.rex(wide, reg.num, index, base, false);
                 for byte in opcode {
                     self.byte(*byte);
@@ -309,11 +334,79 @@ impl Emitter {
         Ok(())
     }
 
+    /* the avx form of an sse instruction. same opcode, but the 66/f2/f3 and
+    the 0f escape fold into a two or three byte prefix, and there is room in
+    it for a second source register.
+
+    two bytes will do unless something needs the extra bits: an x or b beyond
+    the eighth register, a wide operand, or an escape other than plain 0f. */
+    pub fn encode_vex(
+        &mut self,
+        prefix: Option<u8>,
+        opcode: &[u8],
+        reg: Reg,
+        vvvv: Option<Reg>,
+        rm: &Rm,
+        wide: bool,
+    ) -> Result<()> {
+        let pp = match prefix {
+            None => 0,
+            Some(0x66) => 1,
+            Some(0xF3) => 2,
+            _ => 3,
+        };
+        let mm = match opcode {
+            [0x0F, 0x38, ..] => 2,
+            [0x0F, 0x3A, ..] => 3,
+            _ => 1,
+        };
+        let tail = &opcode[if mm == 1 { 1 } else { 2 }..];
+
+        let (index, base) = match rm {
+            Rm::Reg(r) => (0, r.num),
+            Rm::Mem(m) => (
+                m.index.map(|r| r.num).unwrap_or(0),
+                m.base.map(|r| r.num).unwrap_or(0),
+            ),
+        };
+        if let Rm::Mem(m) = rm {
+            self.segment(m);
+        }
+
+        let not = |bit: bool| if bit { 0 } else { 1 };
+        let vpart = (!vvvv.map(|r| r.num).unwrap_or(0) & 0x0F) << 3;
+        // one bit says whether this is the 128 or the 256 bit wide form
+        let long = [Some(reg), vvvv, rm.as_reg()]
+            .iter()
+            .any(|r| r.is_some_and(|r| r.class == Class::Ymm)) as u8;
+
+        if mm == 1 && index < 8 && base < 8 && !wide {
+            self.byte(0xC5);
+            self.byte((not(reg.num >= 8) << 7) | vpart | (long << 2) | pp);
+        } else {
+            self.byte(0xC4);
+            self.byte(
+                (not(reg.num >= 8) << 7) | (not(index >= 8) << 6) | (not(base >= 8) << 5) | mm,
+            );
+            self.byte(((wide as u8) << 7) | vpart | (long << 2) | pp);
+        }
+
+        for byte in tail {
+            self.byte(*byte);
+        }
+        match rm {
+            Rm::Reg(r) => self.byte(0xC0 | (reg.low3() << 3) | r.low3()),
+            Rm::Mem(m) => self.modrm_mem(reg.low3(), m)?,
+        }
+        Ok(())
+    }
+
     pub fn encode_x87(&mut self, opcode: u8, digit: u8, rm: &Rm) -> Result<()> {
         match rm {
             Rm::Mem(m) => {
                 let index = m.index.map(|r| r.num).unwrap_or(0);
                 let base = m.base.map(|r| r.num).unwrap_or(0);
+                self.segment(m);
                 self.rex(false, digit, index, base, false);
                 self.byte(opcode);
                 self.modrm_mem(digit, m)?;
