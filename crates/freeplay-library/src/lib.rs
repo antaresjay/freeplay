@@ -253,16 +253,40 @@ fn rank(dir: &Path, game_name: &str, mut exes: Vec<PathBuf>) -> Vec<PathBuf> {
     // "MassEffect1" does. Push them below anything else that looks related,
     // but only when there is something else, since plenty of games really are
     // launched through one.
-    let has_alternative = exes
-        .iter()
-        .any(|p| !stem_of(p).contains("launch") && score(p) > 0);
+    let has_alternative = exes.iter().any(|p| !is_a_launcher(p) && score(p) > 0);
+
+    // two binaries can be the same game wearing a suffix. fallout ships
+    // falloutw.exe and falloutwHR.exe a kilobyte apart, both matching the
+    // title outright, and raw size picks between them on a coin toss. the one
+    // carrying least on top of the name is the plain build, which is what
+    // tables are written against. worth asking only when the name matched at
+    // all: where nothing does this says nothing, and size still decides
+    let baggage = |path: &Path| {
+        if score(path) == 0 {
+            return 0;
+        }
+        let stem = stem_of(path).len();
+        stem.abs_diff(title.len()).min(stem.abs_diff(folder.len()))
+    };
+
+    // but only inside a size bracket, because sometimes size is the whole
+    // story. unreal puts a half megabyte FPSAimTrainer.exe next to the ninety
+    // megabyte FPSAimTrainer-Win64-Shipping.exe that is the actual game, and
+    // the plainer name there is a stub that hands off and exits
+    let bracket = |path: &Path| {
+        std::fs::metadata(path)
+            .map(|m| m.len().max(1).ilog2())
+            .unwrap_or(0)
+    };
 
     exes.sort_by_key(|path| {
-        let demoted = usize::from(has_alternative && stem_of(path).contains("launch"));
+        let demoted = usize::from(has_alternative && is_a_launcher(path));
         let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         (
             demoted,
             std::cmp::Reverse(score(path)),
+            std::cmp::Reverse(bracket(path)),
+            baggage(path),
             std::cmp::Reverse(size),
         )
     });
@@ -307,13 +331,35 @@ fn build(
     })
 }
 
-// a store that records its own binary beats anything we can work out from the
-// file names. put it at the front and leave the rest as they were
+fn is_a_launcher(path: &Path) -> bool {
+    squash(
+        &path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    )
+    .contains("launch")
+}
+
+// a store that records its own binary usually beats anything we can work out
+// from file names. gog is the exception: it records whatever its shortcut
+// runs, and for the older games that is a launcher which starts the real exe
+// and exits. FalloutLauncher.exe is not the process to attach to and it is
+// not the name any table was written against
 fn prefer(game: &mut InstalledGame, exe: PathBuf) {
-    if exe.is_file() {
-        game.executables.retain(|p| p != &exe);
-        game.executables.insert(0, exe);
+    if !exe.is_file() {
+        return;
     }
+    if is_a_launcher(&exe)
+        && game
+            .executables
+            .iter()
+            .any(|p| p != &exe && !is_a_launcher(p))
+    {
+        return;
+    }
+    game.executables.retain(|p| p != &exe);
+    game.executables.insert(0, exe);
 }
 
 #[cfg(windows)]
@@ -613,6 +659,128 @@ mod tests {
             PathBuf::from(r"C:\Games\Thing\ThingLauncher.exe"),
         ];
         assert!(rank(dir, "Thing", exes)[0].ends_with("ThingLauncher.exe"));
+    }
+
+    fn a_game(dir: &Path, exes: &[&str]) -> InstalledGame {
+        InstalledGame {
+            name: "Fallout".into(),
+            store: Store::Gog,
+            install_dir: dir.to_path_buf(),
+            app_id: Some("1440148836".into()),
+            executables: exes.iter().map(|n| dir.join(n)).collect(),
+            version: None,
+        }
+    }
+
+    fn a_folder(tag: &str, files: &[&str]) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("freeplay-prefer-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in files {
+            std::fs::write(dir.join(name), b"exe").unwrap();
+        }
+        dir
+    }
+
+    // rank weighs size, so these have to be real files of a real size
+    fn sized(tag: &str, files: &[(&str, usize)]) -> (PathBuf, Vec<PathBuf>) {
+        let dir = std::env::temp_dir().join(format!("freeplay-rank-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut made = Vec::new();
+        for (name, bytes) in files {
+            let path = dir.join(name);
+            std::fs::write(&path, vec![b'x'; *bytes]).unwrap();
+            made.push(path);
+        }
+        (dir, made)
+    }
+
+    // fallout ships both a kilobyte apart and both match the name outright.
+    // every table out there was written against the plain one
+    #[test]
+    fn two_builds_a_hair_apart_pick_the_plainer_name() {
+        let (dir, exes) = sized(
+            "twobuilds",
+            &[("falloutwHR.exe", 1010), ("falloutw.exe", 1000)],
+        );
+        let ranked = rank(&dir, "Fallout", exes);
+        assert!(
+            ranked[0].ends_with("falloutw.exe"),
+            "got {:?}",
+            ranked[0].file_name()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // but the plainer name is a half megabyte stub in front of the ninety
+    // megabyte game whenever unreal built it
+    #[test]
+    fn a_stub_does_not_beat_the_game_it_hands_off_to() {
+        let (dir, exes) = sized(
+            "unreal",
+            &[
+                ("FPSAimTrainer.exe", 512),
+                ("FPSAimTrainer-Win64-Shipping.exe", 90_000),
+            ],
+        );
+        let ranked = rank(&dir, "KovaaK's", exes);
+        assert!(
+            ranked[0].ends_with("FPSAimTrainer-Win64-Shipping.exe"),
+            "got {:?}",
+            ranked[0].file_name()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // gog's registry names whatever its shortcut runs. for the older games
+    // that is a launcher which starts the real binary and exits, so taking it
+    // at its word gave a process we cannot attach to and a name no table was
+    // ever written against
+    #[test]
+    fn the_registry_naming_a_launcher_does_not_beat_the_game() {
+        let dir = a_folder("launcher", &["falloutw.exe", "FalloutLauncher.exe"]);
+        let mut game = a_game(&dir, &["falloutw.exe", "FalloutLauncher.exe"]);
+
+        prefer(&mut game, dir.join("FalloutLauncher.exe"));
+        assert_eq!(game.main_exe().as_deref(), Some("falloutw.exe"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // but a game really launched through one still gets to be
+    #[test]
+    fn the_registry_naming_a_launcher_wins_when_it_is_all_there_is() {
+        let dir = a_folder("only", &["ThingLauncher.exe"]);
+        let mut game = a_game(&dir, &["ThingLauncher.exe"]);
+
+        prefer(&mut game, dir.join("ThingLauncher.exe"));
+        assert_eq!(game.main_exe().as_deref(), Some("ThingLauncher.exe"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_registry_naming_the_real_binary_puts_it_first() {
+        let dir = a_folder("real", &["FalloutNV.exe", "Geck.exe"]);
+        let mut game = a_game(&dir, &["Geck.exe", "FalloutNV.exe"]);
+
+        prefer(&mut game, dir.join("FalloutNV.exe"));
+        assert_eq!(game.main_exe().as_deref(), Some("FalloutNV.exe"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_binary_the_registry_names_but_is_not_there_changes_nothing() {
+        let dir = a_folder("gone", &["falloutw.exe"]);
+        let mut game = a_game(&dir, &["falloutw.exe"]);
+
+        prefer(&mut game, dir.join("NotHere.exe"));
+        assert_eq!(game.main_exe().as_deref(), Some("falloutw.exe"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
