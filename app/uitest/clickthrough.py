@@ -233,6 +233,17 @@ PROBE = r"""
   const visible = id => { const el = document.getElementById(id); return !!el && !el.hidden; };
   const note = (ok, label) => out.push((ok ? "PASS " : "FAIL ") + label);
   const settle = ms => new Promise(r => setTimeout(r, ms));
+  /* wait for a thing to become true rather than sleeping a guess and hoping.
+     a github runner is several times slower than this machine and every fixed
+     delay in here was picked on this one */
+  const until = async (cond, ms) => {
+    const stop = performance.now() + ms;
+    while (performance.now() < stop) {
+      if (cond()) return true;
+      await settle(50);
+    }
+    return cond();
+  };
 
   /* the opening screen covers the whole window, so the way it fails is by
      staying there. it also has to outlast a fast start rather than blinking.
@@ -242,7 +253,6 @@ PROBE = r"""
      ci runner is a lot slower than this machine, so everything below is timed
      off the page's own clock rather than assuming we arrived at zero */
   const HOLD = 1200, FADE = 600;
-  const left = ms => Math.max(0, ms - performance.now());
 
   note(window.__atStart.splash, "the opening screen is up to begin with");
   note(window.__atStart.booting, "and the window knows it is still starting");
@@ -258,17 +268,21 @@ PROBE = r"""
          ?.closest("#win-close") !== null,
        "the close button is still the thing under the cursor while it is up");
 
-  // still there a good way into the hold, so it cannot blink past on a fast
-  // start. only worth asserting if we got here early enough to watch it
+  /* still there a good way into the hold, so it cannot blink past on a fast
+     start. only worth asserting if we got here early enough to watch it,
+     which on a slow runner we did not */
   const earlyEnough = performance.now() < HOLD - 400;
-  await settle(Math.min(500, left(HOLD - 100)));
+  if (earlyEnough) await settle(400);
   note(!earlyEnough || !!document.getElementById("splash"),
        "it holds for a moment on a fast start");
 
-  await settle(left(HOLD) + 250);
-  note(!document.body.classList.contains("booting"), "then it lets go");
-  await settle(left(HOLD + FADE) + 250);
-  note(!document.getElementById("splash"), "and takes itself out of the page");
+  /* the app starts its hold when app.js runs and only after its own startup
+     finishes, which is not a time this side can work out. so wait for it to
+     happen rather than sleeping a guess. the backstop in app.js is 12s */
+  note(await until(() => !document.body.classList.contains("booting"), 14000),
+       "then it lets go");
+  note(await until(() => !document.getElementById("splash"), FADE + 2000),
+       "and takes itself out of the page");
 
   /* a game with an anti-cheat cannot be used at all, so it goes to the end
      under its own heading rather than sitting in the middle of the ones that
