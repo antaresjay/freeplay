@@ -894,8 +894,14 @@ PROBE = r"""
   await settle(200);
   const link = document.querySelector("#view-about [data-open]");
   note(!!link, "about lists a source link");
-  note(document.getElementById("about-version").textContent.includes("0.1.0"),
-       "about says which version this is");
+  const ver = document.getElementById("about-version");
+  note(ver.textContent.includes("0.1.0"), "about says which version this is");
+  /* it used to sit under four paragraphs where nobody found it. next to the
+     name is where you look when you want to know which build you have */
+  note(ver.closest(".about-head") !== null, "and the version sits beside the name");
+  const heading = document.querySelector(".about-head h2");
+  note(heading && ver.getBoundingClientRect().top < heading.getBoundingClientRect().bottom + 4,
+       "on the same line as it, not under the prose");
   link.click();
   await settle(200);
   note(window.__calls.includes("open_url"), "the source link actually opens something");
