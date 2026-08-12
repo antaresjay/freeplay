@@ -136,6 +136,7 @@ mod tests {
             install_dir: PathBuf::from(r"C:\games\a game"),
             app_id: app_id.map(str::to_string),
             executables: exes.iter().map(PathBuf::from).collect(),
+            version: None,
         }
     }
 

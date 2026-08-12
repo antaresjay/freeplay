@@ -43,6 +43,9 @@ pub struct InstalledGame {
     pub app_id: Option<String>,
     /// Candidate executables, best guess first.
     pub executables: Vec<PathBuf>,
+    // only gog says, and only because its installer writes it to the registry.
+    // steam keeps the build id somewhere we cannot read
+    pub version: Option<String>,
 }
 
 impl InstalledGame {
@@ -300,7 +303,17 @@ fn build(
         install_dir: dir,
         app_id,
         executables,
+        version: None,
     })
+}
+
+// a store that records its own binary beats anything we can work out from the
+// file names. put it at the front and leave the rest as they were
+fn prefer(game: &mut InstalledGame, exe: PathBuf) {
+    if exe.is_file() {
+        game.executables.retain(|p| p != &exe);
+        game.executables.insert(0, exe);
+    }
 }
 
 #[cfg(windows)]
@@ -441,13 +454,9 @@ pub mod epic {
 
             let install = PathBuf::from(location);
             if let Some(mut game) = build(name, Store::Epic, install.clone(), None) {
-                // Epic records the real binary, so trust it over our guess.
+                // epic records the real binary, so trust it over our guess
                 if let Some(exe) = manifest.launch_executable {
-                    let full = install.join(exe.replace('/', "\\"));
-                    if full.is_file() {
-                        game.executables.retain(|p| p != &full);
-                        game.executables.insert(0, full);
-                    }
+                    prefer(&mut game, install.join(exe.replace('/', "\\")));
                 }
                 games.push(game);
             }
@@ -479,11 +488,37 @@ pub mod gog {
             if name.is_empty() || path.is_empty() {
                 continue;
             }
-            if let Some(game) = build(name, Store::Gog, PathBuf::from(path), Some(id)) {
+            let dir = PathBuf::from(path);
+            if let Some(mut game) = build(name, Store::Gog, dir.clone(), Some(id)) {
+                if let Some(exe) = told_exe(&key, &dir) {
+                    prefer(&mut game, exe);
+                }
+                game.version = text(&key, "ver");
                 games.push(game);
             }
         }
         games
+    }
+
+    fn text(key: &RegKey, name: &str) -> Option<String> {
+        key.get_value::<String, _>(name)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    }
+
+    // the installer writes the binary it made a shortcut to, which is the same
+    // one whether galaxy is here or the game came from an offline installer.
+    // `exe` is a full path, `exeFile` just the name, and some old keys only
+    // carry one of them
+    fn told_exe(key: &RegKey, dir: &Path) -> Option<PathBuf> {
+        let told = text(key, "exe").or_else(|| text(key, "exeFile"))?;
+        let path = PathBuf::from(told);
+        Some(if path.is_absolute() {
+            path
+        } else {
+            dir.join(path)
+        })
     }
 }
 
@@ -595,6 +630,7 @@ mod tests {
             install_dir: PathBuf::from(r"C:\g"),
             app_id: None,
             executables: vec![PathBuf::from(r"C:\g\Bin\test.exe")],
+            version: None,
         };
         assert_eq!(game.main_exe().as_deref(), Some("test.exe"));
     }
@@ -607,6 +643,7 @@ mod tests {
             install_dir: PathBuf::from(r"C:\g"),
             app_id: None,
             executables: vec![],
+            version: None,
         };
         assert_eq!(game.main_exe(), None);
     }

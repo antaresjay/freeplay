@@ -223,6 +223,7 @@ mod tests {
             install_dir: PathBuf::from("C:\\g"),
             app_id: Some("1234".into()),
             executables: vec![],
+            version: None,
         };
         assert!(find(&game).is_empty());
     }
