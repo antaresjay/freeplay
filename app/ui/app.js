@@ -734,6 +734,8 @@ function drawGamePage() {
   $("detail-dir").title = game.dir;
   $("detail-id-row").hidden = !game.app_id;
   $("detail-id").textContent = game.app_id || "";
+  $("detail-id").title = game.app_id || "";
+  $("detail-exe").title = game.exe || "";
   $("detail-guard-row").hidden = !game.guard;
   // the product when we can name it, the file we saw when we cannot, because
   // "Anti-cheat: an anti-cheat" tells nobody anything

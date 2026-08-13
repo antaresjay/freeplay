@@ -1015,17 +1015,19 @@ input::placeholder { color: var(--faint); }
   text-transform: uppercase;
   color: var(--faint);
 }
+/* an epic app id is three hex words joined by colons and it used to run off
+   the right of the page */
 .detail-row b {
   font-size: 12.5px;
   font-weight: 500;
   color: var(--dim);
   min-width: 0;
-}
-/* install paths are long and the bit you want is the last folder */
-.detail-row b.path {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+/* install paths are long and the bit you want is the last folder */
+.detail-row b.path {
   direction: rtl;
   text-align: left;
 }
