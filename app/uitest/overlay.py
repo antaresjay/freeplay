@@ -190,7 +190,26 @@ def find_browser():
         shutil.which("chrome"),
         shutil.which("chromium"),
     ]
-    return next((c for c in candidates if c and os.path.exists(c)), None)
+    found = [c for c in candidates if c and os.path.exists(c)]
+    return next((c for c in found if loads_a_file(c)), None)
+
+
+def loads_a_file(browser):
+    """edge stopped loading file:// urls in headless and says nothing about it,
+    so the first candidate that can read one off disk is the one to use."""
+    work = tempfile.mkdtemp(prefix="freeplay-probe-")
+    page = os.path.join(work, "probe.html")
+    open(page, "w", encoding="utf-8").write("<b id=ok>ok</b>")
+    try:
+        out = subprocess.run(
+            [browser, "--headless", "--disable-gpu", "--dump-dom",
+             "file:///" + page.replace("\\", "/")],
+            capture_output=True, text=True, timeout=60)
+        return 'id="ok"' in out.stdout
+    except Exception:
+        return False
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def main():
