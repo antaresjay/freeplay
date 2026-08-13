@@ -1101,14 +1101,69 @@ input::placeholder { color: var(--faint); }
 .locked { margin: 16px 0 0; }
 
 .group { margin-bottom: 26px; }
-.group h3 {
+.group.shut { margin-bottom: 10px; }
+
+/* the whole heading is the hit area, so it is a button. it still has to read
+   as a heading, hence no border, no background and the h3 inside it */
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
   margin: 0 0 11px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.group.shut .group-head { margin-bottom: 0; }
+.group-head h3 {
+  margin: 0;
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.9px;
   text-transform: uppercase;
   color: var(--faint);
 }
+.group-head:hover h3 { color: var(--text); }
+
+/* the chevron is a rotated square, and rotating the element itself made its
+   box stick out past the left edge of the group. the box stays put and the
+   thing inside it turns */
+.caret {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+.caret::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.6px solid var(--faint);
+  border-bottom: 1.6px solid var(--faint);
+  transform: rotate(45deg);
+  transition: transform 0.12s ease;
+}
+.group.shut .caret::before { transform: rotate(-45deg); }
+.group-head:hover .caret::before { border-color: var(--text); }
+
+.group-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--faint);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.group.shut .cheats { display: none; }
+/* a shut group still hands over its matches while a search is running */
+#cheat-groups.searching .group.shut .cheats { display: grid; }
 
 .cheats {
   display: grid;

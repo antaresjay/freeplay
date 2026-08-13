@@ -490,6 +490,50 @@ PROBE = r"""
            "the pill stays on one line even with nowhere to put it (" +
            lines + " lines)");
     }
+    /* categories fold away, and stay folded next time. forty cheats in six
+       groups is a wall of cards otherwise */
+    {
+      const group = document.querySelector("#cheat-groups .group");
+      const head = group.querySelector(".group-head");
+      const name = group.querySelector("h3").textContent;
+      note(group.querySelector(".group-count").textContent ===
+           String(group.querySelectorAll(".cheat").length),
+           "a group says how many are in it");
+      note(!group.classList.contains("shut"), "and starts open");
+      note(getComputedStyle(group.querySelector(".cheats")).display !== "none",
+           "with its cheats showing");
+
+      head.click();
+      await settle(200);
+      note(group.classList.contains("shut"), "clicking the heading folds it");
+      note(getComputedStyle(group.querySelector(".cheats")).display === "none",
+           "and the cheats go away");
+      note(head.getAttribute("aria-expanded") === "false",
+           "and it says so to anything reading the page");
+      note(window.__folded && (window.__folded["witcher2.exe"] || []).includes(name),
+           "the fold is written down, so it survives a restart");
+
+      // a folded group still has to give up its matches
+      document.getElementById("cheat-filter").value = name === "Misc" ? "witcher" : "zzz";
+      document.getElementById("cheat-filter").dispatchEvent(new Event("input"));
+      await settle(320);
+      if (name === "Misc") {
+        note(getComputedStyle(group.querySelector(".cheats")).display !== "none",
+             "searching opens a folded group so its matches can be seen");
+      }
+      document.getElementById("cheat-filter").value = "";
+      document.getElementById("cheat-filter").dispatchEvent(new Event("input"));
+      await settle(320);
+      note(getComputedStyle(group.querySelector(".cheats")).display === "none",
+           "and it folds back when the search is cleared");
+
+      head.click();
+      await settle(200);
+      note(!group.classList.contains("shut"), "clicking again opens it");
+      note(!(window.__folded["witcher2.exe"] || []).includes(name),
+           "and that is written down too");
+    }
+
     const overflowing = spilling("#cheats-panel");
     note(overflowing.length === 0, "nothing in the cheats panel is cut off (" +
          overflowing.slice(0, 3).join("; ") + ")");

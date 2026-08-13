@@ -10,6 +10,7 @@ let drawn = "";
 let config = { theme: "system", accent: "amber", favourites: [] };
 let me = null; // the name we publish under, if any
 let sharedFor = null; // the exe the shared list on screen belongs to
+let folded = new Set(); // cheat categories shut on the game page, by name
 
 /* art is read off disk and served over its own protocol, so ask once */
 const art = new Map();
@@ -919,6 +920,14 @@ async function refreshCheats() {
     byCategory.get(row.category).push(row);
   }
 
+  // which groups were folded away last time. asked once per game, not on every
+  // tick of the timer this sits on
+  if (refreshCheats.foldedFor !== game.exe) {
+    refreshCheats.foldedFor = game.exe;
+    folded = new Set(await invoke("folded", { exe: game.exe }).catch(() => []));
+    if (open !== asked) return;
+  }
+
   /* this runs every second and a half. throwing the list away and building it
      again wiped hover, killed focus and made the whole panel blink, so the
      cards are only built when the table itself changes and patched otherwise.
@@ -935,10 +944,24 @@ async function refreshCheats() {
     host.innerHTML = "";
     for (const [category, items] of byCategory) {
       const group = document.createElement("div");
-      group.className = "group";
+      const shut = folded.has(category);
+      group.className = "group" + (shut ? " shut" : "");
 
-      const heading = document.createElement("h3");
-      heading.textContent = category;
+      // a heading you can click has to be a button, or it is invisible to the
+      // keyboard and to anything reading the page aloud
+      const heading = document.createElement("button");
+      heading.className = "group-head";
+      heading.type = "button";
+      heading.setAttribute("aria-expanded", String(!shut));
+
+      const caret = document.createElement("span");
+      caret.className = "caret";
+      const label = document.createElement("h3");
+      label.textContent = category;
+      const count = document.createElement("span");
+      count.className = "group-count";
+      count.textContent = String(items.length);
+      heading.append(caret, label, count);
 
       const grid = document.createElement("div");
       grid.className = "cheats";
@@ -947,6 +970,15 @@ async function refreshCheats() {
         refreshCheats.cards.set(item.id, card);
         grid.appendChild(card);
       }
+
+      heading.addEventListener("click", () => {
+        const now = !group.classList.contains("shut");
+        group.classList.toggle("shut", now);
+        heading.setAttribute("aria-expanded", String(!now));
+        if (now) folded.add(category);
+        else folded.delete(category);
+        invoke("fold", { exe: game.exe, category, shut: now }).catch(() => {});
+      });
 
       group.append(heading, grid);
       host.appendChild(group);
@@ -1049,6 +1081,9 @@ function applyCheatFilter() {
   for (const group of document.querySelectorAll("#cheat-groups .group")) {
     group.hidden = ![...group.querySelectorAll(".cheat")].some((c) => !c.hidden);
   }
+  /* a folded group still has to give up its matches while you are searching,
+     or the search says nothing found when it did find something */
+  $("cheat-groups").classList.toggle("searching", !!needle);
   $("cheat-none").hidden = shown > 0 || !needle;
 }
 

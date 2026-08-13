@@ -1834,6 +1834,42 @@ fn values_for(state: &tauri::State<'_, App>, exe: &str) -> HashMap<String, Strin
 }
 
 // numbers are kept whether or not the game is up, same as what is armed. type
+// which categories are folded away for a game. the overlay shows the same
+// groups over the same game, so it reads and writes the same list
+#[tauri::command]
+fn folded(state: tauri::State<'_, App>, exe: String) -> Vec<String> {
+    state
+        .settings
+        .lock()
+        .unwrap()
+        .folded
+        .get(&exe.to_lowercase())
+        .cloned()
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn fold(
+    state: tauri::State<'_, App>,
+    exe: String,
+    category: String,
+    shut: bool,
+) -> Result<(), String> {
+    let mut settings = state.settings.lock().unwrap();
+    let held = settings.folded.entry(exe.to_lowercase()).or_default();
+
+    match shut {
+        true if !held.contains(&category) => held.push(category),
+        false => held.retain(|c| c != &category),
+        _ => {}
+    }
+    // open is the default, so a game with nothing shut carries no entry
+    if held.is_empty() {
+        settings.folded.remove(&exe.to_lowercase());
+    }
+    settings::save(&settings)
+}
+
 // one in with the game closed and it is waiting when you launch
 #[tauri::command]
 fn set_cheat_value(
@@ -2365,6 +2401,8 @@ fn main() {
             game_art,
             settings,
             save_settings,
+            folded,
+            fold,
             diagnostics,
             open_log,
             table_count,
