@@ -121,6 +121,9 @@
   border-radius: 7px;
   border-left: 2px solid transparent;
 }
+/* two lit rows next to each other used to sit flush and read as one panel
+   with a seam down the middle of it */
+.ov-cheat + .ov-cheat { margin-top: 3px; }
 .ov-cheat:hover { background: rgba(255, 255, 255, 0.045); }
 
 .ov-cheat.armed:not(.on) {
