@@ -412,6 +412,8 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
         .collect();
     let tables = tables(&state);
     let played = freeplay_library::play::steam();
+    // epic only records when, never how long
+    let epic_played = freeplay_library::play::epic();
     let galaxy = freeplay_library::galaxy::details();
     let steam_genres = freeplay_library::steam::root()
         .map(|root| freeplay_library::appinfo::genres(&root))
@@ -426,10 +428,15 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
             let key = key_for(&game);
             // a steam app id and a gog game id are both just numbers, so the
             // store has to pick which list to look in
-            let mine = game.app_id.as_deref().filter(|_| game.store != Store::Gog);
+            let mine = game
+                .app_id
+                .as_deref()
+                .filter(|_| game.store == Store::Steam);
             let theirs = game.app_id.as_deref().filter(|_| game.store == Store::Gog);
+            let epic = game.app_id.as_deref().filter(|_| game.store == Store::Epic);
             let play = mine
                 .and_then(|id| played.get(id))
+                .or_else(|| epic.and_then(|id| epic_played.get(id)))
                 .copied()
                 .or_else(|| theirs.and_then(|id| galaxy.get(id)).map(|d| d.play))
                 .unwrap_or_default();
