@@ -9,6 +9,7 @@ pub mod art;
 pub mod build;
 pub mod galaxy;
 pub mod launch;
+pub mod pe;
 pub mod play;
 pub mod vdf;
 
