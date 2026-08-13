@@ -97,6 +97,92 @@ pub fn steam() -> HashMap<String, Play> {
     HashMap::new()
 }
 
+// epic writes `LastPlayedGame=<namespace>:<item>:<app>,<iso timestamp>` once
+// per game, all under a section named after the account. no minutes anywhere,
+// the launcher asks its own servers for those
+fn from_launcher_ini(text: &str) -> HashMap<String, Play> {
+    let mut found: HashMap<String, Play> = HashMap::new();
+
+    for line in text.lines() {
+        let Some(value) = line.trim().strip_prefix("LastPlayedGame=") else {
+            continue;
+        };
+        let Some((id, stamp)) = value.rsplit_once(',') else {
+            continue;
+        };
+        // three parts, or it is not an id we would ever look up
+        if id.split(':').count() != 3 {
+            continue;
+        }
+        let Some(at) = iso_seconds(stamp) else {
+            continue;
+        };
+        let held = &mut found.entry(id.to_string()).or_default().last_played;
+        *held = Some((*held).unwrap_or(0).max(at));
+    }
+    found
+}
+
+// 2026-08-13T09:08:17.534Z, always utc. a whole date crate to read one field
+// of one ini file is not worth it
+fn iso_seconds(stamp: &str) -> Option<u64> {
+    let stamp = stamp.trim();
+    let (date, rest) = stamp.split_once('T')?;
+    let mut parts = date.split('-');
+    let year: i64 = parts.next()?.parse().ok()?;
+    let month: i64 = parts.next()?.parse().ok()?;
+    let day: i64 = parts.next()?.parse().ok()?;
+
+    let clock = rest.split(['.', 'Z', '+']).next()?;
+    let mut units = clock.split(':');
+    let hour: i64 = units.next()?.parse().ok()?;
+    let minute: i64 = units.next()?.parse().ok()?;
+    let second: i64 = units.next().unwrap_or("0").parse().ok()?;
+
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 {
+        return None;
+    }
+
+    // days from the civil epoch, shifting the year to start in march so the
+    // leap day lands at the end of it
+    let y = year - i64::from(month <= 2);
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+
+    let seconds = days * 86_400 + hour * 3_600 + minute * 60 + second;
+    (seconds > 946_684_800).then_some(seconds as u64)
+}
+
+#[cfg(windows)]
+fn launcher_ini() -> Option<std::path::PathBuf> {
+    let local = std::env::var("LOCALAPPDATA").ok()?;
+    Some(
+        std::path::PathBuf::from(local)
+            .join("EpicGamesLauncher")
+            .join("Saved")
+            .join("Config")
+            .join("WindowsEditor")
+            .join("GameUserSettings.ini"),
+    )
+}
+
+// keyed by the same namespace:item:app triple discovery hands back
+#[cfg(windows)]
+pub fn epic() -> HashMap<String, Play> {
+    launcher_ini()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|text| from_launcher_ini(&text))
+        .unwrap_or_default()
+}
+
+#[cfg(not(windows))]
+pub fn epic() -> HashMap<String, Play> {
+    HashMap::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +262,60 @@ mod tests {
                 minutes: Some(50)
             }
         );
+    }
+
+    // cut from the real GameUserSettings.ini
+    const LAUNCHER: &str = "\
+[dd7993131d61415f8c19537776913dbd_Launcher]
+LastPlayedGame=caca23a0954f4c1aba1fdd7e277b81e2:ff45e0eabd0c48d6950e369c79c26823:d6264d56f5ba434e91d4b0a0b056c83a,2026-08-13T09:08:17.534Z
+LastPlayedGame=a14a02aa3c8143729605eaf7c93d7501:232e505971824de9ba841ba35d4b08f5:glacrdemo,2025-08-16T19:43:27.027Z
+LastPlayedGame=nonsense,2025-08-16T19:43:27.027Z
+LastPlayedGame=a:b:c,not a date
+SomethingElse=a:b:c,2025-08-16T19:43:27.027Z
+";
+
+    #[test]
+    fn epic_says_when_but_never_how_long() {
+        let found = from_launcher_ini(LAUNCHER);
+        assert_eq!(found.len(), 2);
+        let tr = found["caca23a0954f4c1aba1fdd7e277b81e2:\
+                        ff45e0eabd0c48d6950e369c79c26823:\
+                        d6264d56f5ba434e91d4b0a0b056c83a"];
+        assert_eq!(tr.last_played, Some(1_786_612_097));
+        assert_eq!(tr.minutes, None);
+    }
+
+    #[test]
+    fn a_game_played_twice_keeps_the_later_one() {
+        let text = "LastPlayedGame=a:b:c,2024-01-01T00:00:00.000Z\n\
+                    LastPlayedGame=a:b:c,2026-03-04T05:06:07.000Z\n";
+        assert_eq!(
+            from_launcher_ini(text)["a:b:c"].last_played,
+            Some(1_772_600_767)
+        );
+    }
+
+    #[test]
+    fn the_epic_timestamps_are_utc() {
+        assert_eq!(iso_seconds("2026-08-13T09:08:17.534Z"), Some(1_786_612_097));
+        // a leap day, and one right after it
+        assert_eq!(iso_seconds("2024-02-29T00:00:00Z"), Some(1_709_164_800));
+        assert_eq!(iso_seconds("2024-03-01T00:00:00Z"), Some(1_709_251_200));
+        assert_eq!(iso_seconds("2000-01-01T00:00:01Z"), Some(946_684_801));
+    }
+
+    #[test]
+    fn a_date_that_is_not_one_is_dropped() {
+        for bad in [
+            "",
+            "2026-08-13",
+            "not a date",
+            "2026-13-01T00:00:00Z",
+            "2026-08-32T00:00:00Z",
+            "2026-08-13T99:00:00Z",
+            "1970-01-01T00:00:00Z",
+        ] {
+            assert_eq!(iso_seconds(bad), None, "{bad} should not parse");
+        }
     }
 }
