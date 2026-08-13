@@ -297,7 +297,8 @@ def loads_a_file(browser):
     open(page, "w", encoding="utf-8").write("<b id=ok>ok</b>")
     try:
         out = subprocess.run(
-            [browser, "--headless", "--disable-gpu", "--dump-dom",
+            [browser, "--headless", "--disable-gpu",
+             "--user-data-dir=" + os.path.join(work, "profile"), "--dump-dom",
              "file:///" + page.replace("\\", "/")],
             capture_output=True, text=True, timeout=60)
         return 'id="ok"' in out.stdout
@@ -327,6 +328,7 @@ def main():
     url = "file:///" + page_path.replace("\\", "/")
     run = subprocess.run(
         [browser, "--headless", "--disable-gpu", "--allow-file-access-from-files",
+         "--user-data-dir=" + tempfile.mkdtemp(prefix="freeplay-profile-"),
          # the wide layout is where the two column settings grid lives, and the
          # default headless window is narrow enough to never see it
          "--window-size=1600,1000",
@@ -335,7 +337,7 @@ def main():
 
     found = re.search(r'<pre id="probe-results">(.*?)</pre>', run.stdout, re.S)
     if not found:
-        print("the probe never ran, so overlay.js threw before it could report")
+        print("the probe never ran: overlay.js threw, or it outgrew the time budget")
         for line in run.stderr.splitlines():
             if any(word in line.lower() for word in ("error", "uncaught", "cannot", "null")):
                 print("  ", line.strip()[:300])

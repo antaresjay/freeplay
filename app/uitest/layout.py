@@ -254,7 +254,8 @@ def loads_a_file(browser):
     open(page, "w", encoding="utf-8").write("<b id=ok>ok</b>")
     try:
         out = subprocess.run(
-            [browser, "--headless", "--disable-gpu", "--dump-dom",
+            [browser, "--headless", "--disable-gpu",
+             "--user-data-dir=" + os.path.join(work, "profile"), "--dump-dom",
              "file:///" + page.replace("\\", "/")],
             capture_output=True, text=True, timeout=60)
         return 'id="ok"' in out.stdout
@@ -262,6 +263,28 @@ def loads_a_file(browser):
         return False
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def once(browser, work, size):
+    """the whole probe at one window size"""
+    page_path = os.path.join(work, "index.html")
+    url = "file:///" + page_path.replace("\\", "/")
+    run = subprocess.run(
+        [browser, "--headless", "--disable-gpu", "--allow-file-access-from-files",
+         "--user-data-dir=" + tempfile.mkdtemp(prefix="freeplay-profile-"),
+         "--window-size=%d,%d" % size, "--virtual-time-budget=30000", "--dump-dom", url],
+        capture_output=True, text=True, timeout=180)
+
+    found = re.search(r'<pre id="probe-results">(.*?)</pre>', run.stdout, re.S)
+    if not found:
+        return None
+    return found.group(1).strip().replace("&amp;", "&").replace("&lt;", "<")
+
+
+# the window is resizable and people make it small. everything used to be
+# measured at 1600 wide, where the row of buttons under the game name fits and
+# at 1280 it runs off the side of the card
+SIZES = [(1600, 1000), (1280, 860), (1024, 800)]
 
 
 def main():
