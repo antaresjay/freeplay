@@ -5,6 +5,7 @@ let attached = null;
 let shape = null;
 let cards = new Map();
 let rows = [];
+let folded = new Set(); // categories shut, shared with the main window
 
 const many = (n, one) => `${n} ${n === 1 ? one : one + "s"}`;
 
@@ -153,15 +154,39 @@ function draw() {
 
     for (const [category, items] of byCategory) {
       const group = document.createElement("div");
-      group.className = "ov-group";
-      const heading = document.createElement("h3");
-      heading.textContent = category;
-      group.appendChild(heading);
+      const shut = folded.has(category);
+      group.className = "ov-group" + (shut ? " shut" : "");
+
+      const heading = document.createElement("button");
+      heading.className = "ov-group-head";
+      heading.type = "button";
+      heading.setAttribute("aria-expanded", String(!shut));
+      const caret = document.createElement("span");
+      caret.className = "ov-caret";
+      const label = document.createElement("h3");
+      label.textContent = category;
+      heading.append(caret, label);
+
+      const body = document.createElement("div");
+      body.className = "ov-group-body";
       for (const item of items) {
         const built = card(item);
         cards.set(item.id, built);
-        group.appendChild(built);
+        body.appendChild(built);
       }
+
+      // the same list the main window writes, so folding it in one place
+      // folds it in the other
+      heading.addEventListener("click", () => {
+        const now = !group.classList.contains("shut");
+        group.classList.toggle("shut", now);
+        heading.setAttribute("aria-expanded", String(!now));
+        if (now) folded.add(category);
+        else folded.delete(category);
+        invoke("fold", { exe: attached.process, category, shut: now }).catch(() => {});
+      });
+
+      group.append(heading, body);
       host.appendChild(group);
     }
     applyFilter();
@@ -196,6 +221,8 @@ function applyFilter() {
   for (const group of document.querySelectorAll(".ov-group")) {
     group.hidden = ![...group.querySelectorAll(".ov-cheat")].some((c) => !c.hidden);
   }
+  // a shut group still hands over its matches while you are searching
+  $("ov-list").classList.toggle("searching", !!needle);
   if (needle && !shown && cards.size) say("Nothing matches that");
   else if (cards.size) say(null);
 }
@@ -242,6 +269,10 @@ async function refresh() {
   if (changed) {
     shape = null;
     $("ov-filter").value = "";
+    // the same folds the main window keeps, asked for once per game
+    folded = new Set(
+      await invoke("folded", { exe: attached.process }).catch(() => [])
+    );
   }
 
   try {

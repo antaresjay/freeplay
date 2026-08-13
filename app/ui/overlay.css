@@ -103,14 +103,56 @@
 
 .ov-group { margin-bottom: 10px; }
 .ov-group:last-child { margin-bottom: 0; }
-.ov-group h3 {
-  margin: 6px 0 4px 2px;
+.ov-group.shut { margin-bottom: 2px; }
+
+/* clickable, so it is a button. same folds as the main window */
+.ov-group-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.ov-group-head h3 {
+  margin: 6px 0 4px 0;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 1.1px;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.32);
 }
+.ov-group-head:hover h3 { color: rgba(255, 255, 255, 0.6); }
+
+/* the box holds still and the chevron inside it turns, or a rotated element
+   hangs off the left edge of the panel */
+.ov-caret {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  margin-left: 2px;
+}
+.ov-caret::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 5px;
+  height: 5px;
+  border-right: 1.4px solid rgba(255, 255, 255, 0.32);
+  border-bottom: 1.4px solid rgba(255, 255, 255, 0.32);
+  transform: rotate(45deg);
+  transition: transform 0.12s ease;
+}
+.ov-group.shut .ov-caret::before { transform: rotate(-45deg); }
+.ov-group-head:hover .ov-caret::before { border-color: rgba(255, 255, 255, 0.6); }
+
+.ov-group.shut .ov-group-body { display: none; }
+.ov-list.searching .ov-group.shut .ov-group-body { display: block; }
 
 /* a row is a row. only the one that is doing something gets any weight */
 .ov-cheat {

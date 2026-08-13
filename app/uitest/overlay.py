@@ -27,6 +27,7 @@ window.addEventListener("unhandledrejection", e => window.__errors.push("promise
 const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true};
 let ATTACHED = {process:"witcher2.exe", pid:1234, game:"The Witcher 2",
                 table:true, arch:"32-bit"};
+let FOLDED = {};
 let CHEATS = [
   {id:"base", name:"Get Witcher Base", category:"Misc", description:"", hint:"",
    state:"ready", reason:"", armed:false, live:false, does:"Script", ...plain},
@@ -55,6 +56,14 @@ window.__TAURI__ = {
         // object the page is holding. handing back CHEATS itself made a
         // toggle look like it flipped twice
         case "cheats": return ATTACHED ? JSON.parse(JSON.stringify(CHEATS)) : [];
+        case "folded": return (FOLDED[args.exe] || []).slice();
+        case "fold": {
+          const held = FOLDED[args.exe] || (FOLDED[args.exe] = []);
+          if (args.shut) { if (!held.includes(args.category)) held.push(args.category); }
+          else FOLDED[args.exe] = held.filter(c => c !== args.category);
+          window.__folded = JSON.parse(JSON.stringify(FOLDED));
+          return null;
+        }
         case "overlay_status":
           return {on:true, key:"Ctrl+Shift+O", showing:true, clash:null, game:"witcher2.exe", accent:"cyan"};
         case "set_cheat":
@@ -161,6 +170,36 @@ PROBE = r"""
   await settle(300);
   note([...document.querySelectorAll(".ov-cheat")].every(c => !c.hidden),
        "clearing it brings them back");
+
+  /* categories fold here too, into the same list the main window writes, so
+     shutting one in either place shuts it in both */
+  {
+    const player = [...document.querySelectorAll(".ov-group")]
+      .find(g => g.querySelector("h3").textContent === "Player");
+    const head = player.querySelector(".ov-group-head");
+    const body = player.querySelector(".ov-group-body");
+    note(!player.classList.contains("shut"), "an overlay group starts open");
+
+    head.click();
+    await settle(200);
+    note(player.classList.contains("shut"), "clicking its heading folds it");
+    note(getComputedStyle(body).display === "none", "and its cheats go away");
+    note(window.__folded && (window.__folded["witcher2.exe"] || []).includes("Player"),
+         "written to the same list the main window reads");
+
+    document.getElementById("ov-filter").value = "endurance";
+    document.getElementById("ov-filter").dispatchEvent(new Event("input"));
+    await settle(300);
+    note(getComputedStyle(body).display !== "none",
+         "searching opens a folded group so its matches can be seen");
+    document.getElementById("ov-filter").value = "";
+    document.getElementById("ov-filter").dispatchEvent(new Event("input"));
+    await settle(300);
+
+    head.click();
+    await settle(200);
+    note(!player.classList.contains("shut"), "clicking again opens it");
+  }
 
   /* two cheats in the same category sat flush against each other. both were
      lit, so the two accent panels touched and read as one shape with a seam
