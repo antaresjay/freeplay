@@ -1108,6 +1108,7 @@ dependencies = [
 name = "freeplay-library"
 version = "0.1.1"
 dependencies = [
+ "base64 0.22.1",
  "rayon",
  "rusqlite",
  "serde",

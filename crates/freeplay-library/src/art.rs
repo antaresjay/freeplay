@@ -184,6 +184,87 @@ pub fn gog(game_id: &str, install_dir: &Path) -> Art {
     art
 }
 
+// epic is the odd one out. the launcher renders its covers in a webview, so
+// the only copy on disk is inside a chromium blob cache with no filenames in
+// it. the catalog cache next to the manifests does name them, but as urls, so
+// epic art is the one kind somebody has to go and fetch
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Remote {
+    pub cover: Option<String>,
+    pub hero: Option<String>,
+}
+
+#[cfg(windows)]
+fn catalog() -> Option<PathBuf> {
+    let program_data = std::env::var("PROGRAMDATA").ok()?;
+    Some(
+        PathBuf::from(program_data)
+            .join("Epic")
+            .join("EpicGamesLauncher")
+            .join("Data")
+            .join("Catalog")
+            .join("catcache.bin"),
+    )
+}
+
+#[cfg(not(windows))]
+fn catalog() -> Option<PathBuf> {
+    None
+}
+
+// the whole file is one base64 blob wrapping a json array of catalog entries
+fn from_catalog(raw: &[u8], namespace: &str, item: &str) -> Remote {
+    use base64::Engine;
+
+    let trimmed: Vec<u8> = raw
+        .iter()
+        .copied()
+        .filter(|b| !b.is_ascii_whitespace())
+        .collect();
+    let Ok(json) = base64::engine::general_purpose::STANDARD.decode(&trimmed) else {
+        return Remote::default();
+    };
+    let Ok(entries) = serde_json::from_slice::<Vec<serde_json::Value>>(&json) else {
+        return Remote::default();
+    };
+
+    let Some(entry) = entries
+        .iter()
+        .find(|e| e["id"].as_str() == Some(item) && e["namespace"].as_str() == Some(namespace))
+    else {
+        return Remote::default();
+    };
+
+    let by_type = |wanted: &[&str]| -> Option<String> {
+        let images = entry["keyImages"].as_array()?;
+        wanted.iter().find_map(|want| {
+            images
+                .iter()
+                .find(|i| i["type"].as_str() == Some(want))
+                .and_then(|i| i["url"].as_str())
+                .filter(|u| u.starts_with("https://"))
+                .map(str::to_string)
+        })
+    };
+
+    Remote {
+        cover: by_type(&["DieselGameBoxTall", "OfferImageTall", "Thumbnail"]),
+        hero: by_type(&["DieselGameBox", "DieselGameBoxWide", "OfferImageWide"]),
+    }
+}
+
+// namespace:catalogitem:appname, the same id the launcher url is built from
+pub fn epic(app_id: &str) -> Remote {
+    let mut parts = app_id.split(':');
+    let (Some(namespace), Some(item)) = (parts.next(), parts.next()) else {
+        return Remote::default();
+    };
+    catalog()
+        .and_then(|path| std::fs::read(path).ok())
+        .map(|raw| from_catalog(&raw, namespace, item))
+        .unwrap_or_default()
+}
+
 pub fn find(game: &InstalledGame) -> Art {
     match (game.store, game.app_id.as_deref()) {
         (Store::Steam, Some(id)) => steam(id),
@@ -395,6 +476,66 @@ mod tests {
             version: None,
         };
         assert!(find(&game).is_empty());
+    }
+
+    // cut down from the real catcache.bin, keeping the shape
+    const CATALOG: &str = r#"[
+      {"id":"aaa","namespace":"nnn","title":"Something Else",
+       "keyImages":[{"type":"DieselGameBoxTall","url":"https://cdn1.epicgames.com/wrong"}]},
+      {"id":"ff45e0eabd0c48d6950e369c79c26823","namespace":"caca23a0954f4c1aba1fdd7e277b81e2",
+       "title":"Tomb Raider GAME OF THE YEAR EDITION",
+       "keyImages":[
+         {"type":"DieselGameBox","width":2560,"height":1440,"url":"https://cdn1.epicgames.com/item/wide"},
+         {"type":"DieselGameBoxTall","width":1200,"height":1600,"url":"https://cdn1.epicgames.com/item/tall"}]}
+    ]"#;
+
+    fn encoded() -> Vec<u8> {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD
+            .encode(CATALOG)
+            .into_bytes()
+    }
+
+    #[test]
+    fn the_epic_catalog_names_both_pictures() {
+        let found = from_catalog(
+            &encoded(),
+            "caca23a0954f4c1aba1fdd7e277b81e2",
+            "ff45e0eabd0c48d6950e369c79c26823",
+        );
+        assert_eq!(
+            found,
+            Remote {
+                cover: Some("https://cdn1.epicgames.com/item/tall".into()),
+                hero: Some("https://cdn1.epicgames.com/item/wide".into()),
+            }
+        );
+    }
+
+    // two games can share an id across namespaces, so both have to match
+    #[test]
+    fn the_wrong_namespace_is_not_a_match() {
+        let found = from_catalog(&encoded(), "nnn", "ff45e0eabd0c48d6950e369c79c26823");
+        assert_eq!(found, Remote::default());
+    }
+
+    #[test]
+    fn a_catalog_we_cannot_read_is_not_a_panic() {
+        assert_eq!(
+            from_catalog(b"not base64 at all !!", "n", "i"),
+            Remote::default()
+        );
+        assert_eq!(from_catalog(b"", "n", "i"), Remote::default());
+    }
+
+    // the url ends up in a fetch, so anything that is not https is dropped
+    #[test]
+    fn a_url_that_is_not_https_is_ignored() {
+        use base64::Engine;
+        let raw = r#"[{"id":"i","namespace":"n","keyImages":[
+            {"type":"DieselGameBoxTall","url":"file:///c:/windows/system32/calc.exe"}]}]"#;
+        let blob = base64::engine::general_purpose::STANDARD.encode(raw);
+        assert_eq!(from_catalog(blob.as_bytes(), "n", "i"), Remote::default());
     }
 
     #[test]
