@@ -208,10 +208,11 @@
       </div>
 
       <div id="no-table" class="blank" hidden>
-        <h3>No cheat table for this game</h3>
-        <p>A table says where the game keeps its numbers. There are three ways to get one.</p>
-        <p class="dim">Import a Cheat Engine <b>.CT</b> file and Freeplay converts it, scripts included. You can also drop one anywhere on this window. Or find the value yourself while the game runs.</p>
+        <h3 id="no-table-title">No cheat table for this game</h3>
+        <p id="no-table-lead">A table says where the game keeps its numbers. There are three ways to get one.</p>
+        <p class="dim" id="no-table-body">Import a Cheat Engine <b>.CT</b> file and Freeplay converts it, scripts included. You can also drop one anywhere on this window. Or find the value yourself while the game runs.</p>
         <div class="blank-actions">
+          <button id="no-table-pick" class="primary" hidden>Show the shared tables</button>
           <button id="no-table-import" class="primary">Import a .CT file</button>
           <button id="no-table-find" class="ghost">Search online</button>
           <button class="ghost" data-goto="finder">Find it yourself</button>

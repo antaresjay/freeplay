@@ -676,6 +676,9 @@ function drawGamePage() {
     drawGamePage.showing = open;
     refreshCheats.shape = null;
     sharedFor = null;
+    // the count the empty state quotes belongs to the game you just left
+    sharedRows = [];
+    ownRows = null;
     $("cheat-filter").value = "";
     $("shared-search").value = "";
     // a search is about the game you were on, not the one you just opened
@@ -884,6 +887,7 @@ async function refreshCheats() {
     $("cheat-groups").innerHTML = "";
     $("cheats-panel").hidden = true;
     $("no-table").hidden = false;
+    paintNoTable();
     return;
   }
 
@@ -901,6 +905,7 @@ async function refreshCheats() {
   if (open !== asked) return;
 
   $("no-table").hidden = rows.length > 0;
+  if (!rows.length) paintNoTable();
   $("cheats-panel").hidden = rows.length === 0;
   $("remove-table").hidden = rows.length === 0;
   $("cheat-count").textContent = rows.length ? `${many(rows.length, "cheat")}` : "";
@@ -1510,10 +1515,14 @@ function drawDock() {
   const shut = config.shared_open === false;
   $("shared").hidden = shut;
   $("dock-open").hidden = !shut;
+  // the empty state points at the dock, so it has to know whether it is there
+  if (!$("no-table").hidden) paintNoTable();
 }
 
 $("dock-close").addEventListener("click", () => saveConfig({ shared_open: false }));
 $("dock-open").addEventListener("click", () => saveConfig({ shared_open: true }));
+
+$("no-table-pick").addEventListener("click", () => saveConfig({ shared_open: true }));
 
 $("game-folder").addEventListener("click", () => {
   const game = gameFor(open);
@@ -1661,11 +1670,14 @@ async function loadShared(force = false) {
      refusal as though something had gone wrong */
   if (config.community === false) {
     sharedFor = null;
+    sharedRows = [];
+    ownRows = null;
     $("shared-list").innerHTML = "";
     $("dock-open-count").textContent = "";
     $("shared-empty").hidden = false;
     $("shared-empty").textContent =
       "Shared tables are turned off, so Freeplay is not asking the service about this game.";
+    paintNoTable();
     return;
   }
 
@@ -1709,9 +1721,36 @@ async function loadShared(force = false) {
 
   for (const row of rows) host.appendChild(sharedRow(row));
   applySharedFilter();
+  paintNoTable();
 }
 
 let sharedRows = [];
+/* the empty state used to say there was nothing for this game while seven
+   shared tables sat in the dock next to it. what it says now depends on
+   whether any of them turned up, and both halves of the page can finish in
+   either order, so each one calls this when it does */
+function paintNoTable() {
+  const rows = ownRows || sharedRows;
+  const some = rows.length > 0;
+  const shut = $("shared").hidden;
+
+  $("no-table-title").textContent = some
+    ? `${many(rows.length, "shared table")} for this game`
+    : "No cheat table for this game";
+  $("no-table-lead").textContent = some
+    ? shut
+      ? "Somebody has already worked this game out. Open the shared tables and pick one."
+      : "Somebody has already worked this game out. Pick one from the list on the right."
+    : "A table says where the game keeps its numbers. There are three ways to get one.";
+  $("no-table-body").textContent = some
+    ? "None of them fit? Search for another, or import a Cheat Engine .CT file of your own. You can also drop one anywhere on this window."
+    : "Import a Cheat Engine .CT file and Freeplay converts it, scripts included. You can also drop one anywhere on this window. Or find the value yourself while the game runs.";
+
+  // pointless when the list is already sitting there
+  $("no-table-pick").hidden = !some || !shut;
+  $("no-table-import").className = some ? "ghost" : "primary";
+}
+
 let sharedTimer = null;
 let searchTimer = null;
 let searchFor = "";
@@ -1746,6 +1785,7 @@ async function searchEveryGame() {
         "Nobody has shared a table for this game yet. If yours works, share it and you will be the first.";
       ownRows = null;
       applySharedFilter();
+      paintNoTable();
       return;
     }
     await loadShared(true);
