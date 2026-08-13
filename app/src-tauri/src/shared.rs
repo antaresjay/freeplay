@@ -198,8 +198,11 @@ pub fn install(
     }
 
     std::fs::create_dir_all(into).map_err(|e| e.to_string())?;
+    // the id is in the name because several tables for one game is normal now.
+    // it used to be just the exe, so the second one you fetched quietly
+    // replaced the first
     let name = format!(
-        "{}.toml",
+        "{}-{id}.toml",
         table.game.exe.to_lowercase().trim_end_matches(".exe")
     );
     std::fs::write(into.join(name), &text).map_err(|e| e.to_string())?;
