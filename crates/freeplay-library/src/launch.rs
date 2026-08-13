@@ -19,15 +19,31 @@ pub enum Launch {
 }
 
 pub fn plan(game: &InstalledGame) -> Option<Launch> {
-    if game.store == Store::Steam {
-        if let Some(id) = game.app_id.as_deref() {
-            // This ends up going to the shell, so it has to be what it claims.
-            if !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()) {
-                return Some(Launch::Url(format!("steam://rungameid/{id}")));
-            }
+    match (game.store, game.app_id.as_deref()) {
+        // This ends up going to the shell, so it has to be what it claims.
+        (Store::Steam, Some(id)) if !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()) => {
+            Some(Launch::Url(format!("steam://rungameid/{id}")))
         }
+        (Store::Epic, Some(id)) => epic_url(id).map(Launch::Url),
+        _ => None,
     }
-    game.executables.first().cloned().map(Launch::Exe)
+    .or_else(|| game.executables.first().cloned().map(Launch::Exe))
+}
+
+// namespace:catalogitem:appname, with the colons escaped again on the way
+// out. silent stops the launcher throwing its own window in front of the game
+fn epic_url(id: &str) -> Option<String> {
+    let parts: Vec<&str> = id.split(':').collect();
+    let [ns, item, app] = parts[..] else {
+        return None;
+    };
+    let sane = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_alphanumeric());
+    if !sane(ns) || !sane(item) || !sane(app) {
+        return None;
+    }
+    Some(format!(
+        "com.epicgames.launcher://apps/{ns}%3A{item}%3A{app}?action=launch&silent=true"
+    ))
 }
 
 /// Starts the game and returns what it did, so a caller can say so.
@@ -87,6 +103,7 @@ fn open_here(url: &str) -> Result<(), String> {
         )
     };
     let code = result.0 as usize;
+    let scheme = url.split_once(':').map(|(s, _)| s).unwrap_or("these");
 
     if com.is_ok() {
         unsafe { CoUninitialize() };
@@ -95,8 +112,12 @@ fn open_here(url: &str) -> Result<(), String> {
     // Anything at or below 32 is an error code rather than a handle.
     match code {
         c if c > 32 => Ok(()),
-        2 | 3 => Err("Steam does not look installed, nothing handles steam:// urls".into()),
-        31 => Err("Windows has nothing registered to open steam:// urls".into()),
+        2 | 3 => Err(format!(
+            "the client that handles {scheme} urls is not installed"
+        )),
+        31 => Err(format!(
+            "Windows has nothing registered to open {scheme} urls"
+        )),
         other => Err(format!(
             "Windows would not open it, ShellExecute gave {other}"
         )),
@@ -150,6 +171,46 @@ mod tests {
     fn other_stores_run_the_executable() {
         let plan = plan(&game(Store::Gog, Some("1207658930"), &[r"C:\g\game.exe"]));
         assert_eq!(plan, Some(Launch::Exe(PathBuf::from(r"C:\g\game.exe"))));
+    }
+
+    // straight off the manifest for tomb raider goty
+    #[test]
+    fn an_epic_game_goes_through_the_launcher() {
+        let id = "caca23a0954f4c1aba1fdd7e277b81e2:\
+                  ff45e0eabd0c48d6950e369c79c26823:\
+                  d6264d56f5ba434e91d4b0a0b056c83a";
+        let plan = plan(&game(Store::Epic, Some(id), &[r"C:\g\TombRaider.exe"]));
+        assert_eq!(
+            plan,
+            Some(Launch::Url(
+                "com.epicgames.launcher://apps/\
+                 caca23a0954f4c1aba1fdd7e277b81e2%3A\
+                 ff45e0eabd0c48d6950e369c79c26823%3A\
+                 d6264d56f5ba434e91d4b0a0b056c83a?action=launch&silent=true"
+                    .into()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_half_written_epic_manifest_runs_the_executable() {
+        for bad in [
+            "",
+            "onlyanappname",
+            "ns:item",
+            "ns:item:app:extra",
+            "ns::app",
+            "ns:item:app name",
+            "ns:item:app&calc",
+            "../..:x:y",
+        ] {
+            let plan = plan(&game(Store::Epic, Some(bad), &[r"C:\g\game.exe"]));
+            assert_eq!(
+                plan,
+                Some(Launch::Exe(PathBuf::from(r"C:\g\game.exe"))),
+                "{bad} should not have reached the shell"
+            );
+        }
     }
 
     /// An app id is pasted straight into a url handed to the shell, so a junk

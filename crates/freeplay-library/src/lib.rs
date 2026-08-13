@@ -467,6 +467,23 @@ pub mod epic {
         display_name: Option<String>,
         install_location: Option<String>,
         launch_executable: Option<String>,
+        catalog_namespace: Option<String>,
+        catalog_item_id: Option<String>,
+        app_name: Option<String>,
+    }
+
+    // the launcher wants all three parts of the catalog id, not just the app
+    // name, and it wants them colon separated
+    fn triple(manifest: &Manifest) -> Option<String> {
+        let (Some(ns), Some(item), Some(app)) = (
+            manifest.catalog_namespace.as_deref(),
+            manifest.catalog_item_id.as_deref(),
+            manifest.app_name.as_deref(),
+        ) else {
+            return None;
+        };
+        (!ns.is_empty() && !item.is_empty() && !app.is_empty())
+            .then(|| format!("{ns}:{item}:{app}"))
     }
 
     pub fn discover() -> Vec<InstalledGame> {
@@ -494,13 +511,14 @@ pub mod epic {
             let Ok(manifest) = serde_json::from_str::<Manifest>(&text) else {
                 continue;
             };
+            let id = triple(&manifest);
             let (Some(name), Some(location)) = (manifest.display_name, manifest.install_location)
             else {
                 continue;
             };
 
             let install = PathBuf::from(location);
-            if let Some(mut game) = build(name, Store::Epic, install.clone(), None) {
+            if let Some(mut game) = build(name, Store::Epic, install.clone(), id) {
                 // epic records the real binary, so trust it over our guess
                 if let Some(exe) = manifest.launch_executable {
                     prefer(&mut game, install.join(exe.replace('/', "\\")));
