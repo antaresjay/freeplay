@@ -1525,6 +1525,9 @@ input::placeholder { color: var(--faint); }
   letter-spacing: 0.5px;
   text-transform: uppercase;
   vertical-align: 1px;
+  /* it broke after NAME and left VERIFIED on a line of its own, which reads
+     as two badges. the whole thing wraps or none of it does */
+  white-space: nowrap;
 }
 
 .ask-buttons { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -1626,6 +1629,7 @@ body.maximised .win .when-big { display: block; }
   padding: 12px 14px;
 }
 .dock-empty { padding: 4px 14px 14px; font-size: 12.5px; line-height: 1.55; }
+.dock-note { padding: 9px 14px 0; margin: 0; font-size: 12px; line-height: 1.5; }
 .dock-foot { padding: 0 14px 13px; }
 .dock-foot .ghost { width: 100%; }
 
@@ -1888,6 +1892,9 @@ body.maximised .win .when-big { display: block; }
   letter-spacing: 0.4px;
   text-transform: uppercase;
   vertical-align: 1px;
+  /* it broke after NAME and left VERIFIED on a line of its own, which reads
+     as two badges. the whole thing wraps or none of it does */
+  white-space: nowrap;
 }
 
 /* ---------- dropdowns ---------- */
