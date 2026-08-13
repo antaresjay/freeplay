@@ -68,7 +68,12 @@ const CHEATS = [
   {id:"difficulty", name:"Difficulty", category:"Game", description:"", hint:"",
    state:"idle", reason:"", armed:false, live:false, does:"Set once", ...plain,
    editable:true, kind:"i32", value:"1", holds:false,
-   choices:[{value:"0",label:"Easy"},{value:"1",label:"Normal"},{value:"2",label:"Hard"}]}
+   choices:[{value:"0",label:"Easy"},{value:"1",label:"Normal"},{value:"2",label:"Hard"}]},
+  // a name lifted straight out of a cheat engine table, which is where the
+  // long ones come from. no spaces in it, so nothing wraps unless it is told to
+  {id:"long", name:"INDEPENDENCE_DAY_DEACTIVATE_FIREWORKS_LAUNCHER_AND_PLACED", category:"Game",
+   description:"", hint:"", state:"idle", reason:"", armed:false, live:false, does:"Value",
+   ...plain, editable:true, kind:"i32", value:"1"}
 ];
 
 const OTHER_CHEATS = [
@@ -99,6 +104,15 @@ const SHARED = [
   {id:9, game:"Some Other Game", by:"SomeoneElse", author:"", cheats:31, up:2, down:0,
    downloads:89, built_for:"3.4.0.2", added:1786142235, standing:"",
    installed:false, fit:"older", fit_note:"Tested on 3.4.0.2, you have 3.5.0.1",
+   recommended:false}
+];
+
+/* what searching every game by name gives back. filed under a binary that is
+   nothing to do with the game you are looking at, which is the whole point */
+const FOUND = [
+  {id: 41, game:"Fallout", by:"neo", author:"Zanzer", cheats:12, up:5, down:0,
+   downloads:40, built_for:"", added:1786142235, standing:"", installed:false,
+   fit:"unknown", fit_note:"Nobody recorded which version this was tested on",
    recommended:false}
 ];
 
@@ -163,7 +177,13 @@ window.__TAURI__ = {
           window.__askedAbout = args.exe;
           await new Promise(r => setTimeout(r, 350));
           return args.exe === "witcher2.exe" ? SHARED : [];
-        case "install_shared": return "The Witcher 2 is ready, 23 cheats";
+        case "install_shared":
+          window.__installed = {id: args.id, forExe: args.forExe};
+          return "The Witcher 2 is ready, 23 cheats";
+        case "search_tables":
+          window.__searched = args.query;
+          await new Promise(r => setTimeout(r, 120));
+          return args.query.toLowerCase().includes("fallout") ? FOUND : [];
         case "pending_question": return QUESTION;
         case "answer_question":
           window.__answered = {id: args.id, up: args.up};
@@ -246,6 +266,36 @@ PROBE = r"""
       await settle(50);
     }
     return cond();
+  };
+
+  /* text that will not fit its box, anywhere on the page. this is one bug
+     wearing several coats: a name too long for its card, a badge pushed past
+     the border, a label cut off halfway through a word. the browser only
+     complains by drawing it wrong, so it gets measured instead.
+
+     scrolling boxes are meant to be bigger than their frame, so they are the
+     ones to leave alone */
+  const spilling = (where) => {
+    const bad = [];
+    for (const bit of document.querySelectorAll(where + " *")) {
+      const box = bit.getBoundingClientRect();
+      if (!box.width || !box.height) continue;
+      const how = getComputedStyle(bit);
+      if (how.overflowX !== "visible" && how.overflowX !== "hidden") continue;
+      if (how.overflowX === "hidden" && bit.scrollWidth > bit.clientWidth + 1) {
+        bad.push(bit.className + " clipped by " + (bit.scrollWidth - bit.clientWidth) + "px");
+        continue;
+      }
+      // sticking out of whatever draws the frame around it
+      const frame = bit.parentElement && bit.parentElement.closest(
+        ".cheat, .card, .panel, .row, .tile, .shared-row, .group");
+      if (!frame || frame === bit) continue;
+      const around = frame.getBoundingClientRect();
+      if (box.right > around.right + 1 || box.left < around.left - 1) {
+        bad.push(bit.className + " outside " + frame.className);
+      }
+    }
+    return [...new Set(bad)];
   };
 
   /* the opening screen covers the whole window, so the way it fails is by
@@ -359,7 +409,7 @@ PROBE = r"""
 
     // cheats list and switch on with nothing attached and the game closed
     const listed = document.querySelectorAll("#cheat-groups .cheat").length;
-    note(listed === 4, "cheats list without attaching (" + listed + ")");
+    note(listed === 5, "cheats list without attaching (" + listed + ")");
     const groups = document.querySelectorAll("#cheat-groups .group").length;
     note(groups === 4, "cheats are grouped by category (" + groups + ")");
     note(!visible("no-table"), "no-table notice stays hidden when there is a table");
@@ -388,8 +438,36 @@ PROBE = r"""
 
     // a cheat that needs a number, which plenty of them are
     const boxes = document.querySelectorAll("#cheat-groups .cheat-value input");
-    note(boxes.length === 2, "value cheats get a box to type in (" + boxes.length + ")");
+    note(boxes.length === 3, "value cheats get a box to type in (" + boxes.length + ")");
     note(boxes[0].value === "9999", "the box starts on what the table suggests");
+    /* a table name can be sixty characters of shouting with no spaces in it,
+       and it has to stay inside the card. measured rather than eyeballed:
+       overflow here does not clip, it draws over the card next to it */
+    for (const card of document.querySelectorAll("#cheat-groups .cheat")) {
+      const box = card.getBoundingClientRect();
+      for (const bit of card.querySelectorAll(".cheat-name, .cheat-does, .cheat-value")) {
+        const its = bit.getBoundingClientRect();
+        if (its.right > box.right + 1 || its.left < box.left - 1) {
+          note(false, "spills out of its card: " + bit.className +
+               " " + Math.round(its.right - box.right) + "px");
+        }
+      }
+    }
+    note(true, "no cheat name spills out of its card");
+    const overflowing = spilling("#cheats-panel");
+    note(overflowing.length === 0, "nothing in the cheats panel is cut off (" +
+         overflowing.slice(0, 3).join("; ") + ")");
+    // and a card that had to wrap does not leave the one beside it short.
+    // grid gives this for free until somebody sets a height on the card
+    const byRow = new Map();
+    for (const card of document.querySelectorAll("#cheat-groups .cheat")) {
+      const at = Math.round(card.getBoundingClientRect().top);
+      byRow.set(at, [...(byRow.get(at) || []), Math.round(card.getBoundingClientRect().height)]);
+    }
+    const ragged = [...byRow.values()].filter((row) => new Set(row).size > 1);
+    note(byRow.size > 0 && ragged.length === 0,
+         "cards in a row are the same height (" + JSON.stringify(ragged) + ")");
+
     const drops = document.querySelectorAll("#cheat-groups .cheat-value select");
     note(drops.length === 1, "a cheat with listed options gets a dropdown");
     note(drops[0].options.length === 3, "the dropdown lists every option");
@@ -403,9 +481,11 @@ PROBE = r"""
     note(boxes[1].placeholder === "number", "and a whole one says number, not i32");
     const named = (want) => [...document.querySelectorAll("#cheat-groups .cheat")]
       .find((c) => c.querySelector(".cheat-name").textContent.startsWith(want));
-    note(named("Difficulty").querySelector(".cheat-why").textContent ===
-         "Type a number, then turn it on.",
-         "a value cheat with nothing else to say tells you how to work it");
+    // said once above the grid rather than on all forty cards, where it was
+    // the only thing most of them had to say
+    note(named("Difficulty").querySelector(".cheat-why").textContent === "",
+         "a value cheat with nothing to say says nothing");
+    note(!$("cheat-typing").hidden, "how to work a value cheat is said once, up top");
     note(named("Orens").querySelector(".cheat-why").textContent === "money",
          "and one with a description keeps it");
 
@@ -416,8 +496,11 @@ PROBE = r"""
 
     // cheats own the wide column, the shared list folds away at the side
     note(visible("cheats-panel"), "cheats sit in the main column");
-    note(document.querySelectorAll("#cheat-groups .cheat").length === 4,
+    note(document.querySelectorAll("#cheat-groups .cheat").length === 5,
          "and every one of them is there");
+    const listSpill = spilling("#view-library");
+    note(listSpill.length === 0, "nothing in the library is cut off (" +
+         listSpill.slice(0, 3).join("; ") + ")");
     note(visible("shared"), "the shared tables sit in their own panel");
     note(!visible("dock-open"), "the reopen tab is hidden while the panel is open");
     document.getElementById("dock-close").click();
@@ -430,6 +513,10 @@ PROBE = r"""
     await settle(300);
     note(visible("shared"), "the tab brings it back");
     note(visible("cheats-panel"), "and the cheats never moved");
+    // the whole page, sidebar and all, not only the cheat grid
+    const gameSpill = spilling("#view-game");
+    note(gameSpill.length === 0, "nothing on the game page is cut off (" +
+         gameSpill.slice(0, 3).join("; ") + ")");
 
     // nothing should be rebuilt when nothing changed
     const first = document.querySelector("#cheat-groups .cheat");
@@ -635,7 +722,7 @@ PROBE = r"""
   rail[0].click();
   await settle(600);
   const witcherCheats = document.querySelectorAll("#cheat-groups .cheat:not(.bone)").length;
-  note(witcherCheats === 4, "the first game's cheats are up (" + witcherCheats + ")");
+  note(witcherCheats === 5, "the first game's cheats are up (" + witcherCheats + ")");
 
   const detroit = [...rail].find(r => r.textContent.includes("Detroit"));
   detroit.click();
@@ -771,6 +858,9 @@ PROBE = r"""
 
   [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "settings").click();
   await settle(200);
+  const settingsSpill = spilling("#view-settings");
+  note(settingsSpill.length === 0, "nothing on settings is cut off (" +
+       settingsSpill.slice(0, 3).join("; ") + ")");
   document.getElementById("community-on").click();
   await settle(400);
   note(document.getElementById("community-on").classList.contains("on"),
@@ -1056,6 +1146,102 @@ PROBE = r"""
   note(document.getElementById("toast").textContent === "witcher2.exe is not running",
        "but a file name is left alone");
   document.getElementById("toast").hidden = true;
+
+  // searching every game by name, for when we picked the wrong binary and
+  // the game's own executable finds nothing
+  [...document.querySelectorAll("#library-rail .rail-game")]
+    .find(r => r.textContent.includes("Witcher")).click();
+  await settle(700);
+
+  const box = document.getElementById("table-search");
+  note(!!box, "there is a search box for every game, not just this one");
+  const type = async (text) => {
+    box.value = text;
+    box.dispatchEvent(new Event("input"));
+    await settle(700);
+  };
+
+  await type("f");
+  note(window.__searched === undefined, "one letter does not go to the service");
+
+  await type("fallout");
+  note(window.__searched === "fallout", "typing a name searches for it");
+  const found = [...document.querySelectorAll("#shared-list .shared-row")];
+  note(found.length === 1, "results replace this game's list (" + found.length + ")");
+  note(found[0].textContent.includes("Fallout"),
+       "and they are the ones that matched, not this game's");
+  const said = document.getElementById("search-note");
+  note(!said.hidden && said.textContent.includes("witcher2.exe"),
+       "it says the table will be pointed at this game: " + said.textContent);
+
+  found[0].querySelector("button").click();
+  await settle(700);
+  note(window.__installed && window.__installed.id === 41,
+       "using one installs the table that was found");
+  note(window.__installed.forExe === "witcher2.exe",
+       "and points it at this game's executable, or it would never show up");
+  note(document.getElementById("table-search").value === "",
+       "the search clears once it has been used");
+
+  await type("nothing matches this");
+  note(document.getElementById("search-note").textContent.includes("Nothing matches"),
+       "a search with no hits says so plainly");
+
+  /* clearing the box puts this game's own tables back. sampled the whole way
+     through, because the fault is a stretch of frames showing the wrong thing
+     and a check afterwards only ever sees the tidy end state */
+  await type("fallout");
+  const list = document.getElementById("shared-list");
+  const counts = [];
+  const watching = setInterval(() => counts.push(list.childElementCount), 16);
+  box.value = "";
+  box.dispatchEvent(new Event("input"));
+  await settle(900);
+  clearInterval(watching);
+
+  note(list.childElementCount === SHARED.length,
+       "clearing the search puts this game's tables back");
+  note(!counts.includes(0),
+       "and the panel never blinks empty on the way");
+  /* it used to sit on the search result for the length of the debounce plus a
+     round trip, so roughly forty frames of somebody else's game */
+  const stale = counts.filter(n => n !== SHARED.length).length;
+  note(stale <= 2,
+       "and does not sit showing the old results (" + stale + " frames of " +
+       counts.join(",") + ")");
+  note(window.__searched === "fallout",
+       "putting them back does not ask the service all over again");
+
+  /* every shortcut the webview brings with it. ctrl+f put a find bar over the
+     window, f5 reloaded the app back to the library. checked one at a time
+     because a blanket handler that swallows ctrl+c is worse than the bug */
+  const press = (key, mods = {}) => {
+    const e = new KeyboardEvent("keydown",
+      {key, bubbles: true, cancelable: true, ...mods});
+    document.body.dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+  const ctrl = {ctrlKey: true};
+
+  for (const key of ["f", "g", "p", "r", "s", "o", "u", "0", "-", "="]) {
+    note(press(key, ctrl), "ctrl+" + key + " does not reach the browser");
+  }
+  for (const key of ["F3", "F5", "F11", "F12"]) {
+    note(press(key), key + " does nothing");
+  }
+  note(press("I", {ctrlKey: true, shiftKey: true}), "ctrl+shift+i does not open devtools");
+  note(press("ArrowLeft", {altKey: true}), "alt+left does not navigate back");
+  note(press("Backspace"), "backspace does not navigate back");
+
+  // and the ones that have to keep working, or every text box breaks
+  for (const key of ["c", "v", "x", "a", "z", "y"]) {
+    note(!press(key, ctrl), "ctrl+" + key + " still works, it is an editing key");
+  }
+  const typingIn = document.getElementById("cheat-filter");
+  typingIn.focus();
+  const inBox = new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true});
+  typingIn.dispatchEvent(inBox);
+  note(!inBox.defaultPrevented, "and backspace still deletes inside a text box");
 
   // the webview offered Back, Refresh, Save as, Print and Send tab to your
   // devices on right click, which gives away what it is built on
