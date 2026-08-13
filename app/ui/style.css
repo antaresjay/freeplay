@@ -967,7 +967,17 @@ input::placeholder { color: var(--faint); }
 }
 .fact.live b { color: var(--accent); }
 
-.game-actions { display: flex; align-items: center; gap: 9px; margin-top: 3px; }
+/* five buttons and a star. they fit side by side on a wide window and ran off
+   the edge of the card on a narrow one, so they wrap instead. the labels never
+   break, a button that says "Import" over "a table" is worse than a second row */
+.game-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-top: 3px;
+}
+.game-actions > button { white-space: nowrap; }
 
 .icon-toggle {
   width: 32px;
@@ -1771,7 +1781,11 @@ body.maximised .win .when-big { display: block; }
   color: var(--faint);
 }
 
-.game-actions .spacer { flex: 1; }
+/* a flex:1 spacer gets pushed onto a line of its own once the row wraps and
+   strands the star there with it. an auto margin keeps the star on the right
+   of whatever line it lands on */
+.game-actions .spacer { display: none; }
+.game-actions .icon-toggle { margin-left: auto; }
 
 /* ---------- profile sheets ---------- */
 
