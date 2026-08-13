@@ -902,6 +902,9 @@ async function refreshCheats() {
   $("cheats-panel").hidden = rows.length === 0;
   $("remove-table").hidden = rows.length === 0;
   $("cheat-count").textContent = rows.length ? `${many(rows.length, "cheat")}` : "";
+  // said once up here rather than on all forty cards, where it was the only
+  // thing most of them had to say and read as filler
+  $("cheat-typing").hidden = !rows.some((row) => row.editable);
 
   const byCategory = new Map();
   for (const row of rows) {
@@ -984,8 +987,6 @@ function whyFor(item) {
   if (item.armed) return ["Waiting for the game to get there", "wait"];
   if (item.description) return [item.description, ""];
   if (item.does === "Script") return ["Finds the addresses the other cheats here need.", ""];
-  // the box on its own looks like it does something when you type in it
-  if (item.editable) return ["Type a number, then turn it on.", ""];
   return ["", ""];
 }
 
@@ -997,8 +998,8 @@ function skeletons() {
   $("cheats-panel").hidden = false;
   $("no-table").hidden = true;
   $("cheat-none").hidden = true;
-  $("cheat-count").textContent = "";
   $("cheat-typing").hidden = true;
+  $("cheat-count").textContent = "";
   $("remove-table").hidden = true;
 
   const grid = document.createElement("div");
@@ -1049,7 +1050,6 @@ $("cheat-filter").addEventListener("input", filterCheats);
 /* you can switch a cheat on whenever. whether it is actually doing anything is
    a separate thing the card says underneath, since the pointer most of them
    hang off is null until you load a save */
-function cheatCard(item, exe) {
 /* a name out of a cheat engine table is one long shout with underscores where
    the spaces would be. left alone it breaks in the middle of a word, so it
    gets a break offered after each underscore instead.
@@ -1066,6 +1066,7 @@ function spellOut(into, text) {
   });
 }
 
+function cheatCard(item, exe) {
   const card = document.createElement("div");
   card.className = "cheat" + (item.armed ? " armed" : "") + (item.live ? " on" : "");
 
@@ -1074,7 +1075,7 @@ function spellOut(into, text) {
 
   const name = document.createElement("div");
   name.className = "cheat-name";
-  name.textContent = item.name;
+  spellOut(name, item.name);
 
   const tag = document.createElement("span");
   tag.className = "cheat-does";
@@ -1650,6 +1651,10 @@ async function loadShared(force = false) {
   const game = gameFor(open);
   if (!game || !game.exe) return;
 
+  // a search owns the list while there is one. this also runs on a timer, and
+  // without this it wipes the results out from under whoever is reading them
+  if (searchFor.length >= 2) return;
+
   /* turned off means turned off, so this does not fire and then report the
      refusal as though something had gone wrong */
   if (config.community === false) {
@@ -1668,10 +1673,6 @@ async function loadShared(force = false) {
   await loadSortOptions();
   /* whatever is up stays up while the next answer is on its way. emptying it
      first is what made the panel collapse and spring back, and holding it open
-  // a search owns the list while there is one. this also runs on a timer, and
-  // without this it wipes the results out from under whoever is reading them
-  if (searchFor.length >= 2) return;
-
      at a fixed height just moved the problem to a panel full of nothing */
   const host = $("shared-list");
   host.classList.add("waiting");
@@ -1710,24 +1711,6 @@ async function loadShared(force = false) {
 
 let sharedRows = [];
 let sharedTimer = null;
-
-function filterShared() {
-  clearTimeout(sharedTimer);
-  sharedTimer = setTimeout(applySharedFilter, 180);
-}
-
-function applySharedFilter() {
-  const needle = $("shared-search").value.trim().toLowerCase();
-  const cards = [...document.querySelectorAll("#shared-list .shared-row")];
-  let shown = 0;
-
-  cards.forEach((card, at) => {
-    const row = sharedRows[at];
-    /* the author counts as much as the uploader. searching for the person
-       who worked a game out should find their tables, and for anything
-       converted they are not the one who uploaded it */
-    const hit =
-      !needle ||
 let searchTimer = null;
 let searchFor = "";
 // this game's own tables, held while a search is covering them up
@@ -1802,6 +1785,24 @@ async function searchEveryGame() {
       `${(game && game.exe) || "this game"}.`
     : `Nothing matches "${wanted}".`;
 }
+
+function filterShared() {
+  clearTimeout(sharedTimer);
+  sharedTimer = setTimeout(applySharedFilter, 180);
+}
+
+function applySharedFilter() {
+  const needle = $("shared-search").value.trim().toLowerCase();
+  const cards = [...document.querySelectorAll("#shared-list .shared-row")];
+  let shown = 0;
+
+  cards.forEach((card, at) => {
+    const row = sharedRows[at];
+    /* the author counts as much as the uploader. searching for the person
+       who worked a game out should find their tables, and for anything
+       converted they are not the one who uploaded it */
+    const hit =
+      !needle ||
       (row && ((row.by || "").toLowerCase().includes(needle) ||
                (row.author || "").toLowerCase().includes(needle) ||
                (row.built_for || "").toLowerCase().includes(needle)));
@@ -1818,6 +1819,13 @@ async function searchEveryGame() {
 }
 
 $("shared-search").addEventListener("input", filterShared);
+$("table-search").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  // waiting is for not firing a request per keystroke. emptying the box sends
+  // nothing, so there is nothing to wait for and the panel snaps straight back
+  const wait = $("table-search").value.trim().length < 2 ? 0 : 260;
+  searchTimer = setTimeout(searchEveryGame, wait);
+});
 
 function sharedRow(row) {
   const card = document.createElement("div");
@@ -1836,13 +1844,6 @@ function sharedRow(row) {
 
   /* the name the table calls its game, not the uploader. plenty of games ship
      as game.exe and everything converted from one place goes up under one
-$("table-search").addEventListener("input", () => {
-  clearTimeout(searchTimer);
-  // waiting is for not firing a request per keystroke. emptying the box sends
-  // nothing, so there is nothing to wait for and the panel snaps straight back
-  const wait = $("table-search").value.trim().length < 2 ? 0 : 260;
-  searchTimer = setTimeout(searchEveryGame, wait);
-});
      account, so the uploader is the one thing that does not tell them apart */
   const title = document.createElement("div");
   title.className = "shared-name";
