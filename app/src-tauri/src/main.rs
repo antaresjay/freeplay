@@ -21,6 +21,7 @@ mod community;
 mod dialog;
 mod hotkey;
 mod log;
+mod merge;
 mod overlay;
 mod place;
 mod profile;
@@ -130,6 +131,8 @@ struct Attached {
 struct CheatRow {
     id: String,
     name: String,
+    // which table it came from, when more than one is switched on
+    from: String,
     category: String,
     description: String,
     hint: String,
@@ -201,26 +204,51 @@ fn mine_dir() -> PathBuf {
         .join("mine")
 }
 
-// three folders can each hold a table for the same game, and the one you
-// picked most recently is the one you meant. ranking by folder instead meant
-// an imported .CT shadowed every table you downloaded afterwards, so pressing
-// "use this" said it worked and changed nothing
-fn load_tables() -> Vec<Table> {
-    let mut found: Vec<(std::time::SystemTime, Table)> = Vec::new();
+/* three folders can each hold a table for the same game, and now several can
+sit in one folder too. newest first, because the one you picked most
+recently is the one you meant, and ranking by folder instead meant an
+imported .CT shadowed every table you downloaded afterwards. */
+fn load_all() -> Vec<(String, Table)> {
+    let mut found: Vec<(std::time::SystemTime, String, Table)> = Vec::new();
 
     for dir in [mine_dir(), synced_dir(), tables_dir()] {
         for (path, table) in Table::load_dir_with_paths(&dir) {
             let touched = std::fs::metadata(&path)
                 .and_then(|m| m.modified())
                 .unwrap_or(std::time::UNIX_EPOCH);
-            found.push((touched, table));
+            found.push((touched, tag_of(&path, &table), table));
         }
     }
 
-    found.sort_by_key(|(touched, _)| std::cmp::Reverse(*touched));
+    found.sort_by_key(|(touched, _, _)| std::cmp::Reverse(*touched));
 
+    // the same file reachable twice, or two copies of one table, is one table
+    let mut seen = std::collections::HashSet::new();
+    found
+        .into_iter()
+        .filter(|(_, tag, _)| seen.insert(tag.clone()))
+        .map(|(_, tag, table)| (tag, table))
+        .collect()
+}
+
+/* what a cheat's id gets filed under once tables are folded together, so it
+has to survive a restart. the fingerprint is content based, which means
+renaming a file or downloading the same table twice does not lose what you
+had switched on. */
+fn tag_of(path: &Path, table: &Table) -> String {
+    let _ = path;
+    let print = freeplay_table::fingerprint::fingerprint(table);
+    print
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .take(8)
+        .collect()
+}
+
+// one table per game, which is what the rest of the app still expects
+fn load_tables() -> Vec<Table> {
     let mut tables: Vec<Table> = Vec::new();
-    for (_, table) in found {
+    for (_, table) in load_all() {
         if !tables.iter().any(|t| t.matches_process(&table.game.exe)) {
             tables.push(table);
         }
@@ -241,8 +269,22 @@ fn forget_tables(state: &tauri::State<'_, App>) {
     *state.tables.lock().unwrap() = None;
 }
 
-fn table_for(exe: &str) -> Option<Table> {
-    load_tables().into_iter().find(|t| t.matches_process(exe))
+/* every table installed for this game, newest first. more than one is the
+normal case now: no single table has health and ammo and speed in it. */
+fn tables_for(exe: &str) -> Vec<(String, Table)> {
+    load_all()
+        .into_iter()
+        .filter(|(_, t)| t.matches_process(exe))
+        .collect()
+}
+
+// the ones switched on, folded into one
+fn with_tables(exe: &str, using: Option<&[String]>) -> Option<Table> {
+    let mut parts = tables_for(exe);
+    if let Some(chosen) = using {
+        parts.retain(|(tag, _)| chosen.contains(tag));
+    }
+    merge::fold(parts)
 }
 
 // the version stamped into the game's exe. a table is written against one
@@ -1560,7 +1602,7 @@ fn attach(
     let arch = target.arch().label().to_string();
     let shared: Arc<dyn Target> = Arc::new(target);
 
-    let table = table_for(&exe);
+    let table = with_tables(&exe, using_for(&state, &exe).as_deref());
     let has_table = table.is_some();
     let name = table
         .as_ref()
@@ -1656,7 +1698,9 @@ fn reseat(state: &tauri::State<'_, App>, exe: &str) {
         old.disable_all();
     }
 
-    let Some(table) = table_for(exe) else { return };
+    let Some(table) = with_tables(exe, using_for(state, exe).as_deref()) else {
+        return;
+    };
     *state.playing.lock().unwrap() = {
         let settings = state.settings.lock().unwrap();
         settings.grabbed.get(&wanted).map(|id| Playing {
@@ -1686,6 +1730,7 @@ fn cheat_row(cheat: &freeplay_table::schema::Cheat, typed: Option<&String>) -> C
     CheatRow {
         id: cheat.id.clone(),
         name: cheat.name.clone(),
+        from: String::new(),
         category: cheat.category.label().to_string(),
         description: cheat.description.clone(),
         hint: cheat.hint.clone(),
@@ -1760,6 +1805,7 @@ fn credit(state: tauri::State<'_, App>, exe: String) -> Credit {
 #[tauri::command]
 fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
     let typed = values_for(&state, &exe);
+    let named = credits(&exe);
     let guard = state.session.lock().unwrap();
     let attached = guard.as_ref().filter(|s| s.table().matches_process(&exe));
 
@@ -1779,6 +1825,7 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
                 };
 
                 let mut row = cheat_row(cheat, typed.get(&cheat.id));
+                row.from = whose(&named, &cheat.id);
                 row.state = if live { "on".into() } else { label.to_string() };
                 row.reason = reason;
                 row.armed = session.is_armed(&cheat.id);
@@ -1834,6 +1881,66 @@ fn values_for(state: &tauri::State<'_, App>, exe: &str) -> HashMap<String, Strin
 }
 
 // numbers are kept whether or not the game is up, same as what is armed. type
+#[derive(Serialize)]
+struct TableRow {
+    tag: String,
+    name: String,
+    author: String,
+    cheats: usize,
+    // switched on and folded into the list, or sitting there unused
+    using: bool,
+}
+
+// every table installed for this game, and which ones are switched on
+#[tauri::command]
+fn installed_tables(state: tauri::State<'_, App>, exe: String) -> Vec<TableRow> {
+    let chosen = using_for(&state, &exe);
+    tables_for(&exe)
+        .into_iter()
+        .map(|(tag, table)| TableRow {
+            using: chosen.as_ref().is_none_or(|c| c.contains(&tag)),
+            tag,
+            name: table.game.name.clone(),
+            author: if table.game.author.is_empty() {
+                table.meta.submitted_by.clone()
+            } else {
+                table.game.author.clone()
+            },
+            cheats: table.cheats.len(),
+        })
+        .collect()
+}
+
+/* switch one on or off. everything that was on from the table going away has
+to come off with it, or those bytes stay patched with nothing left that
+knows how to put them back */
+#[tauri::command]
+fn use_table(
+    state: tauri::State<'_, App>,
+    exe: String,
+    tag: String,
+    on: bool,
+) -> Result<(), String> {
+    let all: Vec<String> = tables_for(&exe).into_iter().map(|(t, _)| t).collect();
+    {
+        let mut settings = state.settings.lock().unwrap();
+        let held = settings
+            .using
+            .entry(exe.to_lowercase())
+            .or_insert_with(|| all.clone());
+
+        match on {
+            true if !held.contains(&tag) => held.push(tag.clone()),
+            false => held.retain(|t| t != &tag),
+            _ => {}
+        }
+        settings::save(&settings)?;
+    }
+    forget_tables(&state);
+    reseat(&state, &exe);
+    Ok(())
+}
+
 #[derive(Serialize, Default)]
 struct FitRow {
     // signatures the table looks for that are in this copy of the game
@@ -2128,6 +2235,34 @@ fn online(state: &tauri::State<'_, App>) -> Result<(), String> {
         return Ok(());
     }
     Err("shared tables are turned off in settings".into())
+}
+
+/* none recorded is not the same as none chosen. a game nobody has picked for
+uses everything it has, and unticking the last one leaves an empty list that
+means exactly that */
+// tag to table name, for saying which table a folded cheat came from
+fn credits(exe: &str) -> std::collections::HashMap<String, String> {
+    tables_for(exe)
+        .into_iter()
+        .map(|(tag, table)| (tag, table.game.name))
+        .collect()
+}
+
+fn whose(named: &std::collections::HashMap<String, String>, id: &str) -> String {
+    merge::source_of(id)
+        .and_then(|tag| named.get(tag))
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn using_for(state: &tauri::State<'_, App>, exe: &str) -> Option<Vec<String>> {
+    state
+        .settings
+        .lock()
+        .unwrap()
+        .using
+        .get(&exe.to_lowercase())
+        .cloned()
 }
 
 fn armed_for(state: &tauri::State<'_, App>, exe: &str) -> Vec<String> {
@@ -2477,6 +2612,8 @@ fn main() {
             folded,
             fold,
             table_fit,
+            installed_tables,
+            use_table,
             diagnostics,
             open_log,
             table_count,
