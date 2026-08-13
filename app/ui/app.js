@@ -677,6 +677,7 @@ function drawGamePage() {
     drawGamePage.showing = open;
     refreshCheats.shape = null;
     showFit.done = null;
+    showTables.done = null;
     sharedFor = null;
     // the count the empty state quotes belongs to the game you just left
     sharedRows = [];
@@ -908,7 +909,10 @@ async function refreshCheats() {
 
   $("no-table").hidden = rows.length > 0;
   if (!rows.length) paintNoTable();
-  if (rows.length) showFit(game.exe);
+  if (rows.length) {
+    showFit(game.exe);
+    showTables(game.exe);
+  }
   $("cheats-panel").hidden = rows.length === 0;
   $("remove-table").hidden = rows.length === 0;
   $("cheat-count").textContent = rows.length ? `${many(rows.length, "cheat")}` : "";
@@ -990,6 +994,66 @@ async function refreshCheats() {
   }
 
   for (const row of rows) patchCard(refreshCheats.cards.get(row.id), row);
+}
+
+/* more than one table can be installed for a game and they are shown as one
+   list, so this is where you say which of them count. only appears when there
+   is actually a choice to make */
+async function showTables(exe) {
+  const box = $("table-picker");
+  if (showTables.done === exe) return;
+  showTables.done = exe;
+
+  let rows = [];
+  try {
+    rows = await invoke("installed_tables", { exe });
+  } catch {
+    box.hidden = true;
+    return;
+  }
+  if (showTables.done !== exe) return;
+
+  box.hidden = rows.length < 2;
+  if (box.hidden) return;
+
+  const host = $("table-list");
+  host.innerHTML = "";
+  for (const row of rows) {
+    const label = document.createElement("label");
+    label.className = "picker-table" + (row.using ? " on" : "");
+
+    const tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.checked = row.using;
+    tick.addEventListener("change", async () => {
+      tick.disabled = true;
+      try {
+        await invoke("use_table", { exe, tag: row.tag, on: tick.checked });
+        showTables.done = null;
+        showFit.done = null;
+        refreshCheats.shape = null;
+        await refreshCheats();
+        await showTables(exe);
+      } catch (e) {
+        toast(String(e), true);
+        tick.checked = !tick.checked;
+      } finally {
+        tick.disabled = false;
+      }
+    });
+
+    const name = document.createElement("span");
+    name.className = "picker-table-name";
+    name.textContent = row.name;
+    const by = document.createElement("span");
+    by.className = "picker-table-by";
+    by.textContent = row.author
+      ? `${many(row.cheats, "cheat")} by ${row.author}`
+      : many(row.cheats, "cheat");
+
+    label.append(tick, name, by);
+    host.appendChild(label);
+  }
 }
 
 /* whether the table's signatures are in this copy of the game, read off the
@@ -1174,6 +1238,15 @@ function cheatCard(item, exe) {
   tag.className = "cheat-does";
   tag.textContent = item.does || "";
   name.appendChild(tag);
+
+  // only filled in when more than one table is folded into the list
+  if (item.from) {
+    const from = document.createElement("span");
+    from.className = "cheat-from";
+    from.textContent = item.from;
+    from.title = "from " + item.from;
+    name.appendChild(from);
+  }
 
   const [line, tone] = whyFor(item);
   const why = document.createElement("div");
@@ -2051,6 +2124,7 @@ function sharedRow(row) {
         $("search-note").hidden = true;
       }
       showFit.done = null;
+      showTables.done = null;
       await loadGames(false);
       await refreshCheats();
       await loadShared(true);

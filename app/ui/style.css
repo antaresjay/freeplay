@@ -2176,3 +2176,51 @@ body.maximised .win .when-big { display: block; }
 .fit.bad strong { color: var(--bad); }
 .fit ul { margin: 7px 0 0; padding-left: 18px; color: var(--faint); }
 .fit li { margin-bottom: 2px; }
+
+/* which of the installed tables count. only on screen when there is more than
+   one, since picking between one thing is not a choice */
+.picker-tables { margin: 0 0 14px; }
+.picker-tables-head {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.picker-table {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 5px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  margin-bottom: 5px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.picker-table:hover { border-color: var(--line); }
+.picker-table.on { border-color: var(--accent-line); background: var(--accent-soft); }
+.picker-table input { flex: none; align-self: center; }
+.picker-table-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.picker-table-by { flex: none; font-size: 11.5px; color: var(--faint); }
+
+/* which table a cheat came from, when two of them are folded into one list */
+.cheat-from {
+  margin-left: 6px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--faint);
+  opacity: 0.75;
+}
