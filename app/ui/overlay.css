@@ -10,10 +10,15 @@
   padding: 0;
 }
 
+/* the window is sized to the game, not to this. a table with three cheats in
+   it used to leave nine hundred pixels of empty card hanging down the side of
+   the screen, so the card takes what it needs and the rest of the window stays
+   transparent and shows the game */
 .ov {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: auto;
+  max-height: 100vh;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 12px;
   background: rgba(9, 10, 13, 0.7);
@@ -87,8 +92,10 @@
 
 /* ---------- the list ---------- */
 
+/* flex: 1 stretched it to fill a card that no longer stretches. it grows with
+   the rows and only starts scrolling once it runs out of window */
 .ov-list {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding: 8px 10px 10px;
