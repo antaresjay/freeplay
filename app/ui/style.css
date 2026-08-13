@@ -1489,7 +1489,11 @@ input::placeholder { color: var(--faint); }
   pointer-events: none;
 }
 
+/* it lives inside .cheat-name, which breaks anywhere so a long name can wrap.
+   without this the pill came out as VALU on one line and E on the next */
 .cheat-does {
+  white-space: nowrap;
+  overflow-wrap: normal;
   margin-left: 8px;
   padding: 1px 6px;
   border: 1px solid var(--line);

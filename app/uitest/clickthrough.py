@@ -63,6 +63,9 @@ const GAMES = [
 ];
 
 const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true};
+// categories somebody shut, the way settings.json keeps them
+let FOLDED = {};
+
 const CHEATS = [
   {id:"base", name:"Get Witcher Base", category:"Misc", description:"", hint:"",
    state:"idle", reason:"", armed:false, live:false, does:"Script", ...plain},
@@ -157,6 +160,14 @@ window.__TAURI__ = {
           return SETTINGS;
         case "list_games": return GAMES;
         case "game_art": return {cover:null, hero:null, logo:null};
+        case "folded": return (FOLDED[args.exe] || []).slice();
+        case "fold": {
+          const held = FOLDED[args.exe] || (FOLDED[args.exe] = []);
+          if (args.shut) { if (!held.includes(args.category)) held.push(args.category); }
+          else FOLDED[args.exe] = held.filter(c => c !== args.category);
+          window.__folded = JSON.parse(JSON.stringify(FOLDED));
+          return null;
+        }
         case "cheats":
           // the witcher answers slowly on purpose. switching away mid flight
           // used to paint the game you had just left
@@ -464,6 +475,21 @@ PROBE = r"""
       }
     }
     note(true, "no cheat name spills out of its card");
+    /* the pill sits inside the name, and the name breaks anywhere so a long
+       one can wrap. that broke the pill too: VALU on one line, E on the next.
+       squeezed on purpose, because whether it happens at the real width is an
+       accident of how long the name is and how wide the window is */
+    {
+      const pill = document.querySelector("#cheat-groups .cheat-does");
+      const holder = pill.parentElement;
+      const was = holder.style.width;
+      holder.style.width = "48px";
+      const lines = pill.getClientRects().length;
+      holder.style.width = was;
+      note(lines === 1,
+           "the pill stays on one line even with nowhere to put it (" +
+           lines + " lines)");
+    }
     const overflowing = spilling("#cheats-panel");
     note(overflowing.length === 0, "nothing in the cheats panel is cut off (" +
          overflowing.slice(0, 3).join("; ") + ")");
@@ -1336,7 +1362,8 @@ def loads_a_file(browser):
     open(page, "w", encoding="utf-8").write("<b id=ok>ok</b>")
     try:
         out = subprocess.run(
-            [browser, "--headless", "--disable-gpu", "--dump-dom",
+            [browser, "--headless", "--disable-gpu",
+             "--user-data-dir=" + os.path.join(work, "profile"), "--dump-dom",
              "file:///" + page.replace("\\", "/")],
             capture_output=True, text=True, timeout=60)
         return 'id="ok"' in out.stdout
@@ -1366,15 +1393,18 @@ def main():
     url = "file:///" + page_path.replace("\\", "/")
     run = subprocess.run(
         [browser, "--headless", "--disable-gpu", "--allow-file-access-from-files",
+         "--user-data-dir=" + tempfile.mkdtemp(prefix="freeplay-profile-"),
          # the wide layout is where the two column settings grid lives, and the
          # default headless window is narrow enough to never see it
          "--window-size=1600,1000",
-         "--virtual-time-budget=40000", "--dump-dom", url],
+         # when this runs out the browser dumps whatever it has and exits 0,
+         # so the probe silently produces nothing and it looks like a crash
+         "--virtual-time-budget=120000", "--dump-dom", url],
         capture_output=True, text=True, timeout=180)
 
     found = re.search(r'<pre id="probe-results">(.*?)</pre>', run.stdout, re.S)
     if not found:
-        print("the probe never ran, so app.js threw before it could report")
+        print("the probe never ran: app.js threw, or it outgrew the time budget")
         for line in run.stderr.splitlines():
             if any(word in line.lower() for word in ("error", "uncaught", "cannot", "null")):
                 print("  ", line.strip()[:300])
