@@ -52,7 +52,14 @@ const GAMES = [
    version:"2.2.3", genres:["Adventure","Indie","Platform","Arcade"]},
   {key:"steam:2073850", name:"THE FINALS", store:"Steam", exe:"Discovery.exe",
    dir:"D:/games/finals", app_id:"2073850", running:false, has_table:false,
-   guard:"easyanticheat", minutes:73451, last_played:1786142235, favourite:false}
+   guard:"easyanticheat", minutes:73451, last_played:1786142235, favourite:false},
+  // epic: a 97 character app id, and a date but never any minutes
+  {key:"epic:caca23a0954f4c1aba1fdd7e277b81e2:ff45e0eabd0c48d6950e369c79c26823:d6264d56f5ba434e91d4b0a0b056c83a",
+   name:"Tomb Raider GAME OF THE YEAR EDITION", store:"Epic", exe:"TombRaider.exe",
+   dir:"D:/Epic Games/TombRaiderGOTYE",
+   app_id:"caca23a0954f4c1aba1fdd7e277b81e2:ff45e0eabd0c48d6950e369c79c26823:d6264d56f5ba434e91d4b0a0b056c83a",
+   running:false, has_table:false, guard:null,
+   minutes:null, last_played:1786612097, favourite:false}
 ];
 
 const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true};
@@ -176,6 +183,9 @@ window.__TAURI__ = {
           if (!SETTINGS.community) throw "shared tables are turned off";
           window.__askedAbout = args.exe;
           await new Promise(r => setTimeout(r, 350));
+          // tomb raider has no table of its own but plenty shared, which is
+          // the case the empty state used to get wrong
+          if (args.exe === "TombRaider.exe") return SHARED;
           return args.exe === "witcher2.exe" ? SHARED : [];
         case "install_shared":
           window.__installed = {id: args.id, forExe: args.forExe};
@@ -809,6 +819,46 @@ PROBE = r"""
        "with the rest on hover rather than thrown away");
   note(!labels.includes("Play time") && !labels.includes("Last played"),
        "and nothing is invented for the two gog cannot answer");
+
+  /* it used to say there was nothing for this game while four shared tables
+     sat in the dock beside it */
+  const raider = [...rail].find(r => r.textContent.includes("Tomb Raider"));
+  raider.click();
+  await settle(900);
+  note(visible("no-table"), "a game with no table of its own still says so");
+  const title = document.getElementById("no-table-title").textContent;
+  note(title === "3 shared tables for this game",
+       "but it counts what is on offer rather than claiming there is none (" + title + ")");
+  note(document.getElementById("no-table-lead").textContent.includes("Pick one"),
+       "and sends you to the list");
+  note(document.getElementById("no-table-pick").hidden,
+       "and offers no button to go there, the list is already on screen");
+
+  // with the dock shut there is nothing to point at, so the button comes back
+  document.getElementById("dock-close").click();
+  await settle(400);
+  note(document.getElementById("no-table-pick").hidden === false,
+       "closing the dock brings back the button that opens it");
+  document.getElementById("dock-open").click();
+  await settle(400);
+  note(document.getElementById("no-table-pick").hidden,
+       "and reopening it takes the button away again");
+  note(document.getElementById("no-table-import").className === "ghost",
+       "import stops being the loudest thing on the page");
+  note(document.getElementById("detail-id").title.length === 98,
+       "the whole app id is on hover even though the row is too narrow for it");
+  const raiderLabels = [...document.querySelectorAll("#game-facts .fact span")]
+    .map(s => s.textContent);
+  note(raiderLabels.includes("Last played") && !raiderLabels.includes("Play time"),
+       "epic says when you played it and never how long");
+
+  gog.click();
+  await settle(700);
+  note(document.getElementById("no-table-title").textContent ===
+       "No cheat table for this game",
+       "a game with nothing shared says there is nothing");
+  note(document.getElementById("no-table-pick").hidden,
+       "and offers no list to go to");
 
   // a game with an anti-cheat is refused outright
   const finals = [...rail].find(r => r.textContent.includes("FINALS"));
