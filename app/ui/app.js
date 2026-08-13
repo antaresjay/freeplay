@@ -998,6 +998,7 @@ function skeletons() {
   $("no-table").hidden = true;
   $("cheat-none").hidden = true;
   $("cheat-count").textContent = "";
+  $("cheat-typing").hidden = true;
   $("remove-table").hidden = true;
 
   const grid = document.createElement("div");
@@ -1049,6 +1050,22 @@ $("cheat-filter").addEventListener("input", filterCheats);
    a separate thing the card says underneath, since the pointer most of them
    hang off is null until you load a save */
 function cheatCard(item, exe) {
+/* a name out of a cheat engine table is one long shout with underscores where
+   the spaces would be. left alone it breaks in the middle of a word, so it
+   gets a break offered after each underscore instead.
+
+   `wbr` rather than a zero width space because it adds nothing to textContent,
+   which is what the search box reads */
+function spellOut(into, text) {
+  const parts = text.split("_");
+  parts.forEach((part, n) => {
+    const last = n === parts.length - 1;
+    // the underscore stays on the line it ends, the way a hyphen would
+    into.appendChild(document.createTextNode(last ? part : part + "_"));
+    if (!last) into.appendChild(document.createElement("wbr"));
+  });
+}
+
   const card = document.createElement("div");
   card.className = "cheat" + (item.armed ? " armed" : "") + (item.live ? " on" : "");
 
