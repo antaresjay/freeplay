@@ -64,6 +64,15 @@ enum Command {
         #[arg(long, help = "one json object per table, for piping somewhere")]
         json: bool,
     },
+    /// Whether a table's signatures are in your copy of the game.
+    Fit {
+        #[arg(help = "table files, or folders of them")]
+        paths: Vec<PathBuf>,
+        #[arg(long, help = "the game executable to check them against")]
+        exe: PathBuf,
+        #[arg(long, help = "only say something when one does not fit")]
+        quiet: bool,
+    },
     /// What a table offers for a running game, and whether each part works.
     Cheats {
         #[arg(long)]
@@ -173,6 +182,7 @@ fn run(command: Command) -> Result<(), String> {
         Command::Import { file, exe, out } => import(&file, exe.as_deref(), out.as_deref()),
         Command::Ps { filter } => list_processes(filter.as_deref()),
         Command::Check { paths, quiet, json } => check(&paths, quiet, json),
+        Command::Fit { paths, exe, quiet } => fit(&paths, &exe, quiet),
         Command::Cheats { table, process } => cheats(&table, process.as_deref()),
         Command::On {
             table,
@@ -543,6 +553,106 @@ fn blamed(body: &str, e: &freeplay_asm::AsmError) -> String {
         Some(text) => format!("   <- {}", text.trim()),
         None => String::new(),
     }
+}
+
+// every table file named, or every one in a folder
+fn table_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    for path in paths {
+        if path.is_dir() {
+            let mut found: Vec<PathBuf> = std::fs::read_dir(path)
+                .map_err(|e| format!("{}: {e}", path.display()))?
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| {
+                    p.extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("toml"))
+                })
+                .collect();
+            found.sort();
+            files.extend(found);
+        } else {
+            files.push(path.clone());
+        }
+    }
+    if files.is_empty() {
+        return Err("name a table file or a folder with some in".into());
+    }
+    Ok(files)
+}
+
+fn fit(paths: &[PathBuf], exe: &Path, quiet: bool) -> Result<(), String> {
+    let code = freeplay_library::pe::code(exe)
+        .ok_or_else(|| format!("{} has no code section to read", exe.display()))?;
+    println!(
+        "{} {}-bit, {} bytes of code at {:#x}",
+        exe.file_name().unwrap_or(exe.as_os_str()).to_string_lossy(),
+        code.bits,
+        code.bytes.len(),
+        code.rva
+    );
+
+    let mut wrong = 0usize;
+    for file in table_files(paths)? {
+        let Ok(table) = Table::load(&file) else {
+            continue;
+        };
+        let mut whole = freeplay_aa::fit::Fit::default();
+        for cheat in &table.cheats {
+            let freeplay_table::schema::Action::Script { source } = &cheat.action else {
+                continue;
+            };
+            let part = freeplay_aa::fit::of_script(
+                source,
+                &freeplay_aa::fit::Code {
+                    bytes: &code.bytes,
+                    rva: code.rva,
+                },
+            );
+            whole.signatures.extend(part.signatures);
+            whole.stale.extend(part.stale);
+        }
+        if whole.is_empty() {
+            if !quiet {
+                println!("  {:<38} nothing to scan for", table.game.name);
+            }
+            continue;
+        }
+
+        let total = whole.signatures.len();
+        let bad = whole.missing() > 0 || !whole.stale.is_empty();
+        if bad {
+            wrong += 1;
+        }
+        if quiet && !bad {
+            continue;
+        }
+        println!(
+            "  {:<38} {} of {} signatures{}",
+            table.game.name,
+            whole.found(),
+            total,
+            if whole.unknown() > 0 {
+                format!(", {} search outside the exe", whole.unknown())
+            } else {
+                String::new()
+            }
+        );
+        if whole.ambiguous() > 0 {
+            println!("      {} match in more than one place", whole.ambiguous());
+        }
+        for stale in &whole.stale {
+            println!(
+                "      {} jumps to {:#x} but the branch it replaces goes to {:#x}",
+                stale.symbol, stale.wants, stale.goes
+            );
+        }
+    }
+
+    if wrong > 0 {
+        println!();
+        println!("{wrong} do not fit this build");
+    }
+    Ok(())
 }
 
 fn check(paths: &[PathBuf], quiet: bool, json: bool) -> Result<(), String> {
