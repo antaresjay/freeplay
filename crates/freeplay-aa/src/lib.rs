@@ -1,4 +1,5 @@
 pub mod error;
+pub mod fit;
 pub mod safety;
 pub mod script;
 
