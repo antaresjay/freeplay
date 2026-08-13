@@ -62,9 +62,18 @@ const GAMES = [
    minutes:null, last_played:1786612097, favourite:false}
 ];
 
-const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true};
+const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true,
+               from:""};
 // categories somebody shut, the way settings.json keeps them
 let FOLDED = {};
+
+/* two tables for one game, which is the normal case. no single tomb raider
+   table has health and ammo and skill points in it */
+let TABLES = [
+  {tag:"a1b2c3d4", name:"Tomb Raider (Finished) Cheat Table!", author:"STN",
+   cheats:24, using:true},
+  {tag:"e5f6a7b8", name:"Tomb Raider GOTY", author:"VampTY", cheats:2, using:true}
+];
 
 // the tomb raider table that assembled, patched and then crashed the game
 let FIT = {found:2, total:2, missing:0, unknown:0, ambiguous:0, silent:false,
@@ -72,7 +81,8 @@ let FIT = {found:2, total:2, missing:0, unknown:0, ambiguous:0, silent:false,
 
 const CHEATS = [
   {id:"base", name:"Get Witcher Base", category:"Misc", description:"", hint:"",
-   state:"idle", reason:"", armed:false, live:false, does:"Script", ...plain},
+   state:"idle", reason:"", armed:false, live:false, does:"Script", ...plain,
+   from:"Tomb Raider GOTY"},
   {id:"vitality", name:"Infinite Vitality", category:"Player", description:"never die", hint:"",
    state:"idle", reason:"", armed:true, live:false, does:"Freeze", ...plain,
    editable:true, kind:"f32", value:"9999", current:"312"},
@@ -165,6 +175,13 @@ window.__TAURI__ = {
         case "list_games": return GAMES;
         case "game_art": return {cover:null, hero:null, logo:null};
         case "table_fit": return FIT;
+        case "installed_tables": return TABLES.map(t => ({...t}));
+        case "use_table": {
+          const row = TABLES.find(t => t.tag === args.tag);
+          if (row) row.using = args.on;
+          window.__used = {tag: args.tag, on: args.on};
+          return null;
+        }
         case "folded": return (FOLDED[args.exe] || []).slice();
         case "fold": {
           const held = FOLDED[args.exe] || (FOLDED[args.exe] = []);
@@ -495,6 +512,33 @@ PROBE = r"""
            "the pill stays on one line even with nowhere to put it (" +
            lines + " lines)");
     }
+    /* several tables for one game, shown as one list. no single table has
+       health and ammo and speed, so picking one used to mean losing the rest */
+    {
+      const picker = document.getElementById("table-picker");
+      note(!picker.hidden, "a game with two tables says so");
+      const rows = document.querySelectorAll("#table-list .picker-table");
+      note(rows.length === 2, "and lists both (" + rows.length + ")");
+      note(rows[0].textContent.includes("STN") && rows[1].textContent.includes("VampTY"),
+           "each with who worked it out");
+      note([...rows].every(r => r.classList.contains("on")),
+           "both counted until you say otherwise");
+
+      const tick = rows[1].querySelector("input");
+      tick.checked = false;
+      tick.dispatchEvent(new Event("change"));
+      await settle(500);
+      note(window.__used && window.__used.tag === "e5f6a7b8" && !window.__used.on,
+           "unticking one takes it out of the list");
+      tick.checked = true;
+      tick.dispatchEvent(new Event("change"));
+      await settle(500);
+      note(window.__used.on === true, "and ticking it puts it back");
+      const badge = document.querySelector("#cheat-groups .cheat-from");
+      note(badge && badge.textContent === "Tomb Raider GOTY",
+           "and a folded cheat says which table it came from");
+    }
+
     /* the table's signatures measured against this copy of the game, read off
        the exe with the game shut. the one that crashed tomb raider assembled
        and patched perfectly, so a clean signature count is not enough */
