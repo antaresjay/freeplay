@@ -1346,23 +1346,99 @@ fn urls_for(app_id: &str, found: &freeplay_library::art::Art) -> ArtUrls {
     }
 }
 
+// steam and gog art is already on the disk, epic's is a url in a catalog file
+// and has to be fetched once. kept next to the settings so it survives a
+// restart and nothing is downloaded twice
+fn art_cache() -> PathBuf {
+    settings::path()
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("art")
+}
+
+fn image_kind(bytes: &[u8]) -> Option<&'static str> {
+    match bytes {
+        [0xff, 0xd8, 0xff, ..] => Some("jpg"),
+        [0x89, b'P', b'N', b'G', ..] => Some("png"),
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some("webp"),
+        _ => None,
+    }
+}
+
+fn epic_art(state: &tauri::State<'_, App>, app_id: &str) -> freeplay_library::art::Art {
+    // the id is three hex words and two colons, and it is about to be a
+    // filename
+    let stem: String = app_id.replace(':', "-");
+    if stem.is_empty() || !stem.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+        return Default::default();
+    }
+
+    let dir = art_cache();
+    let saved = |kind: &str| {
+        ["jpg", "png", "webp"]
+            .iter()
+            .map(|ext| dir.join(format!("{stem}-{kind}.{ext}")))
+            .find(|file| file.is_file())
+    };
+
+    let mut art = freeplay_library::art::Art {
+        cover: saved("cover"),
+        hero: saved("hero"),
+        logo: None,
+    };
+    if art.cover.is_some() && art.hero.is_some() {
+        return art;
+    }
+    // turning the community off turns off every outbound call, this one too
+    if online(state).is_err() {
+        return art;
+    }
+
+    let remote = freeplay_library::art::epic(app_id);
+    for (kind, url) in [("cover", remote.cover), ("hero", remote.hero)] {
+        let (Some(url), true) = (url, saved(kind).is_none()) else {
+            continue;
+        };
+        let Ok(bytes) = freeplay_sync::http::get(&url) else {
+            continue;
+        };
+        // a cdn that answers with an error page is not a picture, and the
+        // extension has to match what came back or the webview will not draw it
+        let Some(ext) = image_kind(&bytes) else {
+            continue;
+        };
+        let file = dir.join(format!("{stem}-{kind}.{ext}"));
+        if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&file, &bytes).is_ok() {
+            match kind {
+                "cover" => art.cover = Some(file),
+                _ => art.hero = Some(file),
+            }
+        }
+    }
+    art
+}
+
 #[tauri::command]
-fn game_art(state: tauri::State<'_, App>, app_id: String) -> ArtUrls {
+async fn game_art(state: tauri::State<'_, App>, app_id: String) -> Result<ArtUrls, ()> {
     if let Some(cached) = state.art.lock().unwrap().get(&app_id) {
-        return urls_for(&app_id, cached);
+        return Ok(urls_for(&app_id, cached));
     }
 
     // steam art needs the id, gog art needs the store and the folder too, so
     // go back to the game rather than guessing from the id alone
-    let found = library(&state, false)
-        .iter()
-        .find(|g| g.app_id.as_deref() == Some(app_id.as_str()))
-        .map(freeplay_library::art::find)
-        .unwrap_or_default();
+    let game = library(&state, false)
+        .into_iter()
+        .find(|g| g.app_id.as_deref() == Some(app_id.as_str()));
+
+    let found = match &game {
+        Some(g) if g.store == Store::Epic => epic_art(&state, &app_id),
+        Some(g) => freeplay_library::art::find(g),
+        None => Default::default(),
+    };
 
     let urls = urls_for(&app_id, &found);
     state.art.lock().unwrap().insert(app_id, found);
-    urls
+    Ok(urls)
 }
 
 // serves what the store already cached. path is /<appid>/<kind>, and the
@@ -1382,8 +1458,10 @@ fn serve_art(
     let (Some(app_id), Some(kind)) = (parts.next(), parts.next()) else {
         return deny();
     };
-    // the app id goes into a path, so it had better be one
-    if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
+    // the app id goes into a path, so it had better be one. steam and gog are
+    // numbers, epic is three hex words with colons between them
+    let ordinary = |b: u8| b.is_ascii_alphanumeric() || b == b':';
+    if app_id.is_empty() || !app_id.bytes().all(ordinary) {
         return deny();
     }
 
@@ -2167,7 +2245,9 @@ fn main() {
             ..Default::default()
         })
         .register_asynchronous_uri_scheme_protocol("art", |ctx, request, responder| {
-            let path = request.uri().path().to_string();
+            // an epic id has colons in it and some webviews hand the path back
+            // with them escaped, which would miss the cache every time
+            let path = request.uri().path().replace("%3A", ":").replace("%3a", ":");
             let handle = ctx.app_handle().clone();
             std::thread::spawn(move || {
                 let id = path.trim_matches('/').split('/').next().unwrap_or_default();
