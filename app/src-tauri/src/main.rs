@@ -566,6 +566,7 @@ fn import_table(
     }
     tracing::info!("imported {} into {}", path, destination.display());
     forget_tables(&state);
+    reseat(&state, &exe);
 
     Ok(format!(
         "{} for {exe}. {}",
@@ -626,6 +627,7 @@ async fn install_shared(
         let _ = settings::save(&settings);
     }
     forget_tables(&state);
+    reseat(&state, &table.game.exe);
     Ok(format!(
         "{} is ready, {} cheats",
         table.game.name,
@@ -679,6 +681,13 @@ fn remove_table(state: tauri::State<'_, App>, exe: String) -> Result<String, Str
         let _ = settings::save(&settings);
     }
     forget_tables(&state);
+    // there is no table left to sit on, so this puts back whatever was on and
+    // leaves the game attached with nothing
+    if let Some(mut session) = state.session.lock().unwrap().take() {
+        remember_the_sitting(&state, &session);
+        session.stop();
+        session.disable_all();
+    }
     tracing::info!("removed the table for {exe}");
 
     Ok("Removed. What you had switched on for it is forgotten too".to_string())
@@ -1620,6 +1629,51 @@ fn tear_down(state: &tauri::State<'_, App>) {
     }
     *state.target.lock().unwrap() = None;
     *state.search.lock().unwrap() = None;
+}
+
+// a session holds the table it was built with, so swapping tables on a game
+// that is already attached changed nothing on screen until you detached and
+// came back. rebuilt here against the same process
+fn reseat(state: &tauri::State<'_, App>, exe: &str) {
+    let wanted = exe.to_lowercase();
+    let target = {
+        let held = state.target.lock().unwrap();
+        match held.as_ref() {
+            Some(t) if t.name().to_lowercase() == wanted => Arc::clone(t),
+            _ => return,
+        }
+    };
+
+    // whatever is on belongs to the table on its way out, and nothing in the
+    // new one knows how to put those bytes back
+    if let Some(mut old) = state.session.lock().unwrap().take() {
+        remember_the_sitting(state, &old);
+        old.stop();
+        old.disable_all();
+    }
+
+    let Some(table) = table_for(exe) else { return };
+    *state.playing.lock().unwrap() = {
+        let settings = state.settings.lock().unwrap();
+        settings.grabbed.get(&wanted).map(|id| Playing {
+            id: *id,
+            exe: wanted.clone(),
+            game: table.game.name.clone(),
+            by: table.meta.submitted_by.clone(),
+            started: std::time::Instant::now(),
+        })
+    };
+
+    let mut session = Session::new(target, table);
+    session.start();
+    for (id, text) in values_for(state, exe) {
+        if let Err(e) = session.choose(&id, &text) {
+            tracing::warn!("dropping the saved value for {id}: {e}");
+        }
+    }
+    session.arm_all(&armed_for(state, exe));
+    *state.session.lock().unwrap() = Some(session);
+    tracing::info!("reseated {exe} on the table that just landed");
 }
 
 // everything except the four fields that need a live process, so the same
