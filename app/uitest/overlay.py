@@ -33,6 +33,8 @@ let CHEATS = [
   {id:"vitality", name:"Infinite Vitality", category:"Player", description:"", hint:"",
    state:"on", reason:"", armed:true, live:true, does:"Freeze", ...plain,
    editable:true, kind:"f32", value:"9999", current:"312"},
+  {id:"endurance", name:"[Endurance] Health", category:"Player", description:"", hint:"",
+   state:"on", reason:"", armed:true, live:true, does:"Freeze", ...plain},
   {id:"orens", name:"Orens", category:"Resources", description:"money", hint:"",
    state:"wait", reason:"load a save first", armed:true, live:false, does:"Value", ...plain,
    editable:true, kind:"i32", value:"5000", current:""},
@@ -54,7 +56,7 @@ window.__TAURI__ = {
         // toggle look like it flipped twice
         case "cheats": return ATTACHED ? JSON.parse(JSON.stringify(CHEATS)) : [];
         case "overlay_status":
-          return {on:true, key:"Ctrl+Shift+O", showing:true, clash:null, game:"witcher2.exe"};
+          return {on:true, key:"Ctrl+Shift+O", showing:true, clash:null, game:"witcher2.exe", accent:"cyan"};
         case "set_cheat":
           CHEATS.find(c => c.id === args.id).armed = args.on;
           return null;
@@ -97,13 +99,13 @@ PROBE = r"""
        "the footer reminds you of the shortcut");
 
   const cards = document.querySelectorAll(".ov-cheat");
-  note(cards.length === 4, "every cheat is listed (" + cards.length + ")");
+  note(cards.length === 5, "every cheat is listed (" + cards.length + ")");
   note(document.querySelectorAll(".ov-group").length === 4,
        "grouped by category the same way the main window does");
-  note(document.querySelectorAll(".ov-cheat.on").length === 1,
-       "one is drawn as running");
-  note(document.querySelectorAll(".ov-cheat.armed").length === 2,
-       "two are switched on");
+  note(document.querySelectorAll(".ov-cheat.on").length === 2,
+       "the ones that are running are drawn as running");
+  note(document.querySelectorAll(".ov-cheat.armed").length === 3,
+       "three are switched on");
 
   // the row is already accent coloured with a bar down the side, so saying
   // "On" underneath as well is the same thing twice
@@ -115,7 +117,7 @@ PROBE = r"""
        "and does not repeat itself underneath");
   note(document.querySelector(".ov-why.wait").textContent === "load a save first",
        "and one waiting says what it is waiting for");
-  note(document.getElementById("ov-count").textContent === "2 of 4 cheats on",
+  note(document.getElementById("ov-count").textContent === "3 of 5 cheats on",
        "the footer counts them (" + document.getElementById("ov-count").textContent + ")");
 
   // switching one on from over the game, which is the whole point
@@ -159,6 +161,60 @@ PROBE = r"""
   await settle(300);
   note([...document.querySelectorAll(".ov-cheat")].every(c => !c.hidden),
        "clearing it brings them back");
+
+  /* two cheats in the same category sat flush against each other. both were
+     lit, so the two accent panels touched and read as one shape with a seam
+     down it */
+  {
+    const rows = [...document.querySelectorAll(".ov-group")]
+      .map(g => [...g.querySelectorAll(".ov-cheat")])
+      .find(g => g.length > 1);
+    const a = rows[0].getBoundingClientRect();
+    const b = rows[1].getBoundingClientRect();
+    const gap = Math.round(b.top - a.bottom);
+    out.push("   two rows in one group are " + gap + "px apart");
+    note(gap >= 2, "rows in the same category do not touch (" + gap + "px)");
+  }
+
+  /* the window is sized to the game, not to the card. with a handful of
+     cheats in it the card used to stretch the full height of the game and
+     leave a dark empty column down the side of the screen */
+  {
+    document.getElementById("ov-filter").value = "";
+    document.getElementById("ov-filter").dispatchEvent(new Event("input"));
+    await settle(250);
+    const tall = () => document.querySelector(".ov").getBoundingClientRect().height;
+    const full = tall();
+    const rows = [...document.querySelectorAll(".ov-cheat")].length;
+    out.push("   card " + Math.round(full) + " for " + rows +
+             " cheats, window " + window.innerHeight);
+    note(full < window.innerHeight - 40,
+         "the card takes what it needs rather than the whole window (" +
+         Math.round(full) + " of " + window.innerHeight + ")");
+
+    // and it has to keep tracking, not just happen to be short
+    document.getElementById("ov-filter").value = "vitality";
+    document.getElementById("ov-filter").dispatchEvent(new Event("input"));
+    await settle(250);
+    const one = tall();
+    out.push("   card " + Math.round(one) + " with one cheat showing");
+    note(one < full - 40,
+         "and shrinks when the list does (" + Math.round(one) +
+         " against " + Math.round(full) + ")");
+    document.getElementById("ov-filter").value = "";
+    document.getElementById("ov-filter").dispatchEvent(new Event("input"));
+    await settle(250);
+  }
+
+  /* its own window, its own document. it stayed amber while the rest of the
+     app was blue, so the accent has to come over the bridge like everything
+     else here */
+  note(document.documentElement.dataset.accent === "cyan",
+       "the overlay wears the accent picked in settings (" +
+       document.documentElement.dataset.accent + ")");
+  const lit = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  note(lit && lit !== "",
+       "and that accent resolves to a colour (" + lit + ")");
 
   // getting out of the way
   document.getElementById("ov-close").click();
