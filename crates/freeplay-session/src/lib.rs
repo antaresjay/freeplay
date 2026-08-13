@@ -24,6 +24,9 @@ pub enum Error {
     #[error("{name} is not available: {reason}")]
     NotReady { name: String, reason: String },
 
+    #[error("{name} patches the same code as {clashes_with}, so only one of them can be on")]
+    Clash { name: String, clashes_with: String },
+
     #[error(transparent)]
     Core(#[from] freeplay_core::Error),
 
@@ -338,6 +341,40 @@ impl Session {
         Ok(scalar)
     }
 
+    /* the name of an already running script whose hook sites this one would
+    write over. allocations are fresh pages every time so they never clash,
+    only the patches back into the game's own code can */
+    fn overlaps(&self, fresh: &freeplay_aa::Engaged) -> Option<String> {
+        let taken = self.engaged.lock().unwrap();
+        let mine: Vec<(usize, usize)> = fresh
+            .restores
+            .iter()
+            .map(|r| (r.addr, r.addr + r.original.len()))
+            .collect();
+
+        for (id, held) in taken.iter() {
+            let Engaged::Injected { engaged, .. } = held else {
+                continue;
+            };
+            for theirs in &engaged.restores {
+                let range = (theirs.addr, theirs.addr + theirs.original.len());
+                if mine.iter().any(|m| m.0 < range.1 && range.0 < m.1) {
+                    return Some(self.name_of(id));
+                }
+            }
+        }
+        None
+    }
+
+    fn name_of(&self, id: &str) -> String {
+        self.table
+            .cheats
+            .iter()
+            .find(|c| c.id == id)
+            .map(|c| c.name.clone())
+            .unwrap_or_else(|| id.to_string())
+    }
+
     fn engage(&self, cheat: &Cheat, addr: usize) -> Result<Engaged, Error> {
         match &cheat.action {
             Action::Value { lock, .. } => {
@@ -391,6 +428,19 @@ impl Session {
                         name: cheat.name.clone(),
                         source: e,
                     })?;
+
+                /* two tables can hook the same instruction. both write a jump
+                there, and turning the first one off puts back bytes that
+                now belong to the second, which corrupts the game. worth
+                undoing this one and saying so */
+                if let Some(other) = self.overlaps(&engaged) {
+                    let hold = engaged;
+                    let _ = Runner::new(self.target.as_ref()).disable(&script, &hold);
+                    return Err(Error::Clash {
+                        name: cheat.name.clone(),
+                        clashes_with: other,
+                    });
+                }
 
                 self.symbols.lock().unwrap().extend(
                     engaged
