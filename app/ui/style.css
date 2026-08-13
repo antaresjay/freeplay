@@ -2155,3 +2155,24 @@ body.maximised .win .when-big { display: block; }
 /* Play and Switch to game are different lengths, and the row of buttons after
    it slid across every time the game started or stopped */
 #game-play { min-width: 132px; }
+
+/* whether the table's signatures are actually in this copy of the game. read
+   off the exe with the game shut, which is the only honest answer available
+   before you switch anything on */
+.fit {
+  margin: 0 0 14px;
+  padding: 10px 13px;
+  border: 1px solid var(--line-soft);
+  border-left: 2px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.fit strong { display: block; font-weight: 600; color: var(--text); }
+.fit span { color: var(--faint); }
+.fit.good { border-left-color: var(--ok, var(--accent)); }
+.fit.iffy { border-left-color: var(--warn); }
+.fit.bad { border-left-color: var(--bad); }
+.fit.bad strong { color: var(--bad); }
+.fit ul { margin: 7px 0 0; padding-left: 18px; color: var(--faint); }
+.fit li { margin-bottom: 2px; }

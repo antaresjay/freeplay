@@ -1834,6 +1834,79 @@ fn values_for(state: &tauri::State<'_, App>, exe: &str) -> HashMap<String, Strin
 }
 
 // numbers are kept whether or not the game is up, same as what is armed. type
+#[derive(Serialize, Default)]
+struct FitRow {
+    // signatures the table looks for that are in this copy of the game
+    found: usize,
+    total: usize,
+    missing: usize,
+    // aobscan searches the whole process, so a miss in the exe means nothing
+    unknown: usize,
+    ambiguous: usize,
+    // scripts that will assemble, patch and then crash, because they jump to
+    // an address that belongs to the build the author had
+    stale: Vec<String>,
+    // no scans at all, so there is nothing to measure
+    silent: bool,
+}
+
+/* whether the table matches this copy of the game, read off the exe with the
+game shut. cheaper and far more direct than recording which version a table
+was written for and hoping somebody votes */
+#[tauri::command]
+fn table_fit(state: tauri::State<'_, App>, exe: String) -> FitRow {
+    let wanted = exe.to_lowercase();
+    let Some(game) = library(&state, false).into_iter().find(|game| {
+        game.main_exe()
+            .is_some_and(|found| found.to_lowercase() == wanted)
+    }) else {
+        return FitRow::default();
+    };
+    let Some(path) = game.executables.first() else {
+        return FitRow::default();
+    };
+    let Some(code) = freeplay_library::pe::code(path) else {
+        return FitRow::default();
+    };
+
+    let mut whole = freeplay_aa::fit::Fit::default();
+    for table in tables(&state).iter().filter(|t| t.matches_process(&exe)) {
+        for cheat in &table.cheats {
+            let freeplay_table::schema::Action::Script { source } = &cheat.action else {
+                continue;
+            };
+            let part = freeplay_aa::fit::of_script(
+                source,
+                &freeplay_aa::fit::Code {
+                    bytes: &code.bytes,
+                    rva: code.rva,
+                },
+            );
+            whole.signatures.extend(part.signatures);
+            whole.stale.extend(part.stale);
+        }
+    }
+
+    FitRow {
+        found: whole.found(),
+        total: whole.signatures.len(),
+        missing: whole.missing(),
+        unknown: whole.unknown(),
+        ambiguous: whole.ambiguous(),
+        stale: whole
+            .stale
+            .iter()
+            .map(|s| {
+                format!(
+                    "{} jumps to {:#x}, but the branch it replaces goes to {:#x}",
+                    s.symbol, s.wants, s.goes
+                )
+            })
+            .collect(),
+        silent: whole.is_empty(),
+    }
+}
+
 // which categories are folded away for a game. the overlay shows the same
 // groups over the same game, so it reads and writes the same list
 #[tauri::command]
@@ -2403,6 +2476,7 @@ fn main() {
             save_settings,
             folded,
             fold,
+            table_fit,
             diagnostics,
             open_log,
             table_count,

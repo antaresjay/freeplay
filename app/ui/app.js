@@ -676,6 +676,7 @@ function drawGamePage() {
   if (drawGamePage.showing !== open) {
     drawGamePage.showing = open;
     refreshCheats.shape = null;
+    showFit.done = null;
     sharedFor = null;
     // the count the empty state quotes belongs to the game you just left
     sharedRows = [];
@@ -907,6 +908,7 @@ async function refreshCheats() {
 
   $("no-table").hidden = rows.length > 0;
   if (!rows.length) paintNoTable();
+  if (rows.length) showFit(game.exe);
   $("cheats-panel").hidden = rows.length === 0;
   $("remove-table").hidden = rows.length === 0;
   $("cheat-count").textContent = rows.length ? `${many(rows.length, "cheat")}` : "";
@@ -988,6 +990,55 @@ async function refreshCheats() {
   }
 
   for (const row of rows) patchCard(refreshCheats.cards.get(row.id), row);
+}
+
+/* whether the table's signatures are in this copy of the game, read off the
+   exe with the game shut. asked once per game rather than on every tick of the
+   timer refreshCheats sits on */
+async function showFit(exe) {
+  const box = $("table-fit");
+  if (showFit.done === exe) return;
+  showFit.done = exe;
+
+  let fit = null;
+  try {
+    fit = await invoke("table_fit", { exe });
+  } catch {
+    box.hidden = true;
+    return;
+  }
+  if (showFit.done !== exe) return;
+
+  if (!fit || fit.silent) {
+    box.hidden = true;
+    return;
+  }
+
+  const bad = fit.missing > 0 || fit.stale.length > 0;
+  box.hidden = false;
+  box.className = "fit" + (bad ? " bad" : fit.ambiguous ? " iffy" : " good");
+
+  $("fit-headline").textContent = bad
+    ? "This table was written for a different build"
+    : `${many(fit.found, "signature")} found in your copy`;
+
+  const notes = [];
+  if (fit.missing) notes.push(`${fit.missing} of ${fit.total} are not in it`);
+  if (fit.ambiguous) notes.push(`${fit.ambiguous} match in more than one place`);
+  // aobscan looks at the whole process, so the exe alone cannot answer it
+  if (fit.unknown) notes.push(`${fit.unknown} search outside the executable`);
+  $("fit-detail").textContent = notes.length
+    ? notes.join(". ") + "."
+    : "Every address it looks for is where it expects.";
+
+  const list = $("fit-stale");
+  list.innerHTML = "";
+  list.hidden = !fit.stale.length;
+  for (const line of fit.stale) {
+    const item = document.createElement("li");
+    item.textContent = line;
+    list.appendChild(item);
+  }
 }
 
 function patchCard(card, item) {
@@ -1999,6 +2050,7 @@ function sharedRow(row) {
         $("table-search").value = "";
         $("search-note").hidden = true;
       }
+      showFit.done = null;
       await loadGames(false);
       await refreshCheats();
       await loadShared(true);
