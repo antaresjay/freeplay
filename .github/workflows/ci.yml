@@ -1,9 +1,10 @@
 name: ci
 
+# by hand only. everything in here runs locally before a commit anyway, so
+# firing it on every push burned an hour of windows minutes a day to tell us
+# what we already knew. windows runners cost ten times a linux one.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
