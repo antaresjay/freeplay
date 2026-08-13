@@ -63,7 +63,7 @@ PROBE = r"""
   // every element worth watching, by a name we can print
   const watched = () => {
     const found = new Map();
-    for (const el of document.querySelectorAll("[id], .shared-dock, .game-layout, .sidebar, .content, .titlebar")) {
+    for (const el of document.querySelectorAll("[id], .shared-dock, .game-layout, .game-main, .sidebar, .content, .titlebar")) {
       if (el.offsetParent === null && el.tagName !== "BODY") continue;
       const name = el.id ? "#" + el.id : "." + String(el.className).split(" ")[0];
       const box = el.getBoundingClientRect();
@@ -140,11 +140,20 @@ PROBE = r"""
          "and keeps its width (dw" + (dockAfter.w - dockBefore.w) + ")");
   }
 
+  /* under 1240 the dock stops being a side column and stacks under the main
+     one, where it is meant to move down as the content above it grows. only
+     the side by side layout has to hold still */
   const dockDuring = during.get("#shared");
+  const mainCol = before.get(".game-main");
+  const beside = mainCol && dockBefore && dockBefore.x >= mainCol.x + mainCol.w - 2;
   if (dockBefore && dockDuring) {
-    note(dockBefore.x === dockDuring.x && dockBefore.y === dockDuring.y &&
-         dockBefore.h === dockDuring.h,
-         "and does not budge while it waits");
+    note(dockBefore.x === dockDuring.x, "and does not slide sideways while it waits");
+    if (beside) {
+      note(dockBefore.y === dockDuring.y && dockBefore.h === dockDuring.h,
+           "nor up and down, while it is a column of its own");
+    } else {
+      out.push("   stacked under the content at this width, so it may move down");
+    }
   }
 
   note(shifted < 0.05, "layout shift stays small (" + shifted.toFixed(4) + ")");
@@ -269,22 +278,21 @@ def main():
     tag = '<script src="app.js"></script>'
     open(page_path, "w", encoding="utf-8").write(page.replace(tag, STUB + tag + PROBE))
 
-    url = "file:///" + page_path.replace("\\", "/")
-    run = subprocess.run(
-        [browser, "--headless", "--disable-gpu", "--allow-file-access-from-files",
-         "--window-size=1600,1000", "--virtual-time-budget=30000", "--dump-dom", url],
-        capture_output=True, text=True, timeout=180)
+    passed = failed = 0
+    for size in SIZES:
+        body = once(browser, work, size)
+        print("=" * 20 + " %dx%d" % size)
+        if body is None:
+            print("the probe never ran: app.js threw, or it outgrew the time budget")
+            failed += 1
+            continue
+        print(body)
+        checks = [l for l in body.splitlines() if l.startswith(("PASS", "FAIL"))]
+        bad = [l for l in checks if l.startswith("FAIL")]
+        passed += len(checks) - len(bad)
+        failed += len(bad)
 
-    found = re.search(r'<pre id="probe-results">(.*?)</pre>', run.stdout, re.S)
-    if not found:
-        print("the probe never ran, so app.js threw before it could report")
-        return 1
-
-    body = found.group(1).strip().replace("&amp;", "&").replace("&lt;", "<")
-    print(body)
-    failed = [line for line in body.splitlines() if line.startswith("FAIL")]
-    checks = [line for line in body.splitlines() if line.startswith(("PASS", "FAIL"))]
-    print("\n%d passed, %d failed" % (len(checks) - len(failed), len(failed)))
+    print("\n%d passed, %d failed" % (passed, failed))
     shutil.rmtree(os.path.dirname(work), ignore_errors=True)
     return 1 if failed else 0
 
