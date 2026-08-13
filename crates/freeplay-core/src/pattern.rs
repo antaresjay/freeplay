@@ -21,22 +21,26 @@ impl Pattern {
         let mut bytes = Vec::new();
         let mut fixed = Vec::new();
 
+        // cheat engine takes either character for a wildcard and tables use
+        // both, often in the same file
+        let any = |c: char| c == '?' || c == '*';
+
         for token in text.split_whitespace() {
-            if token.chars().all(|c| c == '?') {
+            if token.chars().all(any) {
                 // "?" and "??" both mean one wildcard byte.
                 bytes.push(0);
                 fixed.push(false);
                 continue;
             }
 
-            if token.len() % 2 != 0 || !token.chars().all(|c| c.is_ascii_hexdigit() || c == '?') {
+            if token.len() % 2 != 0 || !token.chars().all(|c| c.is_ascii_hexdigit() || any(c)) {
                 return Err(Error::BadPattern(format!("bad token {token:?}")));
             }
 
             // Allow "488B0D" as well as "48 8B 0D".
             for pair in token.as_bytes().chunks(2) {
                 let pair = std::str::from_utf8(pair).expect("ascii checked above");
-                if pair.contains('?') {
+                if pair.contains(any) {
                     bytes.push(0);
                     fixed.push(false);
                 } else {
@@ -169,6 +173,26 @@ mod tests {
             Pattern::parse("48 ?? 05").unwrap().find_all(&hay),
             vec![0, 3]
         );
+    }
+
+    /* cheat engine takes a star as well, and plenty of tables use it. every
+    one of those used to come back as a signature that is not in the game */
+    #[test]
+    fn a_star_is_a_wildcard_too() {
+        let hay = [0x48, 0x11, 0x05, 0x48, 0x99, 0x05];
+        for text in ["48 ** 05", "48 * 05", "48 *? 05"] {
+            assert_eq!(
+                Pattern::parse(text).unwrap().find_all(&hay),
+                vec![0, 3],
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_star_run_still_has_to_be_bytes_wide() {
+        assert!(Pattern::parse("48 *0 05").is_ok());
+        assert!(Pattern::parse("48 zz 05").is_err());
     }
 
     #[test]
