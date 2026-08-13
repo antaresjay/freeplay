@@ -1017,6 +1017,9 @@ struct OverlayState {
     clash: Option<String>,
     // the game the overlay would be about, if any
     game: Option<String>,
+    // the overlay is its own window with its own document, so it has to be
+    // told. it stayed on the default amber while the app was blue
+    accent: String,
 }
 
 fn overlay_state(app: &tauri::AppHandle, state: &tauri::State<'_, App>) -> OverlayState {
@@ -1025,6 +1028,7 @@ fn overlay_state(app: &tauri::AppHandle, state: &tauri::State<'_, App>) -> Overl
         on: settings.overlay,
         clash: hotkey::clash(&settings.overlay_key).map(str::to_string),
         key: settings.overlay_key.clone(),
+        accent: settings.accent.clone(),
         showing: overlay::showing(app),
         game: state
             .target

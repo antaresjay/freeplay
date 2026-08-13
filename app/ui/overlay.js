@@ -266,13 +266,21 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") invoke("hide_overlay");
 });
 
-async function start() {
+/* this window is built once and then hidden and shown, and it has a document
+   of its own, so the accent set in the main window never reached it. it sat on
+   the amber default while everything else was blue */
+async function dress() {
   try {
     const state = await invoke("overlay_status");
     $("ov-key").textContent = state.key;
+    if (state.accent) document.documentElement.dataset.accent = state.accent;
   } catch {
     // the footer just goes without it
   }
+}
+
+async function start() {
+  await dress();
   await refresh();
   setInterval(refresh, 1000);
 
@@ -281,6 +289,7 @@ async function start() {
   if (window.__TAURI__.event) {
     window.__TAURI__.event.listen("wake", () => {
       $("ov-filter").value = "";
+      dress();
       refresh();
     });
   }
