@@ -41,6 +41,10 @@ pub struct Settings {
     // the shared tables panel on the game page, open or folded away
     #[serde(default = "yes")]
     pub shared_open: bool,
+    // which of the installed tables are switched on, per exe, by tag. empty
+    // or missing means all of them
+    #[serde(default)]
+    pub using: HashMap<String, Vec<String>>,
     // categories folded away, per exe. open is the default, so this only ever
     // holds the ones somebody shut. the overlay reads the same list
     #[serde(default)]
@@ -131,6 +135,7 @@ impl Default for Settings {
             armed: HashMap::new(),
             values: HashMap::new(),
             shared_open: true,
+            using: HashMap::new(),
             folded: HashMap::new(),
             overlay: false,
             overlay_key: default_hotkey(),
