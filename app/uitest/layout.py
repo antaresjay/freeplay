@@ -181,6 +181,41 @@ PROBE = r"""
        "every page reaches the right edge of the window" +
        (stranded.length ? " (" + stranded.join(", ") + ")" : ""));
 
+  /* the other direction, and it is not a rectangle you can measure. an epic
+     app id is 97 characters in a 241px box: the box stays put and the text
+     paints straight over whatever is to the right of it, so the only tell is
+     content wider than its own box with nothing clipping it */
+  out.push("");
+  out.push("WHAT HANGS OFF THE RIGHT");
+  const spilling = [];
+  for (const name of ["library", "game", "finder", "settings", "about"]) {
+    const nav = document.querySelector(`.nav-item[data-view="${name}"]`);
+    if (nav) nav.click();
+    if (name === "game") {
+      const raider = [...document.querySelectorAll("#library-rail .rail-game")]
+        .find(r => r.textContent.includes("Tomb Raider"));
+      (raider || witcher).click();
+    }
+    await settle(300);
+
+    const view = document.getElementById("view-" + name);
+    if (view.hidden) continue;
+    for (const el of view.querySelectorAll("*")) {
+      if (el.offsetParent === null) continue;
+      const over = el.scrollWidth - el.clientWidth;
+      if (over <= 2 || !el.clientWidth) continue;
+      const style = getComputedStyle(el);
+      if (style.overflowX !== "visible") continue;
+      const who = el.id ? "#" + el.id : el.tagName.toLowerCase() + "." + String(el.className).split(" ")[0];
+      spilling.push(`${name} ${who} +${over}px`);
+    }
+  }
+  for (const s of spilling) out.push("   " + s);
+  if (!spilling.length) out.push("   nothing");
+  note(!spilling.length,
+       "no text runs out of the box it is in" +
+       (spilling.length ? " (" + spilling.slice(0, 4).join(", ") + ")" : ""));
+
   } catch (e) {
     out.push("FAIL the probe itself threw: " + (e && e.message ? e.message : e));
   }
