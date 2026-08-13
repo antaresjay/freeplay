@@ -66,6 +66,10 @@ const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:fa
 // categories somebody shut, the way settings.json keeps them
 let FOLDED = {};
 
+// the tomb raider table that assembled, patched and then crashed the game
+let FIT = {found:2, total:2, missing:0, unknown:0, ambiguous:0, silent:false,
+           stale:["endurance jumps to 0x1d1ee4, but the branch it replaces goes to 0x1d1704"]};
+
 const CHEATS = [
   {id:"base", name:"Get Witcher Base", category:"Misc", description:"", hint:"",
    state:"idle", reason:"", armed:false, live:false, does:"Script", ...plain},
@@ -160,6 +164,7 @@ window.__TAURI__ = {
           return SETTINGS;
         case "list_games": return GAMES;
         case "game_art": return {cover:null, hero:null, logo:null};
+        case "table_fit": return FIT;
         case "folded": return (FOLDED[args.exe] || []).slice();
         case "fold": {
           const held = FOLDED[args.exe] || (FOLDED[args.exe] = []);
@@ -490,6 +495,24 @@ PROBE = r"""
            "the pill stays on one line even with nowhere to put it (" +
            lines + " lines)");
     }
+    /* the table's signatures measured against this copy of the game, read off
+       the exe with the game shut. the one that crashed tomb raider assembled
+       and patched perfectly, so a clean signature count is not enough */
+    {
+      const fit = document.getElementById("table-fit");
+      note(!fit.hidden, "the game page says whether the table fits this build");
+      note(fit.classList.contains("bad"),
+           "a table written for another build is called out");
+      note(document.getElementById("fit-headline").textContent ===
+           "This table was written for a different build",
+           "in words rather than a number (" +
+           document.getElementById("fit-headline").textContent + ")");
+      const stale = document.querySelectorAll("#fit-stale li");
+      note(stale.length === 1, "with the jump that would crash it spelled out");
+      note(stale[0].textContent.includes("0x1d1ee4"),
+           "including where it goes and where it should have gone");
+    }
+
     /* categories fold away, and stay folded next time. forty cheats in six
        groups is a wall of cards otherwise */
     {
