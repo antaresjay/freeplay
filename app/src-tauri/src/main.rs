@@ -1823,17 +1823,33 @@ fn credit(state: tauri::State<'_, App>, exe: String) -> Credit {
     let open = held.as_ref().map(|s| s.table().clone());
     drop(held);
 
-    let table = open
-        .filter(|t| t.matches_process(&exe))
-        .or_else(|| tables(&state).into_iter().find(|t| t.matches_process(&exe)));
+    let _ = open;
+    /* with two tables folded together the list is both authors' work, so
+    naming only the first one takes the credit off somebody */
+    let parts: Vec<Table> = with_parts(&state, &exe);
+    if parts.is_empty() {
+        return Credit::default();
+    }
 
-    match table {
-        Some(table) => Credit {
-            author: table.game.author.trim().to_string(),
-            source: link_in(&table.game.notes),
-            notes: table.game.notes.clone(),
+    let mut authors: Vec<String> = Vec::new();
+    for table in &parts {
+        let who = table.game.author.trim();
+        if !who.is_empty() && !authors.iter().any(|a| a == who) {
+            authors.push(who.to_string());
+        }
+    }
+
+    Credit {
+        author: match authors.len() {
+            0 => String::new(),
+            1 => authors.remove(0),
+            _ => {
+                let last = authors.pop().unwrap_or_default();
+                format!("{} and {last}", authors.join(", "))
+            }
         },
-        None => Credit::default(),
+        source: link_in(&parts[0].game.notes),
+        notes: parts[0].game.notes.clone(),
     }
 }
 
@@ -1889,7 +1905,9 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
     drop(guard);
 
     let armed = armed_for(&state, &exe);
-    let Some(table) = tables(&state).into_iter().find(|t| t.matches_process(&exe)) else {
+    // the same fold the session would build. going through tables() here meant
+    // the list with the game shut only ever showed the first table
+    let Some(table) = with_tables(&exe, &off_for(&state, &exe)) else {
         return Vec::new();
     };
 
@@ -1898,6 +1916,7 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
         .iter()
         .map(|cheat| {
             let mut row = cheat_row(cheat, typed.get(&cheat.id));
+            row.from = whose(&named, &cheat.id);
             row.armed = armed.contains(&cheat.id);
             row
         })
