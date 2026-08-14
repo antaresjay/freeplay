@@ -245,15 +245,8 @@ fn tag_of(path: &Path, table: &Table) -> String {
         .collect()
 }
 
-// one table per game, which is what the rest of the app still expects
 fn load_tables() -> Vec<Table> {
-    let mut tables: Vec<Table> = Vec::new();
-    for (_, table) in load_all() {
-        if !tables.iter().any(|t| t.matches_process(&table.game.exe)) {
-            tables.push(table);
-        }
-    }
-    tables
+    load_all().into_iter().map(|(_, table)| table).collect()
 }
 
 fn tables(state: &tauri::State<'_, App>) -> Vec<Table> {
@@ -278,12 +271,10 @@ fn tables_for(exe: &str) -> Vec<(String, Table)> {
         .collect()
 }
 
-// the ones switched on, folded into one
-fn with_tables(exe: &str, using: Option<&[String]>) -> Option<Table> {
+// everything installed for the game except what was switched off, folded
+fn with_tables(exe: &str, off: &[String]) -> Option<Table> {
     let mut parts = tables_for(exe);
-    if let Some(chosen) = using {
-        parts.retain(|(tag, _)| chosen.contains(tag));
-    }
+    parts.retain(|(tag, _)| !off.contains(tag));
     merge::fold(parts)
 }
 
@@ -461,6 +452,7 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
         .map(|root| freeplay_library::appinfo::genres(&root))
         .unwrap_or_default();
     let favourites = state.settings.lock().unwrap().favourites.clone();
+    let switched_off = state.settings.lock().unwrap().off.clone();
 
     Ok(library(&state, refresh)
         .into_iter()
@@ -494,9 +486,18 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
                 guard_file: guard.as_ref().and_then(|g| g.file.clone()),
                 guard: guard.map(|g| g.name),
                 running: !lower.is_empty() && running.iter().any(|p| p == &lower),
-                has_table: exe
-                    .as_deref()
-                    .is_some_and(|e| tables.iter().any(|t| t.matches_process(e))),
+                /* a table installed and switched off is not a table this
+                page will show anything for, and the page uses this to
+                decide whether to put up cheat shaped placeholders */
+                /* a table installed and switched off shows nothing, and the
+                   page uses this to decide whether to put up placeholders */
+                has_table: exe.as_deref().is_some_and(|e| {
+                    let dropped = switched_off.get(&e.to_lowercase());
+                    match dropped {
+                        None => tables.iter().any(|t| t.matches_process(e)),
+                        Some(d) => tables_for(e).iter().any(|(tag, _)| !d.contains(tag)),
+                    }
+                }),
                 minutes: play.minutes,
                 last_played: play.last_played,
                 version: game.version,
@@ -1602,7 +1603,7 @@ fn attach(
     let arch = target.arch().label().to_string();
     let shared: Arc<dyn Target> = Arc::new(target);
 
-    let table = with_tables(&exe, using_for(&state, &exe).as_deref());
+    let table = with_tables(&exe, &off_for(&state, &exe));
     let has_table = table.is_some();
     let name = table
         .as_ref()
@@ -1698,7 +1699,7 @@ fn reseat(state: &tauri::State<'_, App>, exe: &str) {
         old.disable_all();
     }
 
-    let Some(table) = with_tables(exe, using_for(state, exe).as_deref()) else {
+    let Some(table) = with_tables(exe, &off_for(state, exe)) else {
         return;
     };
     *state.playing.lock().unwrap() = {
@@ -1894,11 +1895,11 @@ struct TableRow {
 // every table installed for this game, and which ones are switched on
 #[tauri::command]
 fn installed_tables(state: tauri::State<'_, App>, exe: String) -> Vec<TableRow> {
-    let chosen = using_for(&state, &exe);
+    let off = off_for(&state, &exe);
     tables_for(&exe)
         .into_iter()
         .map(|(tag, table)| TableRow {
-            using: chosen.as_ref().is_none_or(|c| c.contains(&tag)),
+            using: !off.contains(&tag),
             tag,
             name: table.game.name.clone(),
             author: if table.game.author.is_empty() {
@@ -1921,18 +1922,18 @@ fn use_table(
     tag: String,
     on: bool,
 ) -> Result<(), String> {
-    let all: Vec<String> = tables_for(&exe).into_iter().map(|(t, _)| t).collect();
     {
         let mut settings = state.settings.lock().unwrap();
-        let held = settings
-            .using
-            .entry(exe.to_lowercase())
-            .or_insert_with(|| all.clone());
+        let held = settings.off.entry(exe.to_lowercase()).or_default();
 
         match on {
-            true if !held.contains(&tag) => held.push(tag.clone()),
-            false => held.retain(|t| t != &tag),
+            false if !held.contains(&tag) => held.push(tag.clone()),
+            true => held.retain(|t| t != &tag),
             _ => {}
+        }
+        // nothing switched off is the ordinary case, so it carries no entry
+        if held.is_empty() {
+            settings.off.remove(&exe.to_lowercase());
         }
         settings::save(&settings)?;
     }
@@ -2240,6 +2241,16 @@ fn online(state: &tauri::State<'_, App>) -> Result<(), String> {
 /* none recorded is not the same as none chosen. a game nobody has picked for
 uses everything it has, and unticking the last one leaves an empty list that
 means exactly that */
+// the tables actually in play for a game, in the order they are folded
+fn with_parts(state: &tauri::State<'_, App>, exe: &str) -> Vec<Table> {
+    let off = off_for(state, exe);
+    tables_for(exe)
+        .into_iter()
+        .filter(|(tag, _)| !off.contains(tag))
+        .map(|(_, table)| table)
+        .collect()
+}
+
 // tag to table name, for saying which table a folded cheat came from
 fn credits(exe: &str) -> std::collections::HashMap<String, String> {
     tables_for(exe)
@@ -2255,14 +2266,16 @@ fn whose(named: &std::collections::HashMap<String, String>, id: &str) -> String 
         .unwrap_or_default()
 }
 
-fn using_for(state: &tauri::State<'_, App>, exe: &str) -> Option<Vec<String>> {
+// the tags switched off for this game, which is usually none of them
+fn off_for(state: &tauri::State<'_, App>, exe: &str) -> Vec<String> {
     state
         .settings
         .lock()
         .unwrap()
-        .using
+        .off
         .get(&exe.to_lowercase())
         .cloned()
+        .unwrap_or_default()
 }
 
 fn armed_for(state: &tauri::State<'_, App>, exe: &str) -> Vec<String> {
