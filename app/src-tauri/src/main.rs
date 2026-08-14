@@ -2009,6 +2009,9 @@ struct FitRow {
     stale: Vec<String>,
     // no scans at all, so there is nothing to measure
     silent: bool,
+    // the exe is wrapped, so nothing can be read off it and a miss means
+    // nothing. steam's drm does this to plenty of games
+    sealed: bool,
 }
 
 /* whether the table matches this copy of the game, read off the exe with the
@@ -2029,9 +2032,16 @@ fn table_fit(state: tauri::State<'_, App>, exe: String) -> FitRow {
     let Some(code) = freeplay_library::pe::code(path) else {
         return FitRow::default();
     };
+    if code.packed {
+        return FitRow {
+            sealed: true,
+            ..Default::default()
+        };
+    }
 
     let mut whole = freeplay_aa::fit::Fit::default();
-    for table in tables(&state).iter().filter(|t| t.matches_process(&exe)) {
+    let mut broken: Vec<String> = Vec::new();
+    for table in with_parts(&state, &exe).iter() {
         for cheat in &table.cheats {
             let freeplay_table::schema::Action::Script { source } = &cheat.action else {
                 continue;
@@ -2043,6 +2053,14 @@ fn table_fit(state: tauri::State<'_, App>, exe: String) -> FitRow {
                     rva: code.rva,
                 },
             );
+            for stale in &part.stale {
+                broken.push(format!(
+                    "{} sends the game to {:#x}, but on your build that code is at {:#x}",
+                    cheat.name.trim(),
+                    stale.wants,
+                    stale.goes
+                ));
+            }
             whole.signatures.extend(part.signatures);
             whole.stale.extend(part.stale);
         }
@@ -2054,16 +2072,8 @@ fn table_fit(state: tauri::State<'_, App>, exe: String) -> FitRow {
         missing: whole.missing(),
         unknown: whole.unknown(),
         ambiguous: whole.ambiguous(),
-        stale: whole
-            .stale
-            .iter()
-            .map(|s| {
-                format!(
-                    "{} jumps to {:#x}, but the branch it replaces goes to {:#x}",
-                    s.symbol, s.wants, s.goes
-                )
-            })
-            .collect(),
+        stale: broken,
+        sealed: false,
         silent: whole.is_empty(),
     }
 }
