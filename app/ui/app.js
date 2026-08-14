@@ -1041,11 +1041,11 @@ function paintTables(exe, rows) {
       tick.disabled = true;
       try {
         await invoke("use_table", { exe, tag: row.tag, on: tick.checked });
-        showTables.done = null;
-        showFit.done = null;
+        paintTables.done = null;
+        paintFit.done = null;
         refreshCheats.shape = null;
         await refreshCheats();
-        await showTables(exe);
+        if (!$("no-table").hidden) paintNoTable();
       } catch (e) {
         toast(String(e), true);
         tick.checked = !tick.checked;
@@ -1071,38 +1071,66 @@ function paintTables(exe, rows) {
 /* whether the table's signatures are in this copy of the game, read off the
    exe with the game shut. asked once per game rather than on every tick of the
    timer refreshCheats sits on */
-async function showFit(exe) {
-  const box = $("table-fit");
-  if (showFit.done === exe) return;
-  showFit.done = exe;
-
-  let fit = null;
+async function loadFit(exe) {
   try {
-    fit = await invoke("table_fit", { exe });
+    return await invoke("table_fit", { exe });
   } catch {
-    box.hidden = true;
-    return;
+    return null;
   }
-  if (showFit.done !== exe) return;
+}
+
+function paintFit(exe, fit) {
+  const box = $("table-fit");
+  paintFit.done = exe;
 
   if (!fit || fit.silent) {
     box.hidden = true;
     return;
   }
 
-  const bad = fit.missing > 0 || fit.stale.length > 0;
-  box.hidden = false;
-  box.className = "fit" + (bad ? " bad" : fit.ambiguous ? " iffy" : " good");
+  /* the game's code is encrypted on disk, which steam does to a lot of them.
+     nothing can be read off the file, so saying the table does not fit would
+     be an accusation we cannot support */
+  if (fit.sealed) {
+    box.hidden = false;
+    box.className = "fit";
+    $("fit-headline").textContent = "Cannot check this one against the game";
+    $("fit-detail").textContent =
+      "The executable is wrapped, so its code only exists once the game is " +
+      "running. Whether the table fits can only be found out by trying it.";
+    $("fit-stale").hidden = true;
+    $("fit-stale").innerHTML = "";
+    return;
+  }
 
-  $("fit-headline").textContent = bad
-    ? "This table was written for a different build"
-    : `${many(fit.found, "signature")} found in your copy`;
+  /* three different things, and they used to share one sentence. a table can
+     have every address right and still hold one cheat that crashes the game,
+     which is not the same as the table being for another build */
+  const missing = fit.missing > 0;
+  const crashes = fit.stale.length > 0;
+  box.hidden = false;
+  box.className =
+    "fit" + (missing || crashes ? " bad" : fit.ambiguous ? " iffy" : " good");
+
+  if (missing) {
+    $("fit-headline").textContent = "Some of this table is for a different build";
+  } else if (crashes) {
+    $("fit-headline").textContent =
+      many(fit.stale.length, "cheat") + " here would crash the game";
+  } else {
+    $("fit-headline").textContent = `${many(fit.found, "signature")} found in your copy`;
+  }
 
   const notes = [];
-  if (fit.missing) notes.push(`${fit.missing} of ${fit.total} are not in it`);
+  if (missing) notes.push(`${fit.missing} of ${fit.total} addresses are not in it`);
   if (fit.ambiguous) notes.push(`${fit.ambiguous} match in more than one place`);
   // aobscan looks at the whole process, so the exe alone cannot answer it
   if (fit.unknown) notes.push(`${fit.unknown} search outside the executable`);
+  if (!notes.length && crashes) {
+    notes.push(
+      `Everything else in it lines up, so the rest is fine to use`
+    );
+  }
   $("fit-detail").textContent = notes.length
     ? notes.join(". ") + "."
     : "Every address it looks for is where it expects.";
@@ -1916,6 +1944,20 @@ function paintNoTable() {
   const rows = ownRows || sharedRows;
   const some = rows.length > 0;
   const shut = $("shared").hidden;
+
+  /* you have tables, you just switched them all off. saying "nobody has
+     shared one" here sent people looking for a table they already had */
+  const off = [...document.querySelectorAll("#table-list input")];
+  if (off.length && off.every((t) => !t.checked)) {
+    $("no-table-title").textContent = `None of your ${off.length} tables are switched on`;
+    $("no-table-lead").textContent =
+      "Tick one above to get its cheats back.";
+    $("no-table-body").textContent =
+      "They are still on this machine. Nothing was deleted.";
+    $("no-table-pick").hidden = true;
+    $("no-table-import").className = "ghost";
+    return;
+  }
 
   $("no-table-title").textContent = some
     ? `${many(rows.length, "shared table")} for this game`

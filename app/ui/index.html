@@ -190,6 +190,10 @@
         <p class="dim">Cheating in a game other people are playing ruins their evening, not just yours, and it is the quickest way to lose the account you paid for. Freeplay is for single player, for a second run through something you already finished properly.</p>
       </div>
 
+      <div id="table-picker" class="picker-tables" hidden>
+        <span class="picker-tables-head">Tables</span>
+        <div id="table-list"></div>
+      </div>
       <div id="cheats-panel">
         <div class="section-head">
           <div class="head-count">
@@ -197,15 +201,11 @@
             <span id="cheat-count" class="dim"></span>
           </div>
           <input id="cheat-filter" class="filter" type="search" placeholder="Search cheats" autocomplete="off">
-          <button id="remove-table" class="ghost" title="Delete this table from your machine" hidden>Remove table</button>
+          <button id="remove-table" class="ghost away" title="Delete this table from your machine">Remove table</button>
         </div>
         <p id="table-credit" class="credit" hidden>
           Addresses worked out by <b id="credit-author"></b><a id="credit-source" href="#" hidden>where it came from</a>
         </p>
-        <div id="table-picker" class="picker-tables" hidden>
-          <span class="picker-tables-head">Tables</span>
-          <div id="table-list"></div>
-        </div>
         <div id="table-fit" class="fit" hidden>
           <strong id="fit-headline"></strong>
           <span id="fit-detail"></span>
