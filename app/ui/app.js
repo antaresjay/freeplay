@@ -2094,6 +2094,13 @@ $("table-search").addEventListener("input", () => {
   searchTimer = setTimeout(searchEveryGame, wait);
 });
 
+// whether this game already has a table, so "add to mine" has something to
+// add to. the picker only exists once there are two, so read the game instead
+const haveATable = () => {
+  const game = gameFor(open);
+  return !!(game && game.has_table);
+};
+
 function sharedRow(row) {
   const card = document.createElement("div");
   card.className =
@@ -2171,11 +2178,12 @@ function sharedRow(row) {
   const actions = document.createElement("div");
   actions.className = "row-actions";
 
-  const button = document.createElement("button");
-  button.className = row.installed ? "ghost" : "primary";
-  button.textContent = row.installed ? "Installed" : "Use table";
-  button.disabled = row.installed;
-  button.addEventListener("click", async () => {
+  /* taking a table used to quietly add it to whatever was already there, so
+     picking a second one gave you both lists welded together whether or not
+     that is what you wanted. use replaces, add is the one that merges, and
+     add only appears when there is something to add to */
+  const grab = async (button, replace) => {
+    const was = button.textContent;
     button.disabled = true;
     button.textContent = "Getting it";
     try {
@@ -2184,23 +2192,47 @@ function sharedRow(row) {
          shows up anywhere */
       const game = gameFor(open);
       const borrowed = row.found_by_search && game && game.exe ? game.exe : null;
-      toast(await invoke("install_shared", { id: row.id, forExe: borrowed }));
+      toast(
+        await invoke("install_shared", {
+          id: row.id,
+          forExe: borrowed,
+          replace,
+        })
+      );
       if (borrowed) {
         $("table-search").value = "";
         $("search-note").hidden = true;
       }
-      showFit.done = null;
-      showTables.done = null;
+      paintFit.done = null;
+      paintTables.done = null;
       await loadGames(false);
       await refreshCheats();
       await loadShared(true);
     } catch (e) {
       toast(String(e), true);
       button.disabled = false;
-      button.textContent = "Use table";
+      button.textContent = was;
     }
-  });
+  };
+
+  const button = document.createElement("button");
+  button.className = row.installed ? "ghost" : "primary";
+  button.textContent = row.installed ? "Installed" : "Use table";
+  button.title = row.installed
+    ? "This one is already on this machine"
+    : "Use this one on its own, replacing what you have";
+  button.disabled = row.installed;
+  button.addEventListener("click", () => grab(button, true));
   actions.appendChild(button);
+
+  if (!row.installed && haveATable()) {
+    const also = document.createElement("button");
+    also.className = "ghost";
+    also.textContent = "Add to mine";
+    also.title = "Keep what you have and show this one's cheats as well";
+    also.addEventListener("click", () => grab(also, false));
+    actions.appendChild(also);
+  }
 
   if (row.installed) {
     const drop = document.createElement("button");

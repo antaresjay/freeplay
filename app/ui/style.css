@@ -2224,3 +2224,16 @@ body.maximised .win .when-big { display: block; }
   color: var(--faint);
   opacity: 0.75;
 }
+
+/* still takes up room while it is not there. hiding it outright let the search
+   box next to it slide 128px sideways the moment a table loaded */
+.away {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* one line of text or two, depending on whether the game is running, and the
+   difference used to shove the whole page down as the answer arrived */
+#attach-note-body {
+  min-height: calc(12.5px * 1.5 * 2);
+}
