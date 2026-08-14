@@ -676,8 +676,8 @@ function drawGamePage() {
   if (drawGamePage.showing !== open) {
     drawGamePage.showing = open;
     refreshCheats.shape = null;
-    showFit.done = null;
-    showTables.done = null;
+    paintFit.done = null;
+    paintTables.done = null;
     sharedFor = null;
     // the count the empty state quotes belongs to the game you just left
     sharedRows = [];
@@ -689,7 +689,7 @@ function drawGamePage() {
     searchFor = "";
     ownRows = null;
     $("search-note").hidden = true;
-    skeletons();
+    if (!$("cheat-groups").children.length) skeletons(game.has_table);
   }
   const images = artFor(game) || {};
 
@@ -847,15 +847,18 @@ async function doDetach() {
 
 /* whoever found these addresses is almost never whoever uploaded the table
    here, and the person who did the work is the one worth naming */
-async function showCredit(exe) {
+async function loadCredit(exe) {
+  try {
+    return await invoke("credit", { exe });
+  } catch {
+    return {};
+  }
+}
+
+function paintCredit(credit) {
   const line = $("table-credit");
   const link = $("credit-source");
-  let credit = {};
-  try {
-    credit = await invoke("credit", { exe });
-  } catch {
-    credit = {};
-  }
+  credit = credit || {};
 
   const author = (credit.author || "").trim();
   line.hidden = !author;
@@ -889,6 +892,8 @@ async function refreshCheats() {
     refreshCheats.shape = null;
     $("cheat-groups").innerHTML = "";
     $("cheats-panel").hidden = true;
+    $("table-picker").hidden = true;
+    $("table-fit").hidden = true;
     $("no-table").hidden = false;
     paintNoTable();
     return;
@@ -899,22 +904,39 @@ async function refreshCheats() {
      one lands last and paints the game you just left */
   const asked = open;
 
+  /* the cheats, the picker and the fit notice all used to be fetched one after
+     another and drawn as each landed, so opening a game resized the page three
+     times. they go out together and are drawn in one go */
+  const fresh = paintTables.done !== game.exe || paintFit.done !== game.exe;
   let rows = [];
+  let tables = null;
+  let fit = null;
+  let credit = null;
+  let shut = null;
   try {
-    rows = await invoke("cheats", { exe: game.exe });
+    [rows, tables, fit, credit, shut] = await Promise.all([
+      invoke("cheats", { exe: game.exe }),
+      fresh ? loadTables(game.exe) : null,
+      fresh ? loadFit(game.exe) : null,
+      fresh ? loadCredit(game.exe) : null,
+      fresh ? invoke("folded", { exe: game.exe }).catch(() => []) : null,
+    ]);
   } catch {
     return;
   }
   if (open !== asked) return;
 
   $("no-table").hidden = rows.length > 0;
-  if (!rows.length) paintNoTable();
-  if (rows.length) {
-    showFit(game.exe);
-    showTables(game.exe);
+  if (fresh) {
+    folded = new Set(shut || []);
+    paintTables(game.exe, tables || []);
+    paintFit(game.exe, rows.length ? fit : null);
+    paintCredit(rows.length ? credit : null);
   }
+  if (!rows.length) paintNoTable();
   $("cheats-panel").hidden = rows.length === 0;
-  $("remove-table").hidden = rows.length === 0;
+  // keeps its space either way, or the search box beside it jumps sideways
+  $("remove-table").classList.toggle("away", rows.length === 0);
   $("cheat-count").textContent = rows.length ? `${many(rows.length, "cheat")}` : "";
   // said once up here rather than on all forty cards, where it was the only
   // thing most of them had to say and read as filler
@@ -924,14 +946,6 @@ async function refreshCheats() {
   for (const row of rows) {
     if (!byCategory.has(row.category)) byCategory.set(row.category, []);
     byCategory.get(row.category).push(row);
-  }
-
-  // which groups were folded away last time. asked once per game, not on every
-  // tick of the timer this sits on
-  if (refreshCheats.foldedFor !== game.exe) {
-    refreshCheats.foldedFor = game.exe;
-    folded = new Set(await invoke("folded", { exe: game.exe }).catch(() => []));
-    if (open !== asked) return;
   }
 
   /* this runs every second and a half. throwing the list away and building it
@@ -944,7 +958,6 @@ async function refreshCheats() {
     refreshCheats.cards = new Map();
     // only when the table itself changes. this function runs on a timer and
     // the credit does not move between ticks
-    showCredit(game.exe);
 
     const host = $("cheat-groups");
     host.innerHTML = "";
@@ -999,25 +1012,24 @@ async function refreshCheats() {
 /* more than one table can be installed for a game and they are shown as one
    list, so this is where you say which of them count. only appears when there
    is actually a choice to make */
-async function showTables(exe) {
-  const box = $("table-picker");
-  if (showTables.done === exe) return;
-  showTables.done = exe;
-
-  let rows = [];
+async function loadTables(exe) {
   try {
-    rows = await invoke("installed_tables", { exe });
+    return await invoke("installed_tables", { exe });
   } catch {
-    box.hidden = true;
-    return;
+    return [];
   }
-  if (showTables.done !== exe) return;
+}
 
-  box.hidden = rows.length < 2;
-  if (box.hidden) return;
+function paintTables(exe, rows) {
+  const box = $("table-picker");
+  paintTables.done = exe;
 
   const host = $("table-list");
   host.innerHTML = "";
+  // cleared first. going from two tables to one used to leave both rows in the
+  // hidden box, and the empty state counts them to say how many you have
+  box.hidden = rows.length < 2;
+  if (box.hidden) return;
   for (const row of rows) {
     const label = document.createElement("label");
     label.className = "picker-table" + (row.using ? " on" : "");
@@ -1146,15 +1158,27 @@ function whyFor(item) {
 
 /* placeholder cards while the real ones are on their way. cheaper than a
    spinner, and the page does not jump when the answer lands */
-function skeletons() {
+/* the placeholder while the answer is on its way. we already know whether the
+   game has a table at all, so a game with none goes straight to the empty
+   state. showing six fake cheat cards first and then taking them away was the
+   page resizing twice, which is exactly what reads as a flicker */
+function skeletons(hasTable) {
   const host = $("cheat-groups");
   host.innerHTML = "";
-  $("cheats-panel").hidden = false;
-  $("no-table").hidden = true;
   $("cheat-none").hidden = true;
   $("cheat-typing").hidden = true;
   $("cheat-count").textContent = "";
-  $("remove-table").hidden = true;
+  $("remove-table").classList.add("away");
+  $("table-fit").hidden = true;
+
+  if (!hasTable) {
+    $("cheats-panel").hidden = true;
+    $("no-table").hidden = false;
+    paintNoTable();
+    return;
+  }
+  $("cheats-panel").hidden = false;
+  $("no-table").hidden = true;
 
   const grid = document.createElement("div");
   grid.className = "cheats";
