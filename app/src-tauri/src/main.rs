@@ -659,10 +659,32 @@ async fn install_shared(
     state: tauri::State<'_, App>,
     id: i64,
     for_exe: Option<String>,
+    replace: Option<bool>,
 ) -> Result<String, String> {
     online(&state)?;
     let install_id = state.settings.lock().unwrap().install_id.clone();
     let (_, table) = shared::install(id, &install_id, &synced_dir(), for_exe.as_deref())?;
+
+    /* taking a table replaces what was there unless you asked to add it. the
+    old behaviour was always to add, so picking a second table silently gave
+    you both welded together */
+    if replace.unwrap_or(true) {
+        let keep = freeplay_table::fingerprint::fingerprint(&table);
+        forget_tables(&state);
+        for (tag, other) in tables_for(&table.game.exe) {
+            if freeplay_table::fingerprint::fingerprint(&other) == keep {
+                continue;
+            }
+            let _ = tag;
+            delete_table_file(&other);
+        }
+        state
+            .settings
+            .lock()
+            .unwrap()
+            .off
+            .remove(&table.game.exe.to_lowercase());
+    }
 
     {
         let mut settings = state.settings.lock().unwrap();
@@ -676,6 +698,18 @@ async fn install_shared(
         table.game.name,
         table.cheats.len()
     ))
+}
+
+// the file a table was loaded from, so one of several can be removed on its own
+fn delete_table_file(wanted: &Table) {
+    let print = freeplay_table::fingerprint::fingerprint(wanted);
+    for dir in [mine_dir(), synced_dir()] {
+        for (path, table) in Table::load_dir_with_paths(&dir) {
+            if freeplay_table::fingerprint::fingerprint(&table) == print {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
 }
 
 // getting a table was one click, getting rid of it meant knowing which folder
