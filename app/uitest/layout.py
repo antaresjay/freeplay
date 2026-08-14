@@ -158,37 +158,63 @@ PROBE = r"""
 
   note(shifted < 0.05, "layout shift stays small (" + shifted.toFixed(4) + ")");
 
-  /* how much of the window each page actually uses. settings capped itself at
-     1180px and stranded everything to the right of that on a big monitor,
-     which nothing here was measuring */
-  out.push("");
-  out.push("WHAT EACH PAGE LEAVES UNUSED ON THE RIGHT");
-  const stranded = [];
-  for (const name of ["library", "game", "finder", "settings", "about"]) {
-    const nav = document.querySelector(`.nav-item[data-view="${name}"]`);
-    if (nav) nav.click(); else witcher.click();
-    if (name === "game") witcher.click();
-    await settle(250);
-
-    const view = document.getElementById("view-" + name);
-    if (view.hidden) { out.push("   " + name + " did not open"); continue; }
-    const edge = view.getBoundingClientRect().right;
-
-    // the furthest right anything on the page reaches
-    let reach = 0;
-    for (const el of view.querySelectorAll("*")) {
-      if (el.offsetParent === null) continue;
-      const box = el.getBoundingClientRect();
-      if (box.width > 0) reach = Math.max(reach, box.right);
+  /* the flicker, measured. switching game leaves the page half drawn for a
+     moment, and anything that changes height up top drags everything under it
+     down and then back. the panels are allowed to grow, the things above them
+     are not allowed to move */
+  const steady = ["#game-detail", "#attach-note", "#table-picker", "#cheats-panel",
+                  "#table-credit", "#table-fit", "#cheat-filter"];
+  const jumped = [];
+  for (const name of steady) {
+    const a = before.get(name), b = during.get(name);
+    if (!a || !b) continue;
+    if (Math.abs(b.y - a.y) > 2 || Math.abs(b.x - a.x) > 2) {
+      jumped.push(`${name} dx${b.x - a.x} dy${b.y - a.y}`);
     }
-    const spare = Math.round(edge - reach);
-    out.push(`   ${name} ${spare}px`);
-    if (spare > 80) stranded.push(name + " " + spare + "px");
   }
+  note(!jumped.length,
+       "nothing above the cheat list moves while the next game loads" +
+       (jumped.length ? " (" + jumped.join(", ") + ")" : ""));
 
-  note(!stranded.length,
-       "every page reaches the right edge of the window" +
-       (stranded.length ? " (" + stranded.join(", ") + ")" : ""));
+  /* the switch that actually flickers, and the one this file was not doing:
+     a game with cheats to one with none and back. the panel is swapped for
+     the empty state, and if anything above them is sized by what is below it
+     the whole page walks up and down while you watch */
+  out.push("");
+  out.push("GOING BETWEEN A GAME WITH CHEATS AND ONE WITHOUT");
+  const raider = [...rail].find(r => r.textContent.includes("Tomb Raider"));
+  const walked = [];
+  if (raider) {
+    const above = ["#game-hero", ".game-hero", "#game-detail", "#attach-note",
+                   "#table-picker", "#back"];
+    for (const [label, to] of [["to one with none", raider], ["and back", witcher]]) {
+      witcher.click();
+      await settle(900);
+      const was = watched();
+      to.click();
+      await settle(160);
+      const mid = watched();
+      await settle(900);
+      const then = watched();
+
+      for (const name of above) {
+        for (const [when, now] of [["mid", mid], ["after", then]]) {
+          const a = was.get(name), b = now.get(name);
+          if (!a || !b) continue;
+          if (Math.abs(b.y - a.y) > 2 || Math.abs(b.x - a.x) > 2) {
+            walked.push(`${label} ${name} ${when} dx${b.x - a.x} dy${b.y - a.y}`);
+          }
+        }
+      }
+      // and the page must not scroll itself while the answer lands
+      out.push(`   ${label}: scrolled ${Math.round(document.querySelector(".content").scrollTop)}`);
+    }
+  }
+  for (const w of walked) out.push("   " + w);
+  if (!walked.length) out.push("   nothing above the panels moves");
+  note(!walked.length,
+       "nor when the cheats panel is swapped for the empty state" +
+       (walked.length ? " (" + walked.slice(0, 4).join(", ") + ")" : ""));
 
   /* the other direction, and it is not a rectangle you can measure. an epic
      app id is 97 characters in a 241px box: the box stays put and the text
@@ -272,7 +298,9 @@ def once(browser, work, size):
     run = subprocess.run(
         [browser, "--headless", "--disable-gpu", "--allow-file-access-from-files",
          "--user-data-dir=" + tempfile.mkdtemp(prefix="freeplay-profile-"),
-         "--window-size=%d,%d" % size, "--virtual-time-budget=30000", "--dump-dom", url],
+         "--window-size=%d,%d" % size, # the pair sweep is twenty switches, and running out of budget
+         # makes the browser exit 0 with half a page and no error
+         "--virtual-time-budget=300000", "--dump-dom", url],
         capture_output=True, text=True, timeout=180)
 
     found = re.search(r'<pre id="probe-results">(.*?)</pre>', run.stdout, re.S)

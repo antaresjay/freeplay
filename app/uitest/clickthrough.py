@@ -39,10 +39,10 @@ window.__atStart = {
 
 const GAMES = [
   {key:"steam:20920", name:"The Witcher 2", store:"Steam", exe:"witcher2.exe",
-   dir:"D:/games/witcher2", app_id:"20920", running:true, has_table:false,
+   dir:"D:/games/witcher2", app_id:"20920", running:true, has_table:true,
    guard:null, minutes:1801, last_played:1785824227, favourite:false},
   {key:"steam:1222140", name:"Detroit Become Human", store:"Steam", exe:"Detroit.exe",
-   dir:"D:/games/detroit", app_id:"1222140", running:false, has_table:false,
+   dir:"D:/games/detroit", app_id:"1222140", running:false, has_table:true,
    guard:null, minutes:1065, last_played:1783896512, favourite:false},
   // gog: no playtime, because that only exists if galaxy is installed, but a
   // version and genres out of the registry and galaxy's database
@@ -69,15 +69,25 @@ let FOLDED = {};
 
 /* two tables for one game, which is the normal case. no single tomb raider
    table has health and ammo and skill points in it */
-let TABLES = [
-  {tag:"a1b2c3d4", name:"Tomb Raider (Finished) Cheat Table!", author:"STN",
-   cheats:24, using:true},
-  {tag:"e5f6a7b8", name:"Tomb Raider GOTY", author:"VampTY", cheats:2, using:true}
-];
+let TABLES = {
+  // two tables here and one everywhere else, so the picker comes and goes as
+  // you switch. one canned answer for every game hid that entirely
+  "witcher2.exe": [
+    {tag:"a1b2c3d4", name:"Tomb Raider (Finished) Cheat Table!", author:"STN",
+     cheats:24, using:true},
+    {tag:"e5f6a7b8", name:"Tomb Raider GOTY", author:"VampTY", cheats:2, using:true}
+  ],
+  "Detroit.exe": [{tag:"d1", name:"Detroit", author:"", cheats:1, using:true}]
+};
 
 // the tomb raider table that assembled, patched and then crashed the game
-let FIT = {found:2, total:2, missing:0, unknown:0, ambiguous:0, silent:false,
-           stale:["endurance jumps to 0x1d1ee4, but the branch it replaces goes to 0x1d1704"]};
+let FIT = {
+  // only one game has anything to say, so switching to it adds a box to the
+  // page and switching away takes one off
+  "witcher2.exe": {found:2, total:2, missing:0, unknown:0, ambiguous:0, silent:false, sealed:false,
+    stale:["[Endurance] Health sends the game to 0x1d1ee4, but on your build that code is at 0x1d1704"]},
+  "Detroit.exe": {found:0, total:0, missing:0, unknown:0, ambiguous:0, stale:[], silent:true, sealed:false}
+};
 
 const CHEATS = [
   {id:"base", name:"Get Witcher Base", category:"Misc", description:"", hint:"",
@@ -174,10 +184,15 @@ window.__TAURI__ = {
           return SETTINGS;
         case "list_games": return GAMES;
         case "game_art": return {cover:null, hero:null, logo:null};
-        case "table_fit": return FIT;
-        case "installed_tables": return TABLES.map(t => ({...t}));
+        case "table_fit":
+          await new Promise(r => setTimeout(r, 220));
+          return FIT[args.exe] || {found:0, total:0, missing:0, unknown:0,
+                                   ambiguous:0, stale:[], silent:true};
+        case "installed_tables":
+          await new Promise(r => setTimeout(r, 260));
+          return (TABLES[args.exe] || []).map(t => ({...t}));
         case "use_table": {
-          const row = TABLES.find(t => t.tag === args.tag);
+          const row = (TABLES[args.exe] || []).find(t => t.tag === args.tag);
           if (row) row.using = args.on;
           window.__used = {tag: args.tag, on: args.on};
           return null;
@@ -191,6 +206,11 @@ window.__TAURI__ = {
           return null;
         }
         case "cheats":
+          // nothing ticked means nothing folded, the way the real one works
+          {
+            const held = TABLES[args.exe] || [];
+            if (held.length && held.every(t => !t.using)) return [];
+          }
           // the witcher answers slowly on purpose. switching away mid flight
           // used to paint the game you had just left
           if (args.exe === "witcher2.exe") {
@@ -221,7 +241,7 @@ window.__TAURI__ = {
           if (args.exe === "TombRaider.exe") return SHARED;
           return args.exe === "witcher2.exe" ? SHARED : [];
         case "install_shared":
-          window.__installed = {id: args.id, forExe: args.forExe};
+          window.__installed = {id: args.id, forExe: args.forExe, replace: args.replace};
           return "The Witcher 2 is ready, 23 cheats";
         case "search_tables":
           window.__searched = args.query;
@@ -512,6 +532,28 @@ PROBE = r"""
            "the pill stays on one line even with nowhere to put it (" +
            lines + " lines)");
     }
+    /* the table's signatures measured against this copy of the game, read off
+       the exe with the game shut. the one that crashed tomb raider assembled
+       and patched perfectly, so a clean signature count is not enough */
+    {
+      const fit = document.getElementById("table-fit");
+      note(!fit.hidden, "the game page says whether the table fits this build");
+      note(fit.classList.contains("bad"),
+           "a table written for another build is called out");
+      /* every address in this one is right and one cheat still crashes. saying
+         the table is for another build was wrong and the user had used it */
+      note(document.getElementById("fit-headline").textContent ===
+           "1 cheat here would crash the game",
+           "and blames the cheat, not the whole table (" +
+           document.getElementById("fit-headline").textContent + ")");
+      note(document.getElementById("fit-detail").textContent.includes("rest is fine"),
+           "and says the rest of it is usable");
+      const stale = document.querySelectorAll("#fit-stale li");
+      note(stale.length === 1, "with the jump that would crash it spelled out");
+      note(stale[0].textContent.startsWith("[Endurance] Health"),
+           "named the way the card names it, not by its aob symbol");
+    }
+
     /* several tables for one game, shown as one list. no single table has
        health and ammo and speed, so picking one used to mean losing the rest */
     {
@@ -534,27 +576,50 @@ PROBE = r"""
       tick.dispatchEvent(new Event("change"));
       await settle(500);
       note(window.__used.on === true, "and ticking it puts it back");
+
+  /* a game that already has a table gets both choices: use this one on its
+     own, or add it to what is there. merging without being asked is what made
+     two tables appear out of one click */
+  {
+    const card = [...document.querySelectorAll("#shared-list .shared-row")]
+      .find(c => !c.textContent.includes("Installed"));
+    const labels = [...card.querySelectorAll(".row-actions button")]
+      .map(b => b.textContent);
+    note(labels[0] === "Use table", "a shared table offers to be used on its own");
+    note(labels.includes("Add to mine"),
+         "and to be added to what you have (" + JSON.stringify(labels) + ")");
+  }
+      /* switching every table off used to hide the cheats panel, and the
+         picker lived inside it, so there was no way left to switch one back
+         on. the only way out was editing settings.json by hand */
+      for (const row of document.querySelectorAll("#table-list input")) {
+        row.checked = false;
+        row.dispatchEvent(new Event("change"));
+        await settle(420);
+      }
+      /* on screen, not just un-hidden. the picker used to sit inside the
+         cheats panel, so its own hidden flag stayed false while the panel
+         around it went away and took it off the page */
+      const still = document.getElementById("table-picker");
+      note(still.offsetParent !== null && still.getBoundingClientRect().height > 0,
+           "switching every table off leaves the picker on screen");
+      note(document.getElementById("no-table-title").textContent ===
+           "None of your 2 tables are switched on",
+           "and says that is what happened (" +
+           document.getElementById("no-table-title").textContent + ")");
+      note(document.getElementById("no-table-body").textContent.includes("Nothing was deleted"),
+           "rather than sending you looking for a table you already have");
+
+      const back = document.querySelector("#table-list input");
+      back.checked = true;
+      back.dispatchEvent(new Event("change"));
+      await settle(500);
+      note(document.querySelectorAll("#cheat-groups .cheat").length > 0,
+           "and ticking one brings the cheats back");
+
       const badge = document.querySelector("#cheat-groups .cheat-from");
       note(badge && badge.textContent === "Tomb Raider GOTY",
            "and a folded cheat says which table it came from");
-    }
-
-    /* the table's signatures measured against this copy of the game, read off
-       the exe with the game shut. the one that crashed tomb raider assembled
-       and patched perfectly, so a clean signature count is not enough */
-    {
-      const fit = document.getElementById("table-fit");
-      note(!fit.hidden, "the game page says whether the table fits this build");
-      note(fit.classList.contains("bad"),
-           "a table written for another build is called out");
-      note(document.getElementById("fit-headline").textContent ===
-           "This table was written for a different build",
-           "in words rather than a number (" +
-           document.getElementById("fit-headline").textContent + ")");
-      const stale = document.querySelectorAll("#fit-stale li");
-      note(stale.length === 1, "with the jump that would crash it spelled out");
-      note(stale[0].textContent.includes("0x1d1ee4"),
-           "including where it goes and where it should have gone");
     }
 
     /* categories fold away, and stay folded next time. forty cheats in six
@@ -876,13 +941,19 @@ PROBE = r"""
   await settle(150);
   note(document.getElementById("game-play").textContent === "Play",
        "a game that is not running still says play");
-  note(document.querySelectorAll("#cheat-groups .bone").length > 0,
-       "switching puts placeholders up straight away");
+  /* placeholders used to go up on every switch, which meant the list emptied,
+     filled with fake cards and then filled again with real ones. three shapes
+     for one switch. the previous game's cheats stay put until the new ones are
+     ready, so the page changes once */
+  note(document.querySelectorAll("#cheat-groups .bone").length === 0,
+       "switching keeps the last game's list until the new one is ready");
+  note(document.querySelectorAll("#cheat-groups .cheat").length === witcherCheats,
+       "so there is never an empty gap where the cheats were");
   await settle(900);
   const names = [...document.querySelectorAll("#cheat-groups .cheat-name")]
     .map(n => n.textContent);
   note(names.length === 1 && names[0].startsWith("Unlock Chapters"),
-       "and the new game's cheats replace them (" + JSON.stringify(names) + ")");
+       "and the new game's cheats replace them in one go (" + JSON.stringify(names) + ")");
   note(!visible("table-credit"),
        "a table with nobody's name on it credits nobody");
 
@@ -996,6 +1067,36 @@ PROBE = r"""
        "a game with nothing shared says there is nothing");
   note(document.getElementById("no-table-pick").hidden,
        "and offers no list to go to");
+
+  /* the cheats, the picker and the fit notice used to be three round trips,
+     each drawn as it landed, so opening a game resized the page three times
+     and that is the flicker. polled hard: at the first instant a real cheat
+     card exists, the other two have to already be in their final state */
+  {
+    const row = (name) => [...document.querySelectorAll("#library-rail .rail-game")]
+      .find(r => r.textContent.includes(name));
+    row("GOG").click();
+    await settle(800);
+    row("Witcher").click();
+
+    let caught = null;
+    for (let n = 0; n < 80; n++) {
+      if (document.querySelectorAll("#cheat-groups .cheat:not(.bone)").length) {
+        caught = {
+          picker: !document.getElementById("table-picker").hidden,
+          rows: document.querySelectorAll("#table-list .picker-table").length,
+          fit: !document.getElementById("table-fit").hidden,
+        };
+        break;
+      }
+      await settle(25);
+    }
+    note(!!caught, "the cheats turn up when you open a game");
+    note(caught && caught.picker && caught.rows === 2,
+         "and the picker is already there with them, not a beat later (" +
+         (caught ? caught.rows + " rows" : "never arrived") + ")");
+    note(caught && caught.fit, "and so is the fit notice");
+  }
 
   // a game with an anti-cheat is refused outright
   const finals = [...rail].find(r => r.textContent.includes("FINALS"));
@@ -1367,6 +1468,10 @@ PROBE = r"""
        "using one installs the table that was found");
   note(window.__installed.forExe === "witcher2.exe",
        "and points it at this game's executable, or it would never show up");
+  /* taking a table used to add it to whatever was there. picking one from a
+     search is a replacement unless you say otherwise */
+  note(window.__installed.replace === true,
+       "and it replaces what was there rather than merging silently");
   note(document.getElementById("table-search").value === "",
        "the search clears once it has been used");
 
