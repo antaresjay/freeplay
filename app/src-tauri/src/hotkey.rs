@@ -35,6 +35,16 @@ pub const WIN: u32 = 0x0008;
 pub const DEFAULT: &str = "Ctrl+Shift+O";
 
 pub fn parse(text: &str) -> Result<Hotkey, String> {
+    read(text, false)
+}
+
+// same words, but a bare F1 is allowed. cheat keys only count while the game
+// is in front, so a key on its own cannot fire while you type elsewhere
+pub fn parse_loose(text: &str) -> Result<Hotkey, String> {
+    read(text, true)
+}
+
+fn read(text: &str, bare_ok: bool) -> Result<Hotkey, String> {
     let mut modifiers = 0u32;
     let mut key = None;
 
@@ -54,11 +64,36 @@ pub fn parse(text: &str) -> Result<Hotkey, String> {
     }
 
     let key = key.ok_or_else(|| format!("{text:?} is only modifiers"))?;
-    if modifiers == 0 {
+    if modifiers == 0 && !bare_ok {
         // a bare letter would fire every time you typed it, in every program
         return Err("hold ctrl, alt or shift as well, or it fires while you type".into());
     }
     Ok(Hotkey { modifiers, key })
+}
+
+// a cheat engine key list is virtual key codes with the modifiers mixed in.
+// pull those out, and what is left had better be exactly one key
+pub fn from_vks(codes: &[u32]) -> Option<Hotkey> {
+    let mut modifiers = 0u32;
+    let mut key = None;
+    for &code in codes {
+        match code {
+            0x10 | 0xA0 | 0xA1 => modifiers |= SHIFT,
+            0x11 | 0xA2 | 0xA3 => modifiers |= CONTROL,
+            0x12 | 0xA4 | 0xA5 => modifiers |= ALT,
+            0x5B | 0x5C => modifiers |= WIN,
+            other => {
+                if key.replace(other).is_some() {
+                    // a two key chord, which nothing here plays
+                    return None;
+                }
+            }
+        }
+    }
+    Some(Hotkey {
+        modifiers,
+        key: key?,
+    })
 }
 
 fn code_for(name: &str) -> Option<u32> {
@@ -73,6 +108,13 @@ fn code_for(name: &str) -> Option<u32> {
         if let Ok(n) = number.parse::<u32>() {
             if (1..=24).contains(&n) {
                 return Some(0x6F + n);
+            }
+        }
+    }
+    if let Some(number) = name.strip_prefix("num") {
+        if let Ok(n) = number.parse::<u32>() {
+            if n <= 9 {
+                return Some(0x60 + n);
             }
         }
     }
@@ -91,6 +133,13 @@ fn code_for(name: &str) -> Option<u32> {
         "down" => 0x28,
         "left" => 0x25,
         "right" => 0x27,
+        "pause" => 0x13,
+        "num*" => 0x6A,
+        // spelled without the sign, or parse eats it as a separator
+        "numplus" => 0x6B,
+        "num-" => 0x6D,
+        "num." => 0x6E,
+        "num/" => 0x6F,
         "`" | "backquote" => 0xC0,
         "-" | "minus" => 0xBD,
         "=" | "equal" => 0xBB,
@@ -127,6 +176,7 @@ pub fn spell(key: Hotkey) -> String {
 fn name_of(code: u32) -> String {
     match code {
         0x30..=0x39 | 0x41..=0x5A => ((code as u8) as char).to_string(),
+        0x60..=0x69 => format!("Num{}", code - 0x60),
         0x70..=0x87 => format!("F{}", code - 0x6F),
         0x20 => "Space".into(),
         0x09 => "Tab".into(),
@@ -142,6 +192,22 @@ fn name_of(code: u32) -> String {
         0x28 => "Down".into(),
         0x25 => "Left".into(),
         0x27 => "Right".into(),
+        0x13 => "Pause".into(),
+        0x6A => "Num*".into(),
+        0x6B => "NumPlus".into(),
+        0x6D => "Num-".into(),
+        0x6E => "Num.".into(),
+        0x6F => "Num/".into(),
+        0xBD => "-".into(),
+        0xBB => "=".into(),
+        0xDB => "[".into(),
+        0xDD => "]".into(),
+        0xDC => "\\".into(),
+        0xBA => ";".into(),
+        0xDE => "'".into(),
+        0xBC => ",".into(),
+        0xBE => ".".into(),
+        0xBF => "/".into(),
         0xC0 => "`".into(),
         other => format!("key {other:#x}"),
     }
@@ -153,7 +219,10 @@ fn name_of(code: u32) -> String {
 // at, so they take a key without ever showing up as a clash. knowing them by
 // name is the only way to warn about those
 pub fn clash(text: &str) -> Option<&'static str> {
-    let Ok(key) = parse(text) else { return None };
+    // loose, so a bare F12 still gets called what it is: the steam screenshot
+    let Ok(key) = parse_loose(text) else {
+        return None;
+    };
     let spelled = spell(key).to_ascii_lowercase();
 
     let known: &[(&str, &str)] = &[
@@ -187,6 +256,22 @@ pub struct Listener {
     // dropping a join handle does not stop the thread behind it, and this one
     // polls a counter shared with every other, so a leaked one fires the
     // shortcut a second time
+    #[cfg(windows)]
+    halt: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    #[cfg(windows)]
+    stop: u32,
+}
+
+// every key a table binds, watched at once. same hook trick as the overlay
+// key, but a row of slots instead of one combination. there is one bank at a
+// time, made when a game is grabbed and dropped when it goes
+pub const SLOTS: usize = 128;
+
+pub struct Bank {
+    #[cfg(windows)]
+    thread: Option<std::thread::JoinHandle<()>>,
+    #[cfg(windows)]
+    watcher: Option<std::thread::JoinHandle<()>>,
     #[cfg(windows)]
     halt: std::sync::Arc<std::sync::atomic::AtomicBool>,
     #[cfg(windows)]
@@ -355,6 +440,149 @@ mod win {
             let _ = watcher.join();
         }
     }
+
+    // the bank. combos packed the same way, one atomic per slot so the hook
+    // never takes a lock
+    static COMBOS: [AtomicU64; SLOTS] = [const { AtomicU64::new(0) }; SLOTS];
+    static TAPS: [AtomicU32; SLOTS] = [const { AtomicU32::new(0) }; SLOTS];
+    static HELDS: [AtomicBool; SLOTS] = [const { AtomicBool::new(false) }; SLOTS];
+    // cheat keys only count with the game or freeplay in front. F1 in a
+    // browser must never toggle god mode
+    static GATE: AtomicU32 = AtomicU32::new(0);
+
+    fn in_front(gate: u32) -> bool {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowThreadProcessId,
+        };
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(GetForegroundWindow(), Some(&mut pid)) };
+        pid != 0 && (pid == gate || pid == std::process::id())
+    }
+
+    unsafe extern "system" fn watch_bank(code: i32, what: WPARAM, carried: LPARAM) -> LRESULT {
+        if code >= 0 {
+            let message = what.0 as u32;
+            let event = unsafe { &*(carried.0 as *const KBDLLHOOKSTRUCT) };
+            let down = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
+            let up = message == WM_KEYUP || message == WM_SYSKEYUP;
+            let vk = event.vkCode;
+            // a modifier is never the key half of a combination
+            if (down || up) && !matches!(vk, 0x10..=0x12 | 0x5B | 0x5C | 0xA0..=0xA5) {
+                let mods = held();
+                for (i, slot) in COMBOS.iter().enumerate() {
+                    let packed = slot.load(Ordering::Relaxed);
+                    if packed == 0 || (packed >> 32) as u32 != vk {
+                        continue;
+                    }
+                    if up {
+                        HELDS[i].store(false, Ordering::Relaxed);
+                    } else if packed as u32 == mods {
+                        let repeat = HELDS[i].swap(true, Ordering::Relaxed);
+                        if !repeat && in_front(GATE.load(Ordering::Relaxed)) {
+                            TAPS[i].fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                }
+            }
+        }
+        // the game sees the key either way. eating F1 would steal a key the
+        // player may have bound in the game itself
+        unsafe { CallNextHookEx(None, code, what, carried) }
+    }
+
+    pub fn bank(keys: &[Hotkey], gate: u32, tell: Sender<usize>) -> Result<Bank, String> {
+        for (i, slot) in COMBOS.iter().enumerate() {
+            HELDS[i].store(false, Ordering::Relaxed);
+            let packed = keys
+                .get(i)
+                .map(|k| ((k.key as u64) << 32) | k.modifiers as u64)
+                .unwrap_or(0);
+            slot.store(packed, Ordering::Relaxed);
+        }
+        GATE.store(gate, Ordering::Relaxed);
+
+        let (ready, done) = std::sync::mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            let hook = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(watch_bank), None, 0) };
+            let Ok(hook) = hook else {
+                let _ = ready.send(Err("windows would not let us watch the keys".to_string()));
+                return;
+            };
+            let id = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
+            let _ = ready.send(Ok(id));
+
+            let mut message = MSG::default();
+            loop {
+                let got = unsafe { GetMessageW(&mut message, None, 0, 0) };
+                if got.0 <= 0 || message.message == QUIT {
+                    break;
+                }
+                unsafe {
+                    let _ = TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+            }
+            unsafe {
+                let _ = UnhookWindowsHookEx(hook);
+            }
+        });
+
+        let id = match done.recv() {
+            Ok(Ok(id)) => id,
+            Ok(Err(why)) => return Err(why),
+            Err(_) => return Err("could not start the key watcher".into()),
+        };
+
+        let halt = Arc::new(AtomicBool::new(false));
+        let mine = Arc::clone(&halt);
+        let watcher = std::thread::spawn(move || {
+            let mut last: Vec<u32> = TAPS.iter().map(|t| t.load(Ordering::Relaxed)).collect();
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+                if mine.load(Ordering::Relaxed) {
+                    break;
+                }
+                for (i, tap) in TAPS.iter().enumerate() {
+                    let now = tap.load(Ordering::Relaxed);
+                    if now == last[i] {
+                        continue;
+                    }
+                    last[i] = now;
+                    if tell.send(i).is_err() {
+                        return;
+                    }
+                }
+            }
+        });
+
+        Ok(Bank {
+            thread: Some(thread),
+            watcher: Some(watcher),
+            halt,
+            stop: id,
+        })
+    }
+
+    pub fn quit_bank(bank: &mut Bank) {
+        // slots first, so a keystroke between here and the unhook hits nothing
+        for slot in COMBOS.iter() {
+            slot.store(0, Ordering::Relaxed);
+        }
+        GATE.store(0, Ordering::Relaxed);
+
+        if bank.stop != 0 {
+            unsafe {
+                let _ = PostThreadMessageW(bank.stop, QUIT, WPARAM(0), LPARAM(0));
+            }
+        }
+        if let Some(thread) = bank.thread.take() {
+            let _ = thread.join();
+        }
+        bank.halt.store(true, Ordering::Relaxed);
+        if let Some(watcher) = bank.watcher.take() {
+            let _ = watcher.join();
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -371,6 +599,24 @@ impl Drop for Listener {
 
 #[cfg(not(windows))]
 pub fn listen(_key: Hotkey, _tell: Sender<()>) -> Result<Listener, String> {
+    Err("hotkeys are windows only for now".into())
+}
+
+// which slot fired comes back over the channel as its index in `keys`
+#[cfg(windows)]
+pub fn bank(keys: &[Hotkey], gate: u32, tell: Sender<usize>) -> Result<Bank, String> {
+    win::bank(keys, gate, tell)
+}
+
+#[cfg(windows)]
+impl Drop for Bank {
+    fn drop(&mut self) {
+        win::quit_bank(self);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn bank(_keys: &[Hotkey], _gate: u32, _tell: Sender<usize>) -> Result<Bank, String> {
     Err("hotkeys are windows only for now".into())
 }
 
@@ -463,5 +709,46 @@ mod tests {
     #[test]
     fn rubbish_is_not_a_clash_it_is_just_rubbish() {
         assert_eq!(clash("not a hotkey"), None);
+    }
+
+    // the shape a cheat engine table writes: modifiers as codes in the list
+    #[test]
+    fn a_key_list_folds_its_modifiers() {
+        let key = from_vks(&[162, 112]).unwrap();
+        assert_eq!(key.modifiers, CONTROL);
+        assert_eq!(key.key, 0x70);
+        assert_eq!(spell(key), "Ctrl+F1");
+    }
+
+    #[test]
+    fn a_bare_f_key_is_fine_for_a_cheat() {
+        let key = from_vks(&[112]).unwrap();
+        assert_eq!(key.modifiers, 0);
+        assert_eq!(spell(key), "F1");
+        assert_eq!(parse_loose("F1").unwrap(), key);
+    }
+
+    #[test]
+    fn a_two_key_chord_is_not_pretended_at() {
+        assert_eq!(from_vks(&[49, 50]), None);
+        assert_eq!(from_vks(&[]), None);
+        assert_eq!(from_vks(&[162]), None, "only modifiers is not a key");
+    }
+
+    #[test]
+    fn the_overlay_key_still_refuses_a_bare_letter() {
+        assert!(parse("O").is_err());
+        assert!(parse_loose("O").is_ok());
+    }
+
+    #[test]
+    fn numpad_keys_spell_and_read_back() {
+        for code in [0x60, 0x69, 0x6A, 0x6B, 0x6D] {
+            let key = Hotkey {
+                modifiers: 0,
+                key: code,
+            };
+            assert_eq!(parse_loose(&spell(key)).unwrap(), key, "{code:#x}");
+        }
     }
 }

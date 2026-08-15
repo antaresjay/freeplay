@@ -55,6 +55,11 @@ struct App {
     pending: Mutex<Option<profile::Profile>>,
     // the overlay key, held open for as long as it is registered
     hotkey: Mutex<Option<hotkey::Listener>>,
+    // every key the table binds, held while a game is attached
+    bank: Mutex<Option<hotkey::Bank>>,
+    // set once at startup, so a key landing on its own thread can reach the
+    // rest of the app
+    handle: std::sync::OnceLock<tauri::AppHandle>,
     // the shared table in play right now, so the question afterwards is about
     // the one that was actually running and not whatever is installed by then
     playing: Mutex<Option<Playing>>,
@@ -143,6 +148,8 @@ struct CheatRow {
     armed: bool,
     // actually doing something right now
     live: bool,
+    // the key that flips it while you play, "" when there is none
+    key: String,
     does: String,
     // takes a number rather than being a plain switch
     editable: bool,
@@ -1251,6 +1258,296 @@ fn rebind_hotkey(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// what one slot in the bank does when its key lands
+#[derive(Clone)]
+enum Strike {
+    Cheat {
+        id: String,
+        does: freeplay_table::schema::Tap,
+        value: Option<String>,
+    },
+    // everything off at once, for when the game starts misbehaving mid fight
+    Panic,
+}
+
+#[derive(Clone, Serialize)]
+struct Fired {
+    exe: String,
+    id: String,
+    on: bool,
+    panic: bool,
+}
+
+// every key that should work right now, in slot order. a rebind replaces all
+// of a cheat's own keys, "" silences them
+fn keyed_binds(settings: &Settings, exe: &str, table: &Table) -> Vec<(hotkey::Hotkey, Strike)> {
+    let bound = settings.keys.get(&exe.to_lowercase());
+    let mut out = Vec::new();
+    for cheat in &table.cheats {
+        match bound.and_then(|m| m.get(&cheat.id)) {
+            Some(text) if text.is_empty() => {}
+            Some(text) => {
+                if let Ok(key) = hotkey::parse_loose(text) {
+                    out.push((
+                        key,
+                        Strike::Cheat {
+                            id: cheat.id.clone(),
+                            does: freeplay_table::schema::Tap::Toggle,
+                            value: None,
+                        },
+                    ));
+                }
+            }
+            None => {
+                for held in &cheat.hotkeys {
+                    if let Some(key) = hotkey::from_vks(&held.keys) {
+                        out.push((
+                            key,
+                            Strike::Cheat {
+                                id: cheat.id.clone(),
+                                does: held.does,
+                                value: held.value.clone(),
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    if !settings.panic.is_empty() {
+        if let Ok(key) = hotkey::parse_loose(&settings.panic) {
+            out.push((key, Strike::Panic));
+        }
+    }
+    out
+}
+
+// the table's keys, watched while the game is. dropped and rebuilt whenever
+// the table, a bind or the game changes
+fn arm_keys(state: &tauri::State<'_, App>) {
+    *state.bank.lock().unwrap() = None;
+
+    let Some(handle) = state.handle.get().cloned() else {
+        return;
+    };
+    let (exe, pid) = {
+        let held = state.target.lock().unwrap();
+        match held.as_ref() {
+            Some(t) => (t.name().to_lowercase(), t.pid()),
+            None => return,
+        }
+    };
+    let binds = {
+        let held = state.session.lock().unwrap();
+        let Some(session) = held.as_ref() else { return };
+        let settings = state.settings.lock().unwrap();
+        keyed_binds(&settings, &exe, session.table())
+    };
+    if binds.is_empty() {
+        return;
+    }
+
+    let keys: Vec<hotkey::Hotkey> = binds.iter().map(|(k, _)| *k).collect();
+    let strikes: Vec<Strike> = binds.into_iter().map(|(_, s)| s).collect();
+    let (tell, heard) = std::sync::mpsc::channel();
+    match hotkey::bank(&keys, pid, tell) {
+        Ok(bank) => *state.bank.lock().unwrap() = Some(bank),
+        Err(e) => {
+            tracing::warn!("cheat keys: {e}");
+            return;
+        }
+    }
+    tracing::info!("{} cheat keys armed for {exe}", keys.len());
+
+    // ends on its own when the bank is dropped and the sender goes with it
+    std::thread::spawn(move || {
+        let mut last: HashMap<usize, std::time::Instant> = HashMap::new();
+        while let Ok(slot) = heard.recv() {
+            // a hook can deliver a stray second event, and one press must
+            // never be two toggles
+            if last
+                .get(&slot)
+                .is_some_and(|t| t.elapsed().as_millis() < 250)
+            {
+                continue;
+            }
+            last.insert(slot, std::time::Instant::now());
+            if let Some(strike) = strikes.get(slot).cloned() {
+                strike_home(&handle, strike);
+            }
+        }
+    });
+}
+
+fn strike_home(handle: &tauri::AppHandle, strike: Strike) {
+    use freeplay_table::schema::Tap;
+
+    let state = handle.state::<App>();
+    let exe = {
+        let held = state.target.lock().unwrap();
+        match held.as_ref() {
+            Some(t) => t.name().to_lowercase(),
+            None => return,
+        }
+    };
+
+    let fired = match strike {
+        Strike::Panic => {
+            if let Some(session) = state.session.lock().unwrap().as_ref() {
+                session.disarm_all();
+            }
+            remember_armed(&state, &exe, Vec::new());
+            tracing::info!("panic key, everything off");
+            Fired {
+                exe,
+                id: String::new(),
+                on: false,
+                panic: true,
+            }
+        }
+        Strike::Cheat { id, does, value } => {
+            let on = match does {
+                Tap::Toggle => {
+                    let armed = state
+                        .session
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .is_some_and(|s| s.is_armed(&id));
+                    !armed
+                }
+                Tap::On => true,
+                Tap::Off => false,
+                Tap::Set => {
+                    let text = value.unwrap_or_default();
+                    match set_cheat_value(state.clone(), exe.clone(), id.clone(), text) {
+                        Ok(_) => {
+                            chirp(&state, false);
+                            let _ = handle.emit(
+                                "keys-fired",
+                                Fired {
+                                    exe,
+                                    id,
+                                    on: true,
+                                    panic: false,
+                                },
+                            );
+                        }
+                        Err(e) => tracing::info!("{id} by key: {e}"),
+                    }
+                    return;
+                }
+            };
+            if let Err(e) = set_cheat(state.clone(), exe.clone(), id.clone(), on) {
+                tracing::info!("{id} by key: {e}");
+                return;
+            }
+            Fired {
+                exe,
+                id,
+                on,
+                panic: false,
+            }
+        }
+    };
+
+    chirp(&state, fired.panic);
+    let _ = handle.emit("keys-fired", fired);
+}
+
+// the classic trainer chirp, so you hear the key land without alt tabbing
+fn chirp(state: &tauri::State<'_, App>, grim: bool) {
+    if !state.settings.lock().unwrap().chirp {
+        return;
+    }
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::System::Diagnostics::Debug::MessageBeep;
+        use windows::Win32::UI::WindowsAndMessaging::{MB_ICONHAND, MB_OK};
+        let _ = MessageBeep(if grim { MB_ICONHAND } else { MB_OK });
+    }
+    #[cfg(not(windows))]
+    let _ = grim;
+}
+
+// what the chip on the card says. a rebind wins, then the table's own first
+// key, then nothing
+fn shown_key(
+    bound: Option<&HashMap<String, String>>,
+    cheat: &freeplay_table::schema::Cheat,
+) -> String {
+    if let Some(text) = bound.and_then(|m| m.get(&cheat.id)) {
+        return match hotkey::parse_loose(text) {
+            Ok(key) => hotkey::spell(key),
+            Err(_) => String::new(),
+        };
+    }
+    cheat
+        .hotkeys
+        .iter()
+        .find_map(|held| hotkey::from_vks(&held.keys))
+        .map(hotkey::spell)
+        .unwrap_or_default()
+}
+
+// "" switches a cheat's key off, no key at all hands it back to the table
+#[tauri::command]
+fn bind_key(
+    state: tauri::State<'_, App>,
+    exe: String,
+    id: String,
+    key: Option<String>,
+) -> Result<String, String> {
+    let stem = exe.to_lowercase();
+    {
+        let mut settings = state.settings.lock().unwrap();
+        match key.as_deref().map(str::trim) {
+            None => {
+                if let Some(bound) = settings.keys.get_mut(&stem) {
+                    bound.remove(&id);
+                    if bound.is_empty() {
+                        settings.keys.remove(&stem);
+                    }
+                }
+            }
+            Some("") => {
+                settings
+                    .keys
+                    .entry(stem.clone())
+                    .or_default()
+                    .insert(id.clone(), String::new());
+            }
+            Some(text) => {
+                let parsed = hotkey::parse_loose(text)?;
+                if let Some(who) = hotkey::clash(text) {
+                    return Err(format!(
+                        "{} already belongs to {who}",
+                        hotkey::spell(parsed)
+                    ));
+                }
+                settings
+                    .keys
+                    .entry(stem.clone())
+                    .or_default()
+                    .insert(id.clone(), hotkey::spell(parsed));
+            }
+        }
+        settings::save(&settings)?;
+    }
+
+    arm_keys(&state);
+
+    let bound = state.settings.lock().unwrap().keys.get(&stem).cloned();
+    Ok(with_tables(&exe, &off_for(&state, &exe))
+        .and_then(|t| {
+            t.cheats
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| shown_key(bound.as_ref(), c))
+        })
+        .unwrap_or_default())
+}
+
 // the about page had a blank line where this was meant to go
 #[tauri::command]
 fn version() -> String {
@@ -1338,10 +1635,20 @@ fn save_settings(state: tauri::State<'_, App>, next: Settings) -> Result<Setting
     held.community = next.community;
     held.auto_attach = next.auto_attach;
     held.shared_open = next.shared_open;
+    let repanic = held.panic != next.panic;
+    held.panic = next.panic;
+    held.chirp = next.chirp;
 
     held.tidy();
     settings::save(&held)?;
-    Ok(held.clone())
+    let done = held.clone();
+    drop(held);
+
+    // the bank holds the old panic key until it is remade
+    if repanic {
+        arm_keys(&state);
+    }
+    Ok(done)
 }
 
 // windows asks for two icons, a small one for the title bar and a big one for
@@ -1671,6 +1978,7 @@ fn attach(
     }
     *state.target.lock().unwrap() = Some(shared);
     *state.search.lock().unwrap() = None;
+    arm_keys(&state);
 
     // low level keyboard hooks are called newest first, and a game that eats
     // the windows key has one of its own. ours has to go on after theirs or
@@ -1703,6 +2011,8 @@ fn detach(state: tauri::State<'_, App>) {
 }
 
 fn tear_down(state: &tauri::State<'_, App>) {
+    // keys first, or one could land between the session going and the target
+    *state.bank.lock().unwrap() = None;
     if let Some(mut session) = state.session.lock().unwrap().take() {
         remember_the_sitting(state, &session);
         session.stop();
@@ -1732,6 +2042,8 @@ fn reseat(state: &tauri::State<'_, App>, exe: &str) {
         old.stop();
         old.disable_all();
     }
+    // the old table's keys must not outlive it
+    *state.bank.lock().unwrap() = None;
 
     let Some(table) = with_tables(exe, &off_for(state, exe)) else {
         return;
@@ -1756,6 +2068,7 @@ fn reseat(state: &tauri::State<'_, App>, exe: &str) {
     }
     session.arm_all(&armed_for(state, exe));
     *state.session.lock().unwrap() = Some(session);
+    arm_keys(state);
     tracing::info!("reseated {exe} on the table that just landed");
 }
 
@@ -1773,6 +2086,7 @@ fn cheat_row(cheat: &freeplay_table::schema::Cheat, typed: Option<&String>) -> C
         reason: String::new(),
         armed: false,
         live: false,
+        key: String::new(),
         does: cheat.action.label().to_string(),
         editable: cheat.action.takes_a_number(),
         kind: cheat
@@ -1857,6 +2171,13 @@ fn credit(state: tauri::State<'_, App>, exe: String) -> Credit {
 fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
     let typed = values_for(&state, &exe);
     let named = credits(&exe);
+    let bound = state
+        .settings
+        .lock()
+        .unwrap()
+        .keys
+        .get(&exe.to_lowercase())
+        .cloned();
     let guard = state.session.lock().unwrap();
     let attached = guard.as_ref().filter(|s| s.table().matches_process(&exe));
 
@@ -1876,6 +2197,7 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
                 };
 
                 let mut row = cheat_row(cheat, typed.get(&cheat.id));
+                row.key = shown_key(bound.as_ref(), cheat);
                 row.from = whose(&named, &cheat.id);
                 row.state = if live { "on".into() } else { label.to_string() };
                 row.reason = reason;
@@ -1916,6 +2238,7 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
         .iter()
         .map(|cheat| {
             let mut row = cheat_row(cheat, typed.get(&cheat.id));
+            row.key = shown_key(bound.as_ref(), cheat);
             row.from = whose(&named, &cheat.id);
             row.armed = armed.contains(&cheat.id);
             row
@@ -2641,6 +2964,8 @@ fn main() {
             });
         })
         .setup(|app| {
+            let _ = app.state::<App>().handle.set(app.handle().clone());
+
             // the window is built hidden, so this is what puts it on screen.
             // sizing it after it was already up meant it appeared at the size
             // in tauri.conf and then jumped
@@ -2732,6 +3057,7 @@ fn main() {
             cheats,
             set_cheat,
             set_cheat_value,
+            bind_key,
             scan_start,
             scan_next,
             write_value,

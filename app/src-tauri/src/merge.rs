@@ -164,6 +164,7 @@ mod tests {
             description: String::new(),
             hint: String::new(),
             locator: None,
+            hotkeys: vec![],
             action: Action::Script {
                 source: source.into(),
             },
@@ -181,6 +182,7 @@ mod tests {
                 symbol: symbol.into(),
                 hops: vec![],
             }),
+            hotkeys: vec![],
             action: Action::Value {
                 kind: TypeName(ValueKind::I32),
                 value: None,

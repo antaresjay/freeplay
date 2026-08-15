@@ -56,6 +56,16 @@ pub struct Settings {
     pub overlay: bool,
     #[serde(default = "default_hotkey")]
     pub overlay_key: String,
+    // keys rebound by hand, per exe then per cheat id. "" means the table's
+    // own key was switched off
+    #[serde(default)]
+    pub keys: HashMap<String, HashMap<String, String>>,
+    // one key that switches every cheat off at once
+    #[serde(default = "default_panic")]
+    pub panic: String,
+    // a short beep when a cheat key lands, so you know without alt tabbing
+    #[serde(default = "yes")]
+    pub chirp: bool,
     // random, made once. it stops one person voting twice and is not tied to
     // the machine or to any name
     #[serde(default)]
@@ -124,6 +134,13 @@ fn default_hotkey() -> String {
     crate::hotkey::DEFAULT.to_string()
 }
 
+// backspace with both hands on it is nobody's screenshot key, see `clash`
+pub const PANIC: &str = "Ctrl+Shift+Backspace";
+
+fn default_panic() -> String {
+    PANIC.to_string()
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -141,6 +158,9 @@ impl Default for Settings {
             folded: HashMap::new(),
             overlay: false,
             overlay_key: default_hotkey(),
+            keys: HashMap::new(),
+            panic: default_panic(),
+            chirp: true,
             install_id: String::new(),
             grabbed: HashMap::new(),
             rated: Vec::new(),
@@ -182,6 +202,15 @@ impl Settings {
         if crate::hotkey::parse(&self.overlay_key).is_err() {
             self.overlay_key = default_hotkey();
         }
+
+        // "" is a key switched off on purpose and stays. gibberish goes
+        if !self.panic.is_empty() && crate::hotkey::parse_loose(&self.panic).is_err() {
+            self.panic = default_panic();
+        }
+        for bound in self.keys.values_mut() {
+            bound.retain(|_, key| key.is_empty() || crate::hotkey::parse_loose(key).is_ok());
+        }
+        self.keys.retain(|_, bound| !bound.is_empty());
 
         if self.install_id.len() != 32 || !self.install_id.chars().all(|c| c.is_ascii_hexdigit()) {
             let seed = std::time::SystemTime::now()
@@ -319,6 +348,36 @@ mod tests {
         };
         settings.tidy();
         assert_eq!(settings.overlay_key, "Alt+F8");
+    }
+
+    #[test]
+    fn a_scrambled_cheat_key_goes_and_an_off_one_stays() {
+        let mut settings = Settings::default();
+        let mut bound = HashMap::new();
+        bound.insert("god-mode".to_string(), "F3".to_string());
+        bound.insert("orens".to_string(), String::new());
+        bound.insert("vigor".to_string(), "Wibble+Wobble".to_string());
+        settings.keys.insert("witcher2.exe".into(), bound);
+        settings.tidy();
+
+        let kept = &settings.keys["witcher2.exe"];
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept["god-mode"], "F3");
+        assert_eq!(kept["orens"], "");
+    }
+
+    #[test]
+    fn the_panic_key_can_be_cleared_but_not_scrambled() {
+        let mut settings = Settings {
+            panic: String::new(),
+            ..Default::default()
+        };
+        settings.tidy();
+        assert_eq!(settings.panic, "", "cleared on purpose stays cleared");
+
+        settings.panic = "Wobble".into();
+        settings.tidy();
+        assert_eq!(settings.panic, PANIC);
     }
 
     #[test]
