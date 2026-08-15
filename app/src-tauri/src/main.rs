@@ -716,7 +716,23 @@ fn settings(state: tauri::State<'_, App>) -> Settings {
 #[tauri::command]
 fn diagnostics(state: tauri::State<'_, App>) -> String {
     let attached = match state.target.lock().unwrap().as_ref() {
-        Some(target) => format!("attached to {} (pid {})\n", target.name(), target.pid()),
+        Some(target) => {
+            // a unity game is the usual reason a table's cheats never resolve,
+            // so name the runtime while there is a process to read it from
+            let engine = target
+                .modules()
+                .map(|mods| freeplay_library::runtime::of(mods.iter().map(|m| m.name.as_str())))
+                .unwrap_or(freeplay_library::runtime::Runtime::Native);
+            let line = match engine {
+                freeplay_library::runtime::Runtime::Native => String::new(),
+                other => format!("runtime: {}\n", other.label()),
+            };
+            format!(
+                "attached to {} (pid {})\n{line}",
+                target.name(),
+                target.pid()
+            )
+        }
         None => "not attached\n".to_string(),
     };
     let tables = tables(&state);
