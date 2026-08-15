@@ -59,7 +59,11 @@ const GAMES = [
    dir:"D:/Epic Games/TombRaiderGOTYE",
    app_id:"caca23a0954f4c1aba1fdd7e277b81e2:ff45e0eabd0c48d6950e369c79c26823:d6264d56f5ba434e91d4b0a0b056c83a",
    running:false, has_table:false, guard:null,
-   minutes:null, last_played:1786612097, favourite:false}
+   minutes:null, last_played:1786612097, favourite:false},
+  // pointed at by hand. minutes come from freeplay's own clock
+  {key:"manual:D:/old/gothic2", name:"Gothic II", store:"Manual", exe:"gothic2.exe",
+   dir:"D:/old/gothic2", app_id:null, running:false, has_table:false,
+   guard:null, minutes:34, last_played:1786500000, favourite:false}
 ];
 
 const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true,
@@ -184,6 +188,14 @@ window.__TAURI__ = {
             panic: args.next.panic, chirp: args.next.chirp,
           };
           return SETTINGS;
+        case "add_game":
+          // the picker was closed without choosing
+          window.__added = true;
+          return "";
+        case "remove_added":
+          window.__removed = args.dir;
+          GAMES.splice(GAMES.findIndex(g => g.dir === args.dir), 1);
+          return null;
         case "bind_key": {
           // echoes the spelling back and keeps it, the way the real one does.
           // without the keeping, the next refresh tick painted the old key
@@ -1156,6 +1168,34 @@ PROBE = r"""
          "and the picker is already there with them, not a beat later (" +
          (caught ? caught.rows + " rows" : "never arrived") + ")");
     note(caught && caught.fit, "and so is the fit notice");
+  }
+
+  /* games added by hand. the rail has a plus for pointing at any exe, and
+     only a hand added game gets a remove button on its page */
+  {
+    note(!!document.getElementById("add-game"), "the rail offers to add a game");
+    document.getElementById("add-game").click();
+    await settle(200);
+    note(window.__added === true, "and the plus asks the backend to pick an exe");
+
+    const row = (name) => [...document.querySelectorAll("#library-rail .rail-game")]
+      .find(r => r.textContent.includes(name));
+    row("Gothic").click();
+    await settle(600);
+    note(!document.getElementById("game-remove").hidden,
+         "a hand added game can be removed");
+    row("Witcher").click();
+    await settle(600);
+    note(document.getElementById("game-remove").hidden,
+         "a store game cannot, the next scan would put it back");
+
+    row("Gothic").click();
+    await settle(600);
+    document.getElementById("game-remove").click();
+    await settle(600);
+    note(window.__removed === "D:/old/gothic2", "removing hands over the folder");
+    note(!row("Gothic"), "and the game leaves the rail");
+    note(!document.getElementById("view-library").hidden, "back on the library");
   }
 
   // a game with an anti-cheat is refused outright
