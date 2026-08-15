@@ -420,6 +420,9 @@ fn play(name: &str, dry_run: bool) -> Result<(), String> {
     let what = match &plan {
         freeplay_library::launch::Launch::Url(url) => url.clone(),
         freeplay_library::launch::Launch::Exe(exe) => exe.display().to_string(),
+        freeplay_library::launch::Launch::Client { exe, args } => {
+            format!("{} {}", exe.display(), args.join(" "))
+        }
     };
 
     if dry_run {

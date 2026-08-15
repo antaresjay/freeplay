@@ -16,18 +16,70 @@ pub enum Launch {
     Url(String),
     /// Run the executable directly, for stores with no url scheme worth using.
     Exe(PathBuf),
+    /// The store's own client with arguments. Gog, where galaxy is the only
+    /// thing that counts the hours.
+    Client { exe: PathBuf, args: Vec<String> },
 }
 
 pub fn plan(game: &InstalledGame) -> Option<Launch> {
+    plan_with(game, galaxy_client())
+}
+
+// the galaxy path comes in from outside so this stays the same answer on
+// every machine, registry or no registry
+fn plan_with(game: &InstalledGame, galaxy: Option<PathBuf>) -> Option<Launch> {
     match (game.store, game.app_id.as_deref()) {
         // This ends up going to the shell, so it has to be what it claims.
         (Store::Steam, Some(id)) if !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()) => {
             Some(Launch::Url(format!("steam://rungameid/{id}")))
         }
         (Store::Epic, Some(id)) => epic_url(id).map(Launch::Url),
+        // through galaxy when it is installed, so gog gets to count the
+        // sitting. without galaxy the bare exe below still works
+        (Store::Gog, Some(id)) if !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()) => {
+            galaxy.map(|client| Launch::Client {
+                exe: client,
+                args: galaxy_args(id, &game.install_dir),
+            })
+        }
         _ => None,
     }
     .or_else(|| game.executables.first().cloned().map(Launch::Exe))
+}
+
+// the argument shape galaxy has taken since it existed
+fn galaxy_args(id: &str, dir: &std::path::Path) -> Vec<String> {
+    vec![
+        "/command=runGame".into(),
+        format!("/gameId={id}"),
+        format!("/path={}", dir.display()),
+    ]
+}
+
+#[cfg(windows)]
+fn galaxy_client() -> Option<PathBuf> {
+    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY};
+    use winreg::RegKey;
+
+    let told = RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags(
+            r"SOFTWARE\GOG.com\GalaxyClient\paths",
+            KEY_READ | KEY_WOW64_32KEY,
+        )
+        .and_then(|key| key.get_value::<String, _>("client"))
+        .ok()
+        .map(|dir| PathBuf::from(dir).join("GalaxyClient.exe"))
+        .filter(|p| p.is_file());
+
+    told.or_else(|| {
+        let usual = PathBuf::from(r"C:\Program Files (x86)\GOG Galaxy\GalaxyClient.exe");
+        usual.is_file().then_some(usual)
+    })
+}
+
+#[cfg(not(windows))]
+fn galaxy_client() -> Option<PathBuf> {
+    None
 }
 
 // namespace:catalogitem:appname, with the colons escaped again on the way
@@ -58,6 +110,14 @@ pub fn start(game: &InstalledGame) -> Result<Launch, String> {
                 .spawn()
                 .map(|_| ())
                 .map_err(|e| format!("could not start {}: {e}", exe.display()))?;
+        }
+        Launch::Client { exe, args } => {
+            std::process::Command::new(exe)
+                .args(args)
+                .current_dir(exe.parent().unwrap_or(&game.install_dir))
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| format!("could not start galaxy: {e}"))?;
         }
     }
     Ok(plan)
@@ -168,8 +228,43 @@ mod tests {
     }
 
     #[test]
-    fn other_stores_run_the_executable() {
-        let plan = plan(&game(Store::Gog, Some("1207658930"), &[r"C:\g\game.exe"]));
+    fn gog_without_galaxy_runs_the_executable() {
+        let plan = plan_with(
+            &game(Store::Gog, Some("1207658930"), &[r"C:\g\game.exe"]),
+            None,
+        );
+        assert_eq!(plan, Some(Launch::Exe(PathBuf::from(r"C:\g\game.exe"))));
+    }
+
+    // through the client, so the hours get counted where gog counts them
+    #[test]
+    fn gog_with_galaxy_goes_through_it() {
+        let client = PathBuf::from(r"C:\Program Files (x86)\GOG Galaxy\GalaxyClient.exe");
+        let plan = plan_with(
+            &game(Store::Gog, Some("1207658930"), &[r"C:\g\game.exe"]),
+            Some(client.clone()),
+        );
+        assert_eq!(
+            plan,
+            Some(Launch::Client {
+                exe: client,
+                args: vec![
+                    "/command=runGame".into(),
+                    "/gameId=1207658930".into(),
+                    r"/path=C:\games\a game".into(),
+                ],
+            })
+        );
+    }
+
+    // a gog id that is not a number never reaches the client
+    #[test]
+    fn a_junk_gog_id_falls_back_to_the_executable() {
+        let client = PathBuf::from(r"C:\gx\GalaxyClient.exe");
+        let plan = plan_with(
+            &game(Store::Gog, Some("12 || calc"), &[r"C:\g\game.exe"]),
+            Some(client),
+        );
         assert_eq!(plan, Some(Launch::Exe(PathBuf::from(r"C:\g\game.exe"))));
     }
 
