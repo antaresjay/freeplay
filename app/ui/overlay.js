@@ -40,6 +40,14 @@ function card(item) {
   name.className = "ov-name";
   name.textContent = item.name;
 
+  // which key flips it, set in the main window or by the table
+  if (item.key) {
+    const kbd = document.createElement("span");
+    kbd.className = "ov-kbd";
+    kbd.textContent = item.key;
+    name.appendChild(kbd);
+  }
+
   const [line, tone] = whyFor(item);
   const why = document.createElement("div");
   why.className = "ov-why" + (tone ? " " + tone : "");
@@ -134,6 +142,11 @@ function patch(row, item) {
   const live = row.querySelector(".ov-live");
   if (live && live.textContent !== (item.current || "")) {
     live.textContent = item.current || "";
+  }
+
+  const kbd = row.querySelector(".ov-kbd");
+  if (kbd && kbd.textContent !== (item.key || "")) {
+    kbd.textContent = item.key || "";
   }
 }
 
@@ -323,6 +336,8 @@ async function start() {
       dress();
       refresh();
     });
+    // a cheat key landed, so the rows are stale until the next tick
+    window.__TAURI__.event.listen("keys-fired", () => refresh());
   }
 }
 

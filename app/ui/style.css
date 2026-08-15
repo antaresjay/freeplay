@@ -1571,6 +1571,55 @@ input::placeholder { color: var(--faint); }
   vertical-align: 1px;
 }
 
+/* the key on a cheat card. drawn like a keycap, small enough to sit in the
+   name line */
+.cheat-key {
+  white-space: nowrap;
+  margin-left: 6px;
+  padding: 1px 7px 2px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.4px;
+  vertical-align: 1px;
+  cursor: pointer;
+  transition: border-color 0.14s, color 0.14s, opacity 0.14s;
+}
+.cheat-key:hover { border-color: var(--faint); color: var(--text); }
+/* nothing bound yet: out of the way until the card is under the pointer */
+.cheat-key.empty { opacity: 0; pointer-events: none; }
+.cheat:hover .cheat-key.empty,
+.cheat:focus-within .cheat-key.empty {
+  opacity: 0.55;
+  pointer-events: auto;
+}
+.cheat-key.listening {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ov-kbd {
+  white-space: nowrap;
+  margin-left: 6px;
+  padding: 0 6px 1px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.4px;
+  vertical-align: 1px;
+}
+
 /* ---------- shared tables ---------- */
 
 .shared { margin-bottom: 28px; }

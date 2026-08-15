@@ -312,6 +312,9 @@ function applyTheme() {
   $("auto-update").classList.toggle("on", config.auto_update !== false);
   $("community-on").classList.toggle("on", config.community !== false);
   $("auto-attach").classList.toggle("on", config.auto_attach !== false);
+  $("chirp-on").classList.toggle("on", config.chirp !== false);
+  $("panic-key").textContent = config.panic || "None";
+  $("panic-off").hidden = !config.panic;
   drawDock();
 }
 
@@ -1164,6 +1167,14 @@ function patchCard(card, item) {
     toggle.title = item.armed ? "Turn it off" : "Turn it on";
   }
 
+  // left alone while it is listening for a press
+  const chip = card.querySelector(".cheat-key");
+  if (chip && !chip.classList.contains("listening")) {
+    const text = item.key || "key";
+    if (chip.textContent !== text) chip.textContent = text;
+    chip.classList.toggle("empty", !item.key);
+  }
+
   const live = card.querySelector(".cheat-live");
   if (live) {
     const now = item.current ? `now ${item.current}` : "";
@@ -1291,6 +1302,8 @@ function cheatCard(item, exe) {
   tag.textContent = item.does || "";
   name.appendChild(tag);
 
+  name.appendChild(keyChip(item, exe));
+
   // only filled in when more than one table is folded into the list
   if (item.from) {
     const from = document.createElement("span");
@@ -1324,6 +1337,128 @@ function cheatCard(item, exe) {
 
   card.append(main, toggle);
   return card;
+}
+
+/* the key that flips this cheat while you play. tables bring their own, the
+   chip rebinds them, right click takes one away */
+function keyChip(item, exe) {
+  const chip = document.createElement("button");
+  chip.className = "cheat-key" + (item.key ? "" : " empty");
+  chip.textContent = item.key || "key";
+  chip.title = item.key
+    ? "Works in the game. Click to change it, right click to remove it"
+    : "Bind a key you can press in the game";
+  chip.addEventListener("click", (e) => {
+    e.stopPropagation();
+    captureKey(chip, item, exe);
+  });
+  chip.addEventListener("contextmenu", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!item.key) return;
+    try {
+      const spelled = await invoke("bind_key", { exe, id: item.id, key: "" });
+      item.key = spelled;
+      chip.textContent = spelled || "key";
+      chip.classList.toggle("empty", !spelled);
+    } catch (err) {
+      toast(String(err), true);
+    }
+  });
+  return chip;
+}
+
+function captureKey(chip, item, exe) {
+  if (chip.classList.contains("listening")) return;
+  chip.classList.add("listening");
+  const was = chip.textContent;
+  chip.textContent = "press a key";
+
+  const done = () => {
+    window.removeEventListener("keydown", take, true);
+    window.removeEventListener("blur", quit);
+    chip.classList.remove("listening");
+  };
+  const quit = () => {
+    done();
+    chip.textContent = was;
+  };
+  const take = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === "Escape") return quit();
+    const combo = comboFrom(e);
+    if (!combo) return; // a modifier on its own, keep listening
+    try {
+      const spelled = await invoke("bind_key", { exe, id: item.id, key: combo });
+      done();
+      item.key = spelled;
+      chip.textContent = spelled || "key";
+      chip.classList.toggle("empty", !spelled);
+    } catch (err) {
+      toast(String(err), true);
+      quit();
+    }
+  };
+  window.addEventListener("keydown", take, true);
+  window.addEventListener("blur", quit);
+}
+
+/* spelled the way the backend reads it. built off e.code so the letter is the
+   key itself and not what shift turns it into */
+function comboFrom(e) {
+  const name = keyNameOf(e);
+  if (!name) return null;
+  const parts = [];
+  if (e.ctrlKey) parts.push("Ctrl");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+  if (e.metaKey) parts.push("Win");
+  parts.push(name);
+  return parts.join("+");
+}
+
+function keyNameOf(e) {
+  if (/^F\d+$/.test(e.key)) return e.key;
+  const code = e.code || "";
+  let m;
+  if ((m = code.match(/^Key([A-Z])$/))) return m[1];
+  if ((m = code.match(/^Digit(\d)$/))) return m[1];
+  if ((m = code.match(/^Numpad(\d)$/))) return "Num" + m[1];
+  const names = {
+    Space: "Space",
+    Tab: "Tab",
+    Enter: "Enter",
+    Backspace: "Backspace",
+    Insert: "Insert",
+    Delete: "Delete",
+    Home: "Home",
+    End: "End",
+    PageUp: "PageUp",
+    PageDown: "PageDown",
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    ArrowLeft: "Left",
+    ArrowRight: "Right",
+    Pause: "Pause",
+    Backquote: "`",
+    Minus: "-",
+    Equal: "=",
+    BracketLeft: "[",
+    BracketRight: "]",
+    Backslash: "\\",
+    Semicolon: ";",
+    Quote: "'",
+    Comma: ",",
+    Period: ".",
+    Slash: "/",
+    NumpadMultiply: "Num*",
+    NumpadAdd: "NumPlus",
+    NumpadSubtract: "Num-",
+    NumpadDecimal: "Num.",
+    NumpadDivide: "Num/",
+  };
+  return names[code] || null;
 }
 
 /* a dropdown if the table author listed the options, a plain box otherwise.
@@ -1652,6 +1787,39 @@ $("auto-attach").addEventListener("click", () =>
 $("auto-update").addEventListener("click", () =>
   saveConfig({ auto_update: config.auto_update === false })
 );
+
+$("chirp-on").addEventListener("click", () =>
+  saveConfig({ chirp: config.chirp === false })
+);
+$("panic-off").addEventListener("click", () => saveConfig({ panic: "" }));
+
+/* same catch-a-real-press box as the overlay shortcut */
+let catchingPanic = false;
+
+$("panic-key").addEventListener("click", () => {
+  catchingPanic = true;
+  $("panic-key").classList.add("catching");
+  $("panic-key").textContent = "Press a key";
+  $("panic-key").focus();
+});
+
+$("panic-key").addEventListener("blur", () => {
+  if (!catchingPanic) return;
+  catchingPanic = false;
+  $("panic-key").classList.remove("catching");
+  applyTheme();
+});
+
+$("panic-key").addEventListener("keydown", async (e) => {
+  if (!catchingPanic) return;
+  e.preventDefault();
+  if (e.key === "Escape") return $("panic-key").blur();
+  const combo = comboFrom(e);
+  if (!combo) return;
+  catchingPanic = false;
+  $("panic-key").classList.remove("catching");
+  await saveConfig({ panic: combo });
+});
 
 $("community-on").addEventListener("click", async () => {
   await saveConfig({ community: config.community === false });
@@ -2749,6 +2917,13 @@ async function start() {
     // the overlay goes over a game, so pressing the key with nothing attached
     // has to say something rather than looking broken
     listen("overlay-refused", (e) => toast(String(e.payload), true));
+    // a cheat key landed in the game, so the cards are out of date
+    listen("keys-fired", (e) => {
+      const hit = e.payload || {};
+      if (hit.panic) toast("Panic key. Everything switched off");
+      const game = gameFor(open);
+      if (game && sameExe(game.exe, hit.exe)) refreshCheats();
+    });
     listen("detached", () => {
       attached = null;
       // this is the moment a sitting ends, and the moment there is something
