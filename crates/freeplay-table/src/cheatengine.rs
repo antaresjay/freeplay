@@ -113,7 +113,7 @@ struct RawKey {
 }
 
 pub fn import(xml: &str, exe: &str, game_name: &str) -> Result<Imported, String> {
-    let roots = parse(xml)?;
+    let (roots, comments) = parse(xml)?;
     let mut cheats = Vec::new();
     let mut skipped = Vec::new();
     let mut used: HashSet<String> = HashSet::new();
@@ -128,7 +128,13 @@ pub fn import(xml: &str, exe: &str, game_name: &str) -> Result<Imported, String>
             game: Game {
                 name: game_name.to_string(),
                 exe: exe.to_string(),
-                notes: "Imported from a Cheat Engine table. Check it before trusting it.".into(),
+                // the author's own words when the table carries any. "enable
+                // in the main menu" style instructions live here
+                notes: if comments.trim().is_empty() {
+                    "Imported from a Cheat Engine table. Check it before trusting it.".into()
+                } else {
+                    comments.trim().to_string()
+                },
                 verified: Vec::new(),
                 author: String::new(),
             },
@@ -138,12 +144,13 @@ pub fn import(xml: &str, exe: &str, game_name: &str) -> Result<Imported, String>
     })
 }
 
-fn parse(xml: &str) -> Result<Vec<Entry>, String> {
+fn parse(xml: &str) -> Result<(Vec<Entry>, String), String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
 
     let mut stack: Vec<Entry> = Vec::new();
     let mut roots: Vec<Entry> = Vec::new();
+    let mut comments = String::new();
     let mut field = String::new();
     let mut depth_of_offsets = 0usize;
     let mut depth_of_hotkeys = 0usize;
@@ -194,6 +201,15 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
                     .trim()
                     .to_string();
                 if value.is_empty() {
+                    continue;
+                }
+                // table level comments sit outside every entry, and they are
+                // where authors write "enable this one in the main menu"
+                if field == "Comments" && stack.is_empty() {
+                    if !comments.is_empty() {
+                        comments.push('\n');
+                    }
+                    comments.push_str(&value);
                     continue;
                 }
                 let Some(entry) = stack.last_mut() else {
@@ -267,7 +283,7 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
         }
     }
 
-    Ok(roots)
+    Ok((roots, comments))
 }
 
 fn unquote(text: &str) -> String {
@@ -568,6 +584,181 @@ fn split_address(address: &str) -> Option<(String, usize)> {
     let rest = rest.trim().trim_start_matches("0x");
     let offset = usize::from_str_radix(rest, 16).ok()?;
     Some((module, offset))
+}
+
+/* the other direction: what freeplay holds, written back out as a .CT that
+cheat engine opens. pattern anchored values and raw byte patches cannot be
+said in that file, so they are left out and counted */
+pub fn export(table: &Table) -> (String, usize) {
+    let mut out = String::new();
+    let mut id = 0usize;
+    let mut dropped = 0usize;
+
+    out.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+    out.push_str("<CheatTable CheatEngineTableVersion=\"45\">\n  <CheatEntries>\n");
+
+    // grouped the way the page shows them
+    let mut groups: Vec<(&str, Vec<&Cheat>)> = Vec::new();
+    for cheat in &table.cheats {
+        let label = cheat.category.label();
+        match groups.iter_mut().find(|(name, _)| *name == label) {
+            Some((_, held)) => held.push(cheat),
+            None => groups.push((label, vec![cheat])),
+        }
+    }
+
+    for (label, cheats) in groups {
+        id += 1;
+        out.push_str(&format!(
+            "    <CheatEntry>\n      <ID>{id}</ID>\n      \
+             <Description>\"{}\"</Description>\n      <GroupHeader>1</GroupHeader>\n      \
+             <CheatEntries>\n",
+            esc(label)
+        ));
+        for cheat in cheats {
+            match entry(cheat, &mut id) {
+                Some(text) => out.push_str(&text),
+                None => dropped += 1,
+            }
+        }
+        out.push_str("      </CheatEntries>\n    </CheatEntry>\n");
+    }
+
+    out.push_str("  </CheatEntries>\n");
+    let notes = table.game.notes.trim();
+    if !notes.is_empty() && !notes.starts_with("Imported from a Cheat Engine table") {
+        out.push_str(&format!("  <Comments>{}</Comments>\n", esc(notes)));
+    }
+    out.push_str("</CheatTable>\n");
+    (out, dropped)
+}
+
+fn entry(cheat: &Cheat, id: &mut usize) -> Option<String> {
+    let mut body = String::new();
+    match &cheat.action {
+        Action::Script { source } => {
+            body.push_str(&format!(
+                "          <VariableType>Auto Assembler Script</VariableType>\n          \
+                 <AssemblerScript>{}</AssemblerScript>\n",
+                esc(source)
+            ));
+        }
+        Action::Value { kind, .. } | Action::Freeze { kind, .. } | Action::Set { kind, .. } => {
+            let (address, hops) = spoken_address(cheat.locator.as_ref()?)?;
+            body.push_str(&format!(
+                "          <VariableType>{}</VariableType>\n          <Address>{}</Address>\n",
+                variable_type(kind.0),
+                esc(&address)
+            ));
+            let choices = cheat.action.choices();
+            if !choices.is_empty() {
+                let lines: Vec<String> = choices
+                    .iter()
+                    .map(|c| format!("{}:{}", c.value, c.label))
+                    .collect();
+                body.push_str(&format!(
+                    "          <DropDownList DescriptionOnly=\"0\">{}</DropDownList>\n",
+                    esc(&lines.join("\n"))
+                ));
+            }
+            if cheat.action.shows_hex() {
+                body.push_str("          <ShowAsHex>1</ShowAsHex>\n");
+            }
+            if !hops.is_empty() {
+                body.push_str("          <Offsets>\n");
+                // written deepest last, the order cheat engine keeps them
+                for hop in hops.iter().rev() {
+                    let offset = if hop.0 < 0 {
+                        format!("-{:X}", -hop.0)
+                    } else {
+                        format!("{:X}", hop.0)
+                    };
+                    body.push_str(&format!("            <Offset>{offset}</Offset>\n"));
+                }
+                body.push_str("          </Offsets>\n");
+            }
+        }
+        Action::Nop { .. } | Action::Bytes { .. } => return None,
+    }
+
+    *id += 1;
+    Some(format!(
+        "        <CheatEntry>\n          <ID>{}</ID>\n          \
+         <Description>\"{}\"</Description>\n{body}{}        </CheatEntry>\n",
+        id,
+        esc(&cheat.name),
+        keys_out(cheat)
+    ))
+}
+
+fn spoken_address(locator: &Locator) -> Option<(String, Vec<Hop>)> {
+    match locator {
+        Locator::Static {
+            module,
+            offset,
+            hops,
+        } => {
+            // a module with a space in its name goes back in quotes, the way
+            // cheat engine writes it
+            let held = if module.contains(' ') {
+                format!("\"{module}\"+{offset:X}")
+            } else {
+                format!("{module}+{offset:X}")
+            };
+            Some((held, hops.clone()))
+        }
+        Locator::Symbol { symbol, hops } => Some((symbol.clone(), hops.clone())),
+        Locator::Pattern { .. } => None,
+    }
+}
+
+fn keys_out(cheat: &Cheat) -> String {
+    if cheat.hotkeys.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("          <Hotkeys>\n");
+    for (n, held) in cheat.hotkeys.iter().enumerate() {
+        let action = match held.does {
+            Tap::Toggle => "Toggle Activation",
+            Tap::On => "Activate",
+            Tap::Off => "Deactivate",
+            Tap::Set => "Set Value",
+        };
+        out.push_str(&format!(
+            "            <Hotkey>\n              <Action>{action}</Action>\n              <Keys>\n"
+        ));
+        for key in &held.keys {
+            out.push_str(&format!("                <Key>{key}</Key>\n"));
+        }
+        out.push_str("              </Keys>\n");
+        if let Some(value) = &held.value {
+            out.push_str(&format!("              <Value>{}</Value>\n", esc(value)));
+        }
+        out.push_str(&format!(
+            "              <ID>{n}</ID>\n            </Hotkey>\n"
+        ));
+    }
+    out.push_str("          </Hotkeys>\n");
+    out
+}
+
+fn variable_type(kind: ValueKind) -> &'static str {
+    match kind {
+        ValueKind::F32 => "Float",
+        ValueKind::F64 => "Double",
+        other => match other.size() {
+            1 => "Byte",
+            2 => "2 Bytes",
+            8 => "8 Bytes",
+            _ => "4 Bytes",
+        },
+    }
+}
+
+fn esc(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn value_kind(variable_type: &str) -> Option<ValueKind> {
@@ -1112,5 +1303,88 @@ alloc(newmem,$1000)
         let orens = back.cheats.iter().find(|c| c.name == "Orens").unwrap();
         assert_eq!(orens.hotkeys.len(), 2);
         assert_eq!(orens.hotkeys[1].value.as_deref(), Some("9999"));
+    }
+
+    #[test]
+    fn the_authors_notes_come_across_as_the_tables_notes() {
+        let xml = SAMPLE.replacen(
+            "<CheatEntries>",
+            "<Comments>Enable the base script in the main menu first.\n\
+             https://fearlessrevolution.com/viewtopic.php?t=1</Comments><CheatEntries>",
+            1,
+        );
+        let out = import(&xml, "witcher2.exe", "The Witcher 2").unwrap();
+        assert!(
+            out.table.game.notes.starts_with("Enable the base script"),
+            "{}",
+            out.table.game.notes
+        );
+        assert!(out.table.game.notes.contains("fearlessrevolution.com"));
+    }
+
+    #[test]
+    fn no_comments_still_says_where_the_table_came_from() {
+        let out = imported();
+        assert!(out
+            .table
+            .game
+            .notes
+            .starts_with("Imported from a Cheat Engine table"));
+    }
+
+    // what goes out has to come back in whole
+    #[test]
+    fn a_table_round_trips_through_export_and_import() {
+        let out = keyed();
+        let (xml, dropped) = export(&out.table);
+        assert_eq!(dropped, 0, "nothing in the sample needs dropping");
+
+        let back = import(&xml, "witcher2.exe", "The Witcher 2").unwrap();
+        assert_eq!(back.table.cheats.len(), out.table.cheats.len());
+        assert!(back.skipped.is_empty(), "{:?}", back.skipped);
+
+        let orens = back
+            .table
+            .cheats
+            .iter()
+            .find(|c| c.name == "Orens")
+            .unwrap();
+        assert_eq!(orens.hotkeys.len(), 2, "the bound keys survive the trip");
+        assert_eq!(orens.hotkeys[1].value.as_deref(), Some("9999"));
+
+        let script = back
+            .table
+            .cheats
+            .iter()
+            .find(|c| c.name == "God Mode Script")
+            .unwrap();
+        assert!(
+            matches!(&script.action, Action::Script { source } if source.contains("aobscanmodule"))
+        );
+    }
+
+    #[test]
+    fn deep_offset_chains_survive_the_round_trip() {
+        let out = imported();
+        let (xml, _) = export(&out.table);
+        let back = import(&xml, "witcher2.exe", "The Witcher 2").unwrap();
+        let health = back
+            .table
+            .cheats
+            .iter()
+            .find(|c| c.name == "Infinite Health")
+            .unwrap();
+        match health.locator.as_ref().unwrap() {
+            Locator::Static {
+                module,
+                offset,
+                hops,
+            } => {
+                assert_eq!(module, "witcher2.exe");
+                assert_eq!(*offset, 0x1A2B3C);
+                assert_eq!(hops, &[Hop(0x28), Hop(0x1F0)]);
+            }
+            other => panic!("expected the static chain back, got {other:?}"),
+        }
     }
 }
