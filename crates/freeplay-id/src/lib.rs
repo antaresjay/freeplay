@@ -296,14 +296,14 @@ mod tests {
             .contains("not one of the words"));
     }
 
-    // swapping two words keeps every word valid, so only the checksum catches it
+    /* swapping two words keeps every word valid, so only the checksum catches
+    it. fixed entropy rather than a random phrase: the checksum is one byte,
+    so one random phrase in 256 survives the swap and the test cried wolf */
     #[test]
     fn a_phrase_with_words_swapped_is_refused() {
-        let me = someone();
-        let mut words: Vec<String> = me.phrase().words().to_vec();
-        if words[0] == words[1] {
-            return;
-        }
+        let mut words: Vec<String> = from_entropy(core::array::from_fn(|i| i as u8))
+            .words()
+            .to_vec();
         words.swap(0, 1);
         let outcome = Phrase::parse(&words.join(" "));
         assert!(outcome.is_err(), "the checksum should have caught that");
