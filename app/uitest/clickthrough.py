@@ -210,6 +210,9 @@ window.__TAURI__ = {
           window.__removed = args.dir;
           GAMES.splice(GAMES.findIndex(g => g.dir === args.dir), 1);
           return null;
+        case "export_table":
+          window.__exported = args.exe;
+          return "Wrote 5 cheats to D:/witcher2.CT";
         case "bind_key": {
           // echoes the spelling back and keeps it, the way the real one does.
           // without the keeping, the next refresh tick painted the old key
@@ -267,7 +270,7 @@ window.__TAURI__ = {
           if (args.exe === "witcher2.exe") {
             return {author: "aSwedishMagyar",
                     source: "https://fearlessrevolution.com/viewtopic.php?t=14844",
-                    notes: "Converted from a Cheat Engine table by aSwedishMagyar."};
+                    notes: "Enable Get Witcher Base while sitting in the main menu, then load your save."};
           }
           // a table nobody put a name on
           return {author: "", source: "", notes: ""};
@@ -586,6 +589,28 @@ PROBE = r"""
            why.textContent.includes("went down right after"),
            "a cheat blamed for a crash warns on its card (" + why.textContent + ")");
     }
+
+    /* the author's notes ride along, folded behind a link so a screenful of
+       instructions does not push the cheats down the page */
+    {
+      note(!document.getElementById("table-notes").hidden,
+           "a table with notes offers them");
+      note(document.getElementById("notes-body").hidden,
+           "folded away until asked for");
+      document.getElementById("notes-toggle").click();
+      await settle(100);
+      note(!document.getElementById("notes-body").hidden &&
+           document.getElementById("notes-body").textContent.includes("main menu"),
+           "the toggle opens what the author wrote");
+      document.getElementById("notes-toggle").click();
+      await settle(100);
+    }
+
+    // the whole page, merged tables included, back out as one .CT
+    document.getElementById("game-export").click();
+    await settle(300);
+    note(window.__exported === "witcher2.exe",
+         "export hands the page's exe to the backend");
 
     /* pinning. the star moves a cheat onto a shelf of its own at the top,
        and unpinning puts it back where it came from */

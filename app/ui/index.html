@@ -163,6 +163,7 @@
             <button id="game-play" class="primary">Play</button>
             <button id="game-attach" class="ghost">Attach</button>
             <button id="game-import" class="ghost" title="Convert a Cheat Engine .CT file for this game">Import a table</button>
+            <button id="game-export" class="ghost" hidden title="Write everything on this page, merged tables included, back out as one Cheat Engine table">Export .CT</button>
             <button id="game-find-table" class="ghost" title="Look for a Cheat Engine table for this game">Search online</button>
             <button id="game-folder" class="ghost" title="Open the install folder">Folder</button>
             <button id="game-hide" class="ghost" title="Tuck it out of the library. Settings brings hidden games back.">Hide</button>
@@ -212,6 +213,10 @@
         <p id="table-credit" class="credit" hidden>
           Addresses worked out by <b id="credit-author"></b><a id="credit-source" href="#" hidden>where it came from</a>
         </p>
+        <div id="table-notes" class="notes" hidden>
+          <button id="notes-toggle" class="link-btn">Notes from the table</button>
+          <pre id="notes-body" hidden></pre>
+        </div>
         <div id="table-fit" class="fit" hidden>
           <strong id="fit-headline"></strong>
           <span id="fit-detail"></span>

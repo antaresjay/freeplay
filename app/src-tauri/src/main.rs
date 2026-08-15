@@ -548,6 +548,55 @@ async fn add_game(
     Ok(called(&path))
 }
 
+// everything on the page, merged tables included, written back out as one
+// .CT for cheat engine. no path asks with the picker
+#[tauri::command]
+async fn export_table(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, App>,
+    exe: String,
+    path: Option<String>,
+) -> Result<String, String> {
+    let table =
+        with_tables(&exe, &off_for(&state, &exe)).ok_or("there is no table to write out")?;
+
+    let stem = exe.to_lowercase();
+    let suggested = format!("{}.CT", stem.trim_end_matches(".exe"));
+    let path = match path {
+        Some(text) => PathBuf::from(text),
+        None => match dialog::save(&dialog::Ask {
+            owner: owner_window(&app),
+            title: "Write the table as a .CT",
+            kinds: &[("Cheat Engine table", "*.CT")],
+            suggested: &suggested,
+            extension: "CT",
+        }) {
+            Some(picked) => picked,
+            None => return Ok(String::new()),
+        },
+    };
+
+    let (text, dropped) = freeplay_table::cheatengine::export(&table);
+    std::fs::write(&path, text).map_err(|e| format!("could not write {}: {e}", path.display()))?;
+    tracing::info!("wrote {} back out to {}", exe, path.display());
+    Ok(match dropped {
+        0 => format!("Wrote {} cheats to {}", table.cheats.len(), path.display()),
+        n => format!(
+            "Wrote {} cheats to {}. {} cannot be said in a .CT and stayed behind",
+            table.cheats.len() - n,
+            path.display(),
+            many_things(n)
+        ),
+    })
+}
+
+fn many_things(n: usize) -> String {
+    match n {
+        1 => "one".into(),
+        other => other.to_string(),
+    }
+}
+
 #[tauri::command]
 fn remove_added(state: tauri::State<'_, App>, dir: String) -> Result<(), String> {
     let wanted = dir.to_lowercase();
@@ -2385,7 +2434,16 @@ fn credit(state: tauri::State<'_, App>, exe: String) -> Credit {
             }
         },
         source: link_in(&parts[0].game.notes),
-        notes: parts[0].game.notes.clone(),
+        // the author's own words, shown on the page. the import boilerplate
+        // is not notes, it is filler
+        notes: parts
+            .iter()
+            .map(|table| table.game.notes.trim())
+            .find(|told| {
+                !told.is_empty() && !told.starts_with("Imported from a Cheat Engine table")
+            })
+            .unwrap_or_default()
+            .to_string(),
     }
 }
 
@@ -3416,6 +3474,7 @@ fn main() {
             bind_key,
             add_game,
             remove_added,
+            export_table,
             star_cheat,
             last_loadout,
             rearm,

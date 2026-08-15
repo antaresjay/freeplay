@@ -875,6 +875,16 @@ function paintCredit(credit) {
   const link = $("credit-source");
   credit = credit || {};
 
+  /* what the author wrote inside the table. folded away by default, since
+     it can run to a screenful, but "turn this on in the main menu" has to be
+     findable or the cheat gets blamed for it */
+  const notes = (credit.notes || "").trim();
+  $("table-notes").hidden = !notes;
+  if ($("notes-body").textContent !== notes) {
+    $("notes-body").textContent = notes;
+    $("notes-body").hidden = true;
+  }
+
   const author = (credit.author || "").trim();
   line.hidden = !author;
   if (!author) return;
@@ -954,6 +964,7 @@ async function refreshCheats() {
   $("cheats-panel").hidden = rows.length === 0;
   // keeps its space either way, or the search box beside it jumps sideways
   $("remove-table").classList.toggle("away", rows.length === 0);
+  $("game-export").hidden = rows.length === 0;
   $("cheat-count").textContent = rows.length ? `${many(rows.length, "cheat")}` : "";
   // said once up here rather than on all forty cards, where it was the only
   // thing most of them had to say and read as filler
@@ -1240,6 +1251,7 @@ function skeletons(hasTable) {
   $("cheat-typing").hidden = true;
   $("cheat-count").textContent = "";
   $("remove-table").classList.add("away");
+  $("game-export").hidden = true;
   $("table-fit").hidden = true;
 
   if (!hasTable) {
@@ -1298,6 +1310,10 @@ function applyCheatFilter() {
 }
 
 $("cheat-filter").addEventListener("input", filterCheats);
+
+$("notes-toggle").addEventListener("click", () => {
+  $("notes-body").hidden = !$("notes-body").hidden;
+});
 
 $("rearm-last").addEventListener("click", async () => {
   const game = gameFor(open);
@@ -1997,6 +2013,18 @@ async function dropGame(path) {
     toast(String(e), true);
   }
 }
+
+$("game-export").addEventListener("click", async () => {
+  const game = gameFor(open);
+  if (!game) return;
+  try {
+    const said = await invoke("export_table", { exe: game.exe });
+    // nothing back means the picker was closed
+    if (said) toast(said);
+  } catch (e) {
+    toast(String(e), true);
+  }
+});
 
 $("game-hide").addEventListener("click", async () => {
   const game = gameFor(open);

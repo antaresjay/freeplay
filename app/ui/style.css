@@ -1639,6 +1639,24 @@ input::placeholder { color: var(--faint); }
 }
 .cheat-pin.on svg { fill: currentColor; }
 
+/* what the author wrote inside the table, folded behind a link */
+.notes { margin: 2px 0 10px; }
+.notes pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
 .ov-kbd {
   white-space: nowrap;
   margin-left: 6px;
