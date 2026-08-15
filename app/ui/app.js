@@ -499,11 +499,57 @@ function draw() {
   // strip is where you actually look for one
   const needle = $("filter").value.trim().toLowerCase();
   drawRail(needle ? list.filter((g) => g.name.toLowerCase().includes(needle)) : list);
+  drawFeature(list);
   drawGrids(list);
 
   const live = list.filter((g) => g.running).length;
   $("library-count").textContent = `${many(list.length, "game")}, ${live} running`;
-  $("idle-banner").hidden = live > 0 || !list.length;
+  // the feature says whatever the idle banner would, and says it about a real
+  // game, so the banner is only for a library with nothing to feature
+  $("idle-banner").hidden = !$("feature").hidden || live > 0 || !list.length;
+}
+
+/* the banner across the top of the library: the game that is running now, or
+   the last one played, shown big with its art so opening the app lands you on
+   something to do rather than a wall of covers */
+let featuredKey = null;
+function drawFeature(list) {
+  const el = $("feature");
+  const running = list.find((g) => g.running && !g.guard);
+  const recent = [...list]
+    .filter((g) => !g.guard && g.last_played)
+    .sort((a, b) => (b.last_played || 0) - (a.last_played || 0))[0];
+  const pick = running || recent || list.find((g) => !g.guard);
+  if (!pick) {
+    el.hidden = true;
+    featuredKey = null;
+    return;
+  }
+  featuredKey = pick.key;
+  el.hidden = false;
+  el.classList.toggle("is-live", !!pick.running);
+
+  const art = artFor(pick) || {};
+  const url = art.hero || art.cover || "";
+  const img = $("feature-img");
+  img.src = url;
+  img.hidden = !url;
+  el.classList.toggle("no-art", !url);
+  el.style.setProperty("--h", hue(pick.name));
+
+  $("feature-kicker").textContent = pick.running ? "Running now" : "Jump back in";
+  $("feature-name").textContent = pick.name;
+
+  const bits = [pick.store];
+  const played = playedFor(pick.minutes);
+  if (played) bits.push(played);
+  if (!pick.running) {
+    const seen = lastPlayed(pick.last_played);
+    if (seen) bits.push(seen);
+  }
+  $("feature-facts").textContent = bits.filter(Boolean).join("  ·  ");
+
+  $("feature-play").textContent = pick.running ? "Switch to game" : "Play";
 }
 
 function drawRail(list) {
@@ -529,7 +575,10 @@ function drawRail(list) {
 
     const button = document.createElement("button");
     button.className =
-      "rail-game" + (open === game.key ? " active" : "") + (game.guard ? " barred" : "");
+      "rail-game" +
+      (open === game.key ? " active" : "") +
+      (game.guard ? " barred" : "") +
+      (game.running ? " live-game" : "");
 
     const thumb = document.createElement("span");
     thumb.className = "thumb";
@@ -613,7 +662,8 @@ function fill(host, list) {
 
 function card(game) {
   const button = document.createElement("button");
-  button.className = "card" + (game.guard ? " guarded" : game.running ? "" : " idle");
+  button.className =
+    "card" + (game.guard ? " guarded" : game.running ? " running" : " idle");
 
   const box = document.createElement("div");
   box.className = "art";
@@ -2040,6 +2090,32 @@ $("add-game").addEventListener("click", async () => {
     await loadGames(true);
   } catch (e) {
     toast(String(e), true);
+  }
+});
+
+/* the featured banner. the whole thing opens the game, Play launches it, and
+   Open goes to its page. Play and Open stop the click reaching the banner so
+   they do not fire twice */
+$("feature").addEventListener("click", () => {
+  if (featuredKey) showGame(featuredKey);
+});
+$("feature-open").addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (featuredKey) showGame(featuredKey);
+});
+$("feature-play").addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const game = games.find((g) => g.key === featuredKey);
+  if (!game) return;
+  try {
+    if (game.running) {
+      await invoke("focus_game", { exe: game.exe });
+    } else {
+      await invoke("launch_game", { key: game.key });
+      toast(`Starting ${game.name}`);
+    }
+  } catch (err) {
+    toast(String(err), true);
   }
 });
 

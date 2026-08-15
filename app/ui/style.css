@@ -1,73 +1,116 @@
 /* dark is the default. light overrides the same names below so nothing further
-   down has to know which one is on */
+   down has to know which one is on.
+
+   the look: a deep blue-black canvas lit from the top, glass panels floating on
+   it with a hairline of light along their top edge, and the accent used as a
+   real glow rather than a flat fill. surfaces are translucent white over the
+   canvas so depth comes from light, not from a darker grey box */
 :root {
-  --bg: #0a0b0e;
-  --panel: #0f1116;
-  --raised: #151821;
-  --raised-2: #1b1f2a;
-  --line: #212632;
-  --line-soft: #191d26;
+  --bg: #070810;
+  --bg-2: #0a0c16;
+  /* the lit canvas behind everything */
+  --canvas:
+    radial-gradient(1200px 680px at 18% -8%, rgba(120, 130, 170, 0.10), transparent 60%),
+    radial-gradient(1000px 600px at 108% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 55%),
+    linear-gradient(180deg, var(--bg-2), var(--bg));
 
-  --text: #edeff4;
-  --dim: #9aa1ae;
-  --faint: #626a79;
+  --panel: rgba(22, 26, 38, 0.55);
+  --panel-solid: #11141f;
+  --raised: rgba(255, 255, 255, 0.045);
+  --raised-2: rgba(255, 255, 255, 0.08);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-soft: rgba(255, 255, 255, 0.055);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  /* the sliver of light along the top of a raised surface */
+  --edge: rgba(255, 255, 255, 0.06);
 
-  --shadow: rgba(0, 0, 0, 0.45);
-  --shadow-strong: rgba(0, 0, 0, 0.6);
-  --scrim: 10, 11, 14;
-  --overlay: 6, 8, 12;
+  --text: #f3f5fb;
+  --dim: #a4abbd;
+  --faint: #626a7e;
+
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-strong: rgba(0, 0, 0, 0.66);
+  --scrim: 7, 8, 16;
+  --overlay: 4, 5, 12;
   --hairline: rgba(255, 255, 255, 0.07);
 
   --bad: #ff6b6b;
   --warn: #f0b429;
 
-  --r-sm: 8px;
-  --r: 12px;
-  --r-lg: 18px;
+  --r-sm: 9px;
+  --r: 14px;
+  --r-lg: 20px;
+  --r-xl: 26px;
 
-  --titlebar: 38px;
-  --sidebar: 244px;
+  --titlebar: 40px;
+  --sidebar: 256px;
 
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 
+/* light keeps the same idea, lit from the top, glass panels, but the glass is
+   near-white over a soft grey canvas */
+:root[data-theme="light"],
+:root[data-theme="system"] {
+  --light-bg: #e9ebf2;
+  --light-bg-2: #f4f5f9;
+}
 :root[data-theme="light"] {
-  --bg: #f2f3f6;
-  --panel: #ffffff;
-  --raised: #f4f5f8;
-  --raised-2: #e8eaef;
-  --line: #dcdfe6;
-  --line-soft: #e8eaef;
+  --bg: #e9ebf2;
+  --bg-2: #f4f5f9;
+  --canvas:
+    radial-gradient(1200px 680px at 18% -8%, rgba(90, 100, 140, 0.10), transparent 60%),
+    radial-gradient(1000px 600px at 108% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 55%),
+    linear-gradient(180deg, var(--bg-2), var(--bg));
 
-  --text: #14171d;
-  --dim: #545b68;
+  --panel: rgba(255, 255, 255, 0.72);
+  --panel-solid: #ffffff;
+  --raised: rgba(20, 23, 40, 0.035);
+  --raised-2: rgba(20, 23, 40, 0.07);
+  --line: rgba(20, 23, 40, 0.1);
+  --line-soft: rgba(20, 23, 40, 0.06);
+  --line-strong: rgba(20, 23, 40, 0.17);
+  --edge: rgba(255, 255, 255, 0.85);
+
+  --text: #12151d;
+  --dim: #515867;
   --faint: #838b98;
 
-  --shadow: rgba(20, 23, 29, 0.12);
-  --shadow-strong: rgba(20, 23, 29, 0.2);
+  --shadow: rgba(20, 23, 29, 0.1);
+  --shadow-strong: rgba(20, 23, 29, 0.16);
   --scrim: 255, 255, 255;
   --overlay: 20, 23, 29;
-  --hairline: rgba(20, 23, 29, 0.1);
+  --hairline: rgba(20, 23, 29, 0.09);
 }
 
 @media (prefers-color-scheme: light) {
   :root[data-theme="system"] {
-    --bg: #f2f3f6;
-    --panel: #ffffff;
-    --raised: #f4f5f8;
-    --raised-2: #e8eaef;
-    --line: #dcdfe6;
-    --line-soft: #e8eaef;
+    --bg: #e9ebf2;
+    --bg-2: #f4f5f9;
+    --canvas:
+      radial-gradient(1200px 680px at 18% -8%, rgba(90, 100, 140, 0.10), transparent 60%),
+      radial-gradient(1000px 600px at 108% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 55%),
+      linear-gradient(180deg, var(--bg-2), var(--bg));
 
-    --text: #14171d;
-    --dim: #545b68;
+    --panel: rgba(255, 255, 255, 0.72);
+    --panel-solid: #ffffff;
+    --raised: rgba(20, 23, 40, 0.035);
+    --raised-2: rgba(20, 23, 40, 0.07);
+    --line: rgba(20, 23, 40, 0.1);
+    --line-soft: rgba(20, 23, 40, 0.06);
+    --line-strong: rgba(20, 23, 40, 0.17);
+    --edge: rgba(255, 255, 255, 0.85);
+
+    --text: #12151d;
+    --dim: #515867;
     --faint: #838b98;
 
-    --shadow: rgba(20, 23, 29, 0.12);
-    --shadow-strong: rgba(20, 23, 29, 0.2);
+    --shadow: rgba(20, 23, 29, 0.1);
+    --shadow-strong: rgba(20, 23, 29, 0.16);
     --scrim: 255, 255, 255;
     --overlay: 20, 23, 29;
-    --hairline: rgba(20, 23, 29, 0.1);
+    --hairline: rgba(20, 23, 29, 0.09);
   }
 }
 
@@ -123,6 +166,15 @@
   --lit-4: #eab308;
 }
 
+/* the accent as light, worked out from whatever it is set to, so a glow is one
+   token rather than five hand-picked shadows */
+:root {
+  --accent-bloom: 0 0 26px color-mix(in srgb, var(--accent) 42%, transparent);
+  --accent-bloom-soft: 0 0 18px color-mix(in srgb, var(--accent) 26%, transparent);
+  --accent-wash: color-mix(in srgb, var(--accent) 8%, transparent);
+  --glass-shadow: 0 20px 50px -18px var(--shadow-strong);
+}
+
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
@@ -138,6 +190,30 @@ body {
   font: 14px/1.5 "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   user-select: none;
+}
+
+/* the lit canvas, painted once behind the whole window and held still while
+   views scroll over it. a fixed layer rather than a body background so the
+   glow does not drift when a long page scrolls */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background: var(--canvas);
+  pointer-events: none;
+}
+/* a whisper of texture over the canvas so the flat dark does not band on a
+   cheap panel. one tiny tiled dot grid at very low opacity */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.5) 0.5px, transparent 0.5px);
+  background-size: 22px 22px;
+  opacity: 0.015;
+  pointer-events: none;
 }
 
 svg {
@@ -364,7 +440,8 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   height: var(--titlebar);
   display: flex;
   align-items: center;
-  background: var(--panel);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -411,11 +488,12 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 .sidebar {
   width: var(--sidebar);
   flex: none;
-  background: var(--panel);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
   border-right: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
-  padding: 10px 10px 0;
+  padding: 12px 12px 0;
 }
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
@@ -491,13 +569,14 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 }
 
 .rail-game {
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 7px;
+  gap: 11px;
+  padding: 7px 8px;
   border: 0;
-  border-radius: var(--r-sm);
+  border-radius: 10px;
   background: none;
   color: var(--dim);
   font: inherit;
@@ -506,21 +585,35 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   transition: background 0.14s, color 0.14s;
 }
 .rail-game:hover { background: var(--raised); color: var(--text); }
-.rail-game.active { background: var(--raised-2); color: var(--text); }
+.rail-game.active { background: var(--accent-wash); color: var(--text); }
+.rail-game.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  box-shadow: var(--accent-bloom-soft);
+}
 
 .thumb {
-  width: 30px;
-  height: 42px;
+  width: 32px;
+  height: 44px;
   flex: none;
-  border-radius: 5px;
+  border-radius: 6px;
   overflow: hidden;
   background: var(--raised-2);
+  box-shadow: 0 2px 8px var(--shadow), inset 0 0 0 1px var(--hairline);
   display: grid;
   place-items: center;
   font-size: 12px;
   font-weight: 700;
   color: var(--dim);
 }
+/* the running game's thumb gets the accent ring, matching its card in the grid */
+.rail-game.live-game .thumb { box-shadow: 0 0 0 1.5px var(--accent), var(--accent-bloom-soft); }
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .rail-game .name {
@@ -614,7 +707,7 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 /* the same size as the heading on the about page, so every page in the app
    opens the same way. at seventeen it was barely bigger than a shelf title
    under it and the page read as one flat list of headings */
-.section-head h2 { margin: 0; font-size: 22px; font-weight: 680; letter-spacing: -0.3px; }
+.section-head h2 { margin: 0; font-size: 25px; font-weight: 740; letter-spacing: -0.5px; }
 
 .head-count {
   display: flex;
@@ -711,6 +804,109 @@ input::placeholder { color: var(--faint); }
    and nothing below jumps when you switch between two games */
 .banner p { margin: 2px 0 0 18px; font-size: 12.5px; color: var(--faint); max-width: 80ch; }
 
+/* ---------- the featured banner ---------- */
+
+/* the game that is running, or the one played last, across the top of the
+   library. art bleeds full width behind a left-to-right scrim so the title and
+   buttons sit on the dark side and stay readable over any cover */
+.feature {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 264px;
+  margin: 0 0 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  isolation: isolate;
+  cursor: pointer;
+  background: var(--panel-solid);
+  box-shadow: var(--glass-shadow);
+  transition: transform 0.24s var(--ease), box-shadow 0.24s var(--ease);
+}
+.feature:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 34px 70px -24px var(--shadow-strong);
+}
+.feature-art { position: absolute; inset: 0; z-index: -2; }
+.feature-art img { width: 100%; height: 100%; object-fit: cover; }
+.feature.no-art .feature-art {
+  background: linear-gradient(135deg, hsl(var(--h) 46% 30%), hsl(var(--h) 52% 12%));
+}
+.feature-glow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, rgba(5, 6, 14, 0.95) 0%, rgba(5, 6, 14, 0.72) 44%, rgba(5, 6, 14, 0.1) 100%),
+    linear-gradient(0deg, rgba(5, 6, 14, 0.66), transparent 55%);
+}
+.feature-body {
+  position: relative;
+  max-width: 62%;
+  padding: 34px 38px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+.feature-kicker {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.feature.is-live .feature-kicker::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: var(--accent-bloom);
+  animation: pulse 1.9s ease-in-out infinite;
+}
+.feature h2 {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 760;
+  letter-spacing: -0.9px;
+  line-height: 1.04;
+  color: #fff;
+  max-width: 16ch;
+}
+.feature-facts { font-size: 13px; color: rgba(255, 255, 255, 0.72); }
+.feature-actions { display: flex; gap: 10px; margin-top: 8px; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* the bigger buttons the banner uses */
+.big {
+  height: 44px;
+  padding: 0 24px;
+  font-size: 14px;
+  border-radius: 12px;
+  font-weight: 620;
+}
+/* a glass button for use over art, where a solid ghost would look heavy */
+.glassbtn {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s;
+}
+.glassbtn:hover { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.4); }
+
 /* ---------- shelves on the library page ---------- */
 
 /* these were eleven pixel grey capitals sitting right under the row of covers
@@ -760,9 +956,9 @@ input::placeholder { color: var(--faint); }
    posters across a wide window is how it ends up looking wrong */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 166px);
+  grid-template-columns: repeat(auto-fill, 178px);
   justify-content: start;
-  gap: 20px 18px;
+  gap: 26px 20px;
 }
 
 .card {
@@ -774,22 +970,26 @@ input::placeholder { color: var(--faint); }
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: transform 0.2s var(--ease);
+  transition: transform 0.24s var(--spring);
 }
-.card:hover { transform: translateY(-5px); }
+.card:hover { transform: translateY(-7px); }
 
 .art {
   position: relative;
   aspect-ratio: 2 / 3;
-  border-radius: var(--r);
+  border-radius: var(--r-lg);
   overflow: hidden;
   background: var(--raised);
-  box-shadow: 0 6px 18px var(--shadow);
-  transition: box-shadow 0.2s var(--ease);
+  box-shadow: 0 10px 26px -8px var(--shadow), 0 2px 6px var(--shadow);
+  transition: box-shadow 0.24s var(--ease);
 }
-.card:hover .art { box-shadow: 0 14px 34px var(--shadow-strong); }
+.card:hover .art {
+  box-shadow: 0 22px 48px -12px var(--shadow-strong), var(--accent-bloom-soft);
+}
 .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+/* a hairline ring in rest, the accent when hovered, and a permanent lit ring
+   on whatever is running right now so it reads across the whole grid */
 .art::after {
   content: "";
   position: absolute;
@@ -799,6 +999,8 @@ input::placeholder { color: var(--faint); }
   transition: box-shadow 0.2s var(--ease);
 }
 .card:hover .art::after { box-shadow: inset 0 0 0 2px var(--accent); }
+.card.running .art { box-shadow: 0 14px 34px -10px var(--shadow-strong), var(--accent-bloom); }
+.card.running .art::after { box-shadow: inset 0 0 0 2px var(--accent); }
 
 /* no cached art gets a tinted tile with the initials */
 .blankart {
@@ -913,14 +1115,15 @@ input::placeholder { color: var(--faint); }
   position: relative;
   display: flex;
   align-items: flex-end;
-  gap: 22px;
-  min-height: 224px;
-  padding: 24px 26px;
+  gap: 26px;
+  min-height: 264px;
+  padding: 28px 30px;
   margin-bottom: 18px;
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-xl);
   overflow: hidden;
   isolation: isolate;
+  box-shadow: var(--glass-shadow);
 }
 .game-hero-art { position: absolute; inset: 0; z-index: -1; }
 .game-hero-art img { width: 100%; height: 100%; object-fit: cover; }
@@ -931,7 +1134,9 @@ input::placeholder { color: var(--faint); }
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(0deg, rgba(8, 10, 14, 0.96) 10%, rgba(8, 10, 14, 0.72) 60%, rgba(8, 10, 14, 0.45));
+  background:
+    linear-gradient(0deg, rgba(5, 6, 12, 0.97) 6%, rgba(5, 6, 12, 0.7) 55%, rgba(5, 6, 12, 0.32)),
+    linear-gradient(90deg, rgba(5, 6, 12, 0.5), transparent 60%);
 }
 .game-hero:not(.no-art) h1,
 .game-hero:not(.no-art) .fact b { color: #f2f4f8; }
@@ -952,27 +1157,29 @@ input::placeholder { color: var(--faint); }
 }
 
 .game-hero.no-art { min-height: 0; }
-.game-hero.no-art::after { background: var(--panel); }
+.game-hero.no-art::after {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--panel-solid)), var(--panel-solid));
+}
 
 .game-cover {
   position: relative;
-  width: 118px;
+  width: 132px;
   aspect-ratio: 2 / 3;
   flex: none;
-  border-radius: var(--r);
+  border-radius: var(--r-lg);
   overflow: hidden;
   background: var(--raised);
-  box-shadow: 0 10px 26px var(--shadow-strong);
+  box-shadow: 0 18px 40px -10px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
   display: grid;
   place-items: center;
 }
 .game-cover img { width: 100%; height: 100%; object-fit: cover; }
-.game-cover .initials { font-size: 30px; }
+.game-cover .initials { font-size: 34px; }
 
-.game-hero-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 11px; }
-.game-logo { max-width: 260px; max-height: 70px; object-fit: contain; align-self: flex-start; }
+.game-hero-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 13px; }
+.game-logo { max-width: 300px; max-height: 84px; object-fit: contain; align-self: flex-start; }
 .game-logo + h1 { display: none; }
-.game-hero h1 { margin: 0; font-size: 25px; font-weight: 680; letter-spacing: -0.5px; }
+.game-hero h1 { margin: 0; font-size: 31px; font-weight: 760; letter-spacing: -0.8px; line-height: 1.05; }
 
 .game-facts { display: flex; flex-wrap: wrap; gap: 22px; }
 .fact { display: flex; flex-direction: column; gap: 1px; }
@@ -1508,23 +1715,26 @@ input::placeholder { color: var(--faint); }
 /* ---------- buttons ---------- */
 
 .primary, .ghost {
-  height: 32px;
-  padding: 0 16px;
-  border-radius: var(--r-sm);
+  height: 34px;
+  padding: 0 17px;
+  border-radius: 10px;
   font: inherit;
   font-size: 13px;
-  font-weight: 560;
+  font-weight: 580;
   cursor: pointer;
-  transition: background 0.14s, border-color 0.14s, transform 0.14s, color 0.14s, opacity 0.14s;
+  transition: background 0.14s, border-color 0.14s, transform 0.12s var(--spring), color 0.14s, box-shadow 0.16s, filter 0.14s;
 }
+/* the accent as a lit button: a touch of gradient for depth and a soft bloom
+   so the primary action reads as the lit one on the page */
 .primary {
   border: 0;
-  background: var(--accent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white), var(--accent));
   color: var(--accent-ink);
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 55%, transparent);
 }
-.primary:hover { opacity: 0.88; }
-.primary:active { transform: scale(0.98); }
-.primary:disabled { opacity: 0.5; cursor: default; }
+.primary:hover { filter: brightness(1.06); box-shadow: var(--accent-bloom-soft); }
+.primary:active { transform: scale(0.97); }
+.primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; filter: none; }
 
 .ghost {
   border: 1px solid var(--line);
@@ -1534,7 +1744,8 @@ input::placeholder { color: var(--faint); }
   display: inline-flex;
   align-items: center;
 }
-.ghost:hover { border-color: var(--faint); color: var(--text); }
+.ghost:hover { border-color: var(--line-strong); color: var(--text); background: var(--raised-2); }
+.ghost:active { transform: scale(0.97); }
 .ghost:disabled { opacity: 0.5; cursor: default; }
 
 .sheet {
