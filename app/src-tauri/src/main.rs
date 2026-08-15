@@ -824,7 +824,21 @@ async fn shared_tables(
         .map(freeplay_table::fingerprint::fingerprint)
         .collect();
     let build = build_of(&state, &exe);
-    shared::list(&exe, &build, &sort, &have)
+    let mut rows = shared::list(&exe, &build, &sort, &have)?;
+
+    // grabbed from here once, and the copy up there changed since. the row
+    // says so instead of pretending it was never taken
+    let grabbed = state
+        .settings
+        .lock()
+        .unwrap()
+        .grabbed
+        .get(&exe.to_lowercase())
+        .copied();
+    for row in &mut rows {
+        row.stale = grabbed == Some(row.id) && !row.installed;
+    }
+    Ok(rows)
 }
 
 #[tauri::command]

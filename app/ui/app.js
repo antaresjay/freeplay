@@ -2429,6 +2429,14 @@ function sharedRow(row) {
     main.appendChild(star);
   }
 
+  // the copy you grabbed is not the copy up there any more
+  if (row.stale) {
+    const fresh = document.createElement("div");
+    fresh.className = "stale-flag";
+    fresh.textContent = "Updated since you got it";
+    main.appendChild(fresh);
+  }
+
   /* the name the table calls its game, not the uploader. plenty of games ship
      as game.exe and everything converted from one place goes up under one
      account, so the uploader is the one thing that does not tell them apart */
@@ -2530,10 +2538,12 @@ function sharedRow(row) {
 
   const button = document.createElement("button");
   button.className = row.installed ? "ghost" : "primary";
-  button.textContent = row.installed ? "Installed" : "Use table";
+  button.textContent = row.installed ? "Installed" : row.stale ? "Update" : "Use table";
   button.title = row.installed
     ? "This one is already on this machine"
-    : "Use this one on its own, replacing what you have";
+    : row.stale
+      ? "The shared copy changed since you grabbed it. This replaces yours with the new one"
+      : "Use this one on its own, replacing what you have";
   button.disabled = row.installed;
   button.addEventListener("click", () => grab(button, true));
   actions.appendChild(button);

@@ -142,7 +142,7 @@ const SHARED = [
   {id:9, game:"Some Other Game", by:"SomeoneElse", author:"", cheats:31, up:2, down:0,
    downloads:89, built_for:"3.4.0.2", added:1786142235, standing:"",
    installed:false, fit:"older", fit_note:"Tested on 3.4.0.2, you have 3.5.0.1",
-   recommended:false}
+   recommended:false, stale:true}
 ];
 
 /* what searching every game by name gives back. filed under a binary that is
@@ -1708,6 +1708,15 @@ PROBE = r"""
 
   note(list.childElementCount === SHARED.length,
        "clearing the search puts this game's tables back");
+
+  /* a table grabbed earlier whose shared copy moved on says so, and its
+     button offers the update rather than pretending it was never taken */
+  {
+    const flagged = [...list.children].find(r => r.querySelector(".stale-flag"));
+    note(!!flagged, "a grabbed table that changed since carries a flag");
+    note(flagged && flagged.querySelector(".row-actions button").textContent === "Update",
+         "and its button says Update");
+  }
   note(!counts.includes(0),
        "and the panel never blinks empty on the way");
   /* it used to sit on the search result for the length of the debounce plus a

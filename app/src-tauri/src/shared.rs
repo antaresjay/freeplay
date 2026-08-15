@@ -43,6 +43,9 @@ pub struct Shared {
     pub standing: String,
     // already sitting in the tables folder
     pub installed: bool,
+    // grabbed from here earlier, and the shared copy has changed since
+    #[serde(default)]
+    pub stale: bool,
     // how the build it was checked against lines up with the one installed
     // here: same, older, newer or unknown
     pub fit: String,
@@ -72,6 +75,9 @@ impl Shared {
             built_for: listing.built_for,
             added: listing.created_at,
             installed,
+            // filled in by the caller, which is the one that knows what was
+            // grabbed for this game
+            stale: false,
         }
     }
 }
