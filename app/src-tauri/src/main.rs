@@ -1747,6 +1747,54 @@ fn bind_key(
         .unwrap_or_default())
 }
 
+/* starts a second copy through uac and lets this one go. "runas" is the
+shell's own elevation prompt, so the asking is windows' business, not ours */
+#[tauri::command]
+fn relaunch_admin(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows::core::{w, PCWSTR};
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let wide: Vec<u16> = exe
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        // shellexecute wants an sta, and a tokio worker has none. same story
+        // as launching games
+        let shown = std::thread::spawn(move || unsafe {
+            use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            ShellExecuteW(
+                None,
+                w!("runas"),
+                PCWSTR(wide.as_ptr()),
+                None,
+                None,
+                SW_SHOWNORMAL,
+            )
+            .0 as isize
+        })
+        .join()
+        .map_err(|_| "the thread that asks for elevation panicked".to_string())?;
+
+        // 32 and under is shellexecute for "no". cancelling the prompt lands
+        // here too, which is not an error worth shouting about
+        if shown <= 32 {
+            return Err("Windows did not start the elevated copy".into());
+        }
+        app.exit(0);
+    }
+    #[cfg(not(windows))]
+    let _ = app;
+    Ok(())
+}
+
 // the about page had a blank line where this was meant to go
 #[tauri::command]
 fn version() -> String {
@@ -3489,6 +3537,7 @@ fn main() {
             add_game,
             remove_added,
             export_table,
+            relaunch_admin,
             star_cheat,
             last_loadout,
             rearm,

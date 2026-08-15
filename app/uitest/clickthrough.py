@@ -331,8 +331,14 @@ window.__TAURI__ = {
         case "table_count": return "3 tables";
         case "update_tables": return "3 tables, up to date";
         case "attach":
+          if (window.__denyAttach) {
+            throw "Could not open the game. Try running Freeplay as administrator.";
+          }
           return {process:"witcher2.exe", pid:1234, game:"The Witcher 2",
                   table:false, arch:"32-bit"};
+        case "relaunch_admin":
+          window.__elevated = true;
+          return null;
         default: return null;
       }
     }
@@ -1295,6 +1301,27 @@ PROBE = r"""
     [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "library").click();
     await settle(500);
     note(!!row("GOG"), "and the game is back on the rail");
+  }
+
+  /* an elevated game. access denied is fixable with one click, so the app
+     offers the restart rather than leaving the words in a toast */
+  {
+    const row = (name) => [...document.querySelectorAll("#library-rail .rail-game")]
+      .find(r => r.textContent.includes(name));
+    row("Witcher").click();
+    await settle(600);
+    window.__denyAttach = true;
+    document.getElementById("game-attach").click();
+    await settle(400);
+    note(!document.getElementById("elevate-sheet").hidden,
+         "a denied attach offers the restart");
+    document.getElementById("elevate-go").click();
+    await settle(300);
+    note(window.__elevated === true, "and the restart goes through the backend");
+    document.getElementById("elevate-no").click();
+    await settle(100);
+    note(document.getElementById("elevate-sheet").hidden, "not now puts it away");
+    window.__denyAttach = false;
   }
 
   // a game with an anti-cheat is refused outright

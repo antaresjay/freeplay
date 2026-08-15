@@ -825,7 +825,15 @@ async function doAttach(exe) {
   try {
     attached = await invoke("attach", { exe });
   } catch (e) {
-    toast(String(e), true);
+    const text = String(e);
+    /* access denied means the game is elevated and freeplay is not. that is
+       fixable with one click, so offer the fix rather than just the words */
+    if (text.includes("administrator")) {
+      $("elevate-why").textContent = text;
+      $("elevate-sheet").hidden = false;
+    } else {
+      toast(text, true);
+    }
     return;
   }
   // attaching starts a new process with a new address space, and the backend
@@ -2036,6 +2044,16 @@ $("game-hide").addEventListener("click", async () => {
 });
 
 $("unhide-all").addEventListener("click", () => saveConfig({ hidden: [] }));
+
+$("elevate-no").addEventListener("click", () => ($("elevate-sheet").hidden = true));
+$("elevate-go").addEventListener("click", async () => {
+  try {
+    await invoke("relaunch_admin");
+  } catch (e) {
+    $("elevate-sheet").hidden = true;
+    toast(String(e), true);
+  }
+});
 
 $("game-remove").addEventListener("click", async () => {
   const game = gameFor(open);
