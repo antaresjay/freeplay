@@ -32,12 +32,14 @@ impl Imported {
 
     pub fn breakdown(&self) -> String {
         let mut scripts = 0usize;
+        let mut mono = 0usize;
         let mut symbols: Vec<&str> = Vec::new();
         let mut other = 0usize;
 
         for skip in &self.skipped {
             match &skip.blocker {
                 Blocker::Script => scripts += 1,
+                Blocker::Mono => mono += 1,
                 Blocker::Symbol(name) => {
                     if !symbols.contains(&name.as_str()) {
                         symbols.push(name);
@@ -58,6 +60,14 @@ impl Imported {
             parts.push(format!(
                 "{scripts} {} assembly that has to run inside the game",
                 if scripts == 1 { "is" } else { "are" }
+            ));
+        }
+        if mono > 0 {
+            // a whole different reason from a normal script skip, and worth
+            // naming: it means the game is unity, not that the table is bad
+            parts.push(format!(
+                "{mono} {} the game's Mono runtime, which needs Cheat Engine's Mono plugin",
+                if mono == 1 { "reads" } else { "read" }
             ));
         }
         if anchored > 0 {
@@ -82,6 +92,8 @@ impl Imported {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Blocker {
     Script,
+    // a script that reaches into the mono runtime, so a unity game
+    Mono,
     Symbol(String),
     Other,
 }
@@ -319,10 +331,10 @@ fn convert(
     if is_script {
         match script_cheat(entry, &name, group, used) {
             Ok(cheat) => out.push(cheat),
-            Err(why) => skipped.push(Skipped {
+            Err((why, blocker)) => skipped.push(Skipped {
                 name: name.clone(),
                 why,
-                blocker: Blocker::Script,
+                blocker,
             }),
         }
     }
@@ -501,18 +513,25 @@ fn script_cheat(
     name: &str,
     group: Option<&str>,
     used: &mut HashSet<String>,
-) -> std::result::Result<Cheat, String> {
+) -> std::result::Result<Cheat, (String, Blocker)> {
     let source = entry.assembler.replace("\r\n", "\n").replace('\r', "\n");
     let source = source.trim();
     if source.is_empty() {
-        return Err("the script is empty".into());
+        return Err(("the script is empty".into(), Blocker::Script));
     }
     if !source.to_ascii_uppercase().contains("[ENABLE]") {
-        return Err("the script has no [ENABLE] section".into());
+        return Err(("the script has no [ENABLE] section".into(), Blocker::Script));
     }
     // one that will not parse can never run, so publishing it only wastes the
-    // reader's time working out why the toggle does nothing
-    freeplay_aa::parse(source).map_err(|e| e.to_string())?;
+    // reader's time working out why the toggle does nothing. a mono skip is
+    // sorted from a plain one so the summary can say the game is unity
+    if let Err(e) = freeplay_aa::parse(source) {
+        let blocker = match e {
+            freeplay_aa::AaError::NeedsMono(_) => Blocker::Mono,
+            _ => Blocker::Script,
+        };
+        return Err((e.to_string(), blocker));
+    }
 
     Ok(Cheat {
         id: unique_id(name, used),
@@ -1303,6 +1322,23 @@ alloc(newmem,$1000)
         let orens = back.cheats.iter().find(|c| c.name == "Orens").unwrap();
         assert_eq!(orens.hotkeys.len(), 2);
         assert_eq!(orens.hotkeys[1].value.as_deref(), Some("9999"));
+    }
+
+    // a unity table reads as unity, not as a broken script
+    #[test]
+    fn a_mono_script_is_called_out_as_mono() {
+        let xml = SAMPLE.replace(
+            "aobscanmodule(inj,witcher2.exe,89 41 04)\nalloc(newmem,$1000)",
+            "monoTailCave32(1,\"Player:get_hp\",5)\nnop",
+        );
+        let out = import(&xml, "unity.exe", "A Unity Game").unwrap();
+        let mono = out
+            .skipped
+            .iter()
+            .find(|s| s.blocker == Blocker::Mono)
+            .expect("the mono script should be blocked as mono");
+        assert!(mono.why.contains("Mono runtime"), "{}", mono.why);
+        assert!(out.breakdown().contains("Mono"), "{}", out.breakdown());
     }
 
     #[test]
