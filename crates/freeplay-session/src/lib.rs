@@ -285,6 +285,31 @@ impl Session {
         };
 
         let engaged = self.engage(cheat, addr)?;
+
+        /* two tables usually both have a health, and both resolve to the same
+        four bytes. two freezes writing one address fight, and the number on
+        screen flickers between them. names cannot be matched across tables
+        but the address can, so the one just switched on wins and the other
+        goes off, armed flag and all, or the next reconcile would put it
+        straight back */
+        if let Engaged::Freeze { addr, .. } = &engaged {
+            let losers: Vec<String> = {
+                let held = self.engaged.lock().unwrap();
+                held.iter()
+                    .filter(|(other, holds)| {
+                        other.as_str() != id
+                            && matches!(holds, Engaged::Freeze { addr: a, .. } if a == addr)
+                    })
+                    .map(|(other, _)| other.clone())
+                    .collect()
+            };
+            for loser in losers {
+                tracing::info!("{loser} holds the same address as {id}, switching it off");
+                self.armed.lock().unwrap().remove(&loser);
+                let _ = self.disable(&loser);
+            }
+        }
+
         self.engaged.lock().unwrap().insert(id.to_string(), engaged);
         Ok(())
     }
@@ -617,6 +642,17 @@ mod tests {
             offset = "0x140"
 
             [[cheat]]
+            id = "health_b"
+            name = "Health From The Other Table"
+            type = "freeze"
+            value_type = "i32"
+            value = 555
+            [cheat.locator]
+            find = "static"
+            module = "mock.exe"
+            offset = "0x40"
+
+            [[cheat]]
             id = "orphan"
             name = "Broken One"
             type = "nop"
@@ -646,6 +682,47 @@ mod tests {
             Scalar::I32(999)
         );
         assert!(s.is_on("health"));
+    }
+
+    /* two tables both freezing the same four bytes is the ordinary case once
+    tables merge. both writing means the number flickers between them, so
+    switching one on switches the other off */
+    #[test]
+    fn the_freeze_switched_on_last_wins_the_address() {
+        let (mock, s) = session();
+        s.arm("health").unwrap();
+        assert!(s.is_on("health"));
+
+        s.arm("health_b").unwrap();
+        assert!(s.is_on("health_b"));
+        assert!(!s.is_on("health"), "the first one went off");
+        assert!(!s.is_armed("health"), "and stays off across reconciles");
+        assert_eq!(
+            mock.read_scalar(BASE + 0x40, ValueKind::I32).unwrap(),
+            Scalar::I32(555)
+        );
+
+        // and a tick holds the winner's number, nothing fights it
+        mock.poke(BASE + 0x40, &7i32.to_ne_bytes());
+        s.tick();
+        assert_eq!(
+            mock.read_scalar(BASE + 0x40, ValueKind::I32).unwrap(),
+            Scalar::I32(555)
+        );
+
+        // going back the other way flips it again
+        s.arm("health").unwrap();
+        assert!(s.is_on("health"));
+        assert!(!s.is_on("health_b"));
+    }
+
+    #[test]
+    fn freezes_at_different_addresses_leave_each_other_alone() {
+        let (_, s) = session();
+        s.arm("health").unwrap();
+        s.arm("weight").unwrap();
+        assert!(s.is_on("health"));
+        assert!(s.is_on("weight"));
     }
 
     #[test]
@@ -834,7 +911,7 @@ mod tests {
     fn survey_reports_every_cheat() {
         let (_, s) = session();
         let states = s.survey();
-        assert_eq!(states.len(), 6);
+        assert_eq!(states.len(), 7);
 
         let broken = states.iter().find(|(id, _)| id == "orphan").unwrap();
         assert!(matches!(broken.1, State::Broken { .. }));
