@@ -2816,6 +2816,8 @@ async function drawOverlay() {
   $("overlay-on").classList.toggle("on", state.on);
   $("overlay-key").textContent = state.key;
   $("overlay-key-row").hidden = !state.on;
+  $("overlay-quiet-row").hidden = !state.on;
+  $("overlay-quiet").classList.toggle("on", !!state.quiet);
 
   const why = $("overlay-key-why");
   if (state.clash) {
@@ -2832,6 +2834,21 @@ $("overlay-on").addEventListener("click", async () => {
   try {
     await invoke("set_overlay", { on, key: null });
     toast(on ? "Overlay on. Press the shortcut while you play" : "Overlay off");
+  } catch (e) {
+    toast(String(e), true);
+  }
+  await drawOverlay();
+});
+
+$("overlay-quiet").addEventListener("click", async () => {
+  const quiet = !$("overlay-quiet").classList.contains("on");
+  try {
+    await invoke("set_overlay", { on: null, key: null, quiet });
+    toast(
+      quiet
+        ? "The panel will leave the game's focus alone"
+        : "The panel takes focus again, so you can type into it"
+    );
   } catch (e) {
     toast(String(e), true);
   }

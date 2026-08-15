@@ -80,14 +80,55 @@ pub fn show(app: &tauri::AppHandle, pid: Option<u32>) -> Result<(), String> {
 
     pin_to_game(&window, pid);
     *SHOWN_AT.lock().unwrap() = Some(Instant::now());
+
+    /* two ways to sit over a game. taking focus lets you type numbers into
+    the panel, and some games pause the moment they lose focus. quiet never
+    takes it: the game keeps running and the panel is click only */
+    let quiet = app
+        .state::<crate::App>()
+        .settings
+        .lock()
+        .unwrap()
+        .overlay_quiet;
+    keep_hands_off(&window, quiet);
+
     window.show().map_err(|e| e.to_string())?;
     let _ = window.set_always_on_top(true);
-    let _ = window.set_focus();
+    if !quiet {
+        let _ = window.set_focus();
+    }
     // it has been sitting hidden and polling slowly, so tell it to catch up
     // rather than showing whatever it last saw for a second
     let _ = window.emit("wake", ());
     Ok(())
 }
+
+// WS_EX_NOACTIVATE is what "never takes focus" means to windows. flipped
+// rather than set once, since the switch can change between two openings
+#[cfg(windows)]
+fn keep_hands_off(window: &tauri::WebviewWindow, quiet: bool) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+    };
+
+    let Ok(hwnd) = window.hwnd() else { return };
+    let hwnd = HWND(hwnd.0);
+    unsafe {
+        let held = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let wanted = if quiet {
+            held | WS_EX_NOACTIVATE.0 as isize
+        } else {
+            held & !(WS_EX_NOACTIVATE.0 as isize)
+        };
+        if wanted != held {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, wanted);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn keep_hands_off(_window: &tauri::WebviewWindow, _quiet: bool) {}
 
 // the game is what is in front, or the panel itself is because you clicked it
 //

@@ -157,7 +157,7 @@ const FOUND = [
 const PHRASE = ["cold","burst","cash","camel","cargo","bread","cloth","clerk",
   "adopt","camel","bear","candy","chalk","bank","alloy","boot","column"];
 
-let OVERLAY = {on: false, key: "Ctrl+Shift+O"};
+let OVERLAY = {on: false, key: "Ctrl+Shift+O", quiet: false};
 let QUESTION = {id: 7, game: "The Witcher 2", by: "aSwedishMagyar",
                 played: "1.5 hours", cheats: 3};
 window.__calls = [];
@@ -312,12 +312,13 @@ window.__TAURI__ = {
         case "open_url": return null;
         case "focus_game": window.__focused = args.exe; return null;
         case "overlay_status":
-          return {on: OVERLAY.on, key: OVERLAY.key, showing: false,
+          return {on: OVERLAY.on, key: OVERLAY.key, quiet: OVERLAY.quiet, showing: false,
                   clash: OVERLAY.key === "Alt+Z" ? "the NVIDIA overlay" : null,
                   game: "witcher2.exe"};
         case "set_overlay":
           if (args.on !== null && args.on !== undefined) OVERLAY.on = args.on;
           if (args.key) OVERLAY.key = args.key;
+          if (args.quiet !== null && args.quiet !== undefined) OVERLAY.quiet = args.quiet;
           return null;
         case "toggle_overlay":
           if (!window.__attachedNow) throw "attach to a game first, the overlay goes over the game";
@@ -1406,6 +1407,18 @@ PROBE = r"""
   note(document.getElementById("overlay-on").classList.contains("on"),
        "turning it on sticks");
   note(visible("overlay-key-row"), "and the shortcut appears");
+
+  /* the focus trade-off is a switch, not a decision made for anybody. quiet
+     means the game keeps running and the panel is click only */
+  note(visible("overlay-quiet-row"), "the focus switch appears with it");
+  document.getElementById("overlay-quiet").click();
+  await settle(300);
+  note(OVERLAY.quiet === true, "and flipping it reaches the backend");
+  note(document.getElementById("overlay-quiet").classList.contains("on"),
+       "the switch shows the choice");
+  document.getElementById("overlay-quiet").click();
+  await settle(300);
+  note(OVERLAY.quiet === false, "and it flips back");
   // the shortcut is part of the overlay, not a setting of its own, and two
   // cards of wildly different heights side by side left a hole
   note(document.getElementById("overlay-key-row").closest(".setting")

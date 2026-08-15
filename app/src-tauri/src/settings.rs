@@ -56,6 +56,11 @@ pub struct Settings {
     pub overlay: bool,
     #[serde(default = "default_hotkey")]
     pub overlay_key: String,
+    /* the panel takes focus when it opens, and some games pause the moment
+    they lose it. quiet means never take focus: the game keeps running, and
+    the panel can only be clicked, not typed into */
+    #[serde(default)]
+    pub overlay_quiet: bool,
     // keys rebound by hand, per exe then per cheat id. "" means the table's
     // own key was switched off
     #[serde(default)]
@@ -190,6 +195,7 @@ impl Default for Settings {
             folded: HashMap::new(),
             overlay: false,
             overlay_key: default_hotkey(),
+            overlay_quiet: false,
             keys: HashMap::new(),
             crashed: HashMap::new(),
             sittings: HashMap::new(),

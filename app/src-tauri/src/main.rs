@@ -1295,6 +1295,8 @@ fn pick_table(
 struct OverlayState {
     on: bool,
     key: String,
+    // never takes focus off the game
+    quiet: bool,
     showing: bool,
     // whatever well known program already uses that combination
     clash: Option<String>,
@@ -1311,6 +1313,7 @@ fn overlay_state(app: &tauri::AppHandle, state: &tauri::State<'_, App>) -> Overl
         on: settings.overlay,
         clash: hotkey::clash(&settings.overlay_key).map(str::to_string),
         key: settings.overlay_key.clone(),
+        quiet: settings.overlay_quiet,
         accent: settings.accent.clone(),
         showing: overlay::showing(app),
         game: state
@@ -1333,6 +1336,7 @@ fn set_overlay(
     state: tauri::State<'_, App>,
     on: Option<bool>,
     key: Option<String>,
+    quiet: Option<bool>,
 ) -> Result<OverlayState, String> {
     if let Some(text) = &key {
         // refuse it here rather than finding out at the next launch that
@@ -1347,6 +1351,9 @@ fn set_overlay(
         }
         if let Some(text) = key {
             settings.overlay_key = hotkey::spell(hotkey::parse(&text)?);
+        }
+        if let Some(quiet) = quiet {
+            settings.overlay_quiet = quiet;
         }
         settings::save(&settings)?;
     }
