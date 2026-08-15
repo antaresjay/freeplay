@@ -162,12 +162,39 @@
           <div class="game-actions">
             <button id="game-play" class="primary">Play</button>
             <button id="game-attach" class="ghost">Attach</button>
-            <button id="game-import" class="ghost" title="Convert a Cheat Engine .CT file for this game">Import a table</button>
-            <button id="game-export" class="ghost" hidden title="Write everything on this page, merged tables included, back out as one Cheat Engine table">Export .CT</button>
-            <button id="game-find-table" class="ghost" title="Look for a Cheat Engine table for this game">Search online</button>
-            <button id="game-folder" class="ghost" title="Open the install folder">Folder</button>
-            <button id="game-hide" class="ghost" title="Tuck it out of the library. Settings brings hidden games back.">Hide</button>
-            <button id="game-remove" class="ghost" hidden title="Take this one out of the library. The game itself is not touched.">Remove</button>
+            <div class="menu-wrap">
+              <button id="game-more" class="ghost more" aria-haspopup="true" aria-expanded="false" title="More for this game">
+                More
+                <svg class="caret-down" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg>
+              </button>
+              <div id="game-menu" class="menu" hidden>
+                <button id="game-import" class="menu-item" title="Convert a Cheat Engine .CT file for this game">
+                  <svg viewBox="0 0 16 16"><path d="M8 2v8M5 7l3 3 3-3M3 13h10"/></svg>
+                  Import a table
+                </button>
+                <button id="game-export" class="menu-item" hidden title="Write everything on this page, merged tables included, back out as one Cheat Engine table">
+                  <svg viewBox="0 0 16 16"><path d="M8 11V3M5 6l3-3 3 3M3 13h10"/></svg>
+                  Export as .CT
+                </button>
+                <button id="game-find-table" class="menu-item" title="Look for a Cheat Engine table for this game">
+                  <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2"/><path d="M10.5 10.5L14 14"/></svg>
+                  Search online
+                </button>
+                <button id="game-folder" class="menu-item" title="Open the install folder">
+                  <svg viewBox="0 0 16 16"><path d="M2 4.5h4l1.3 1.5H14v6.5H2z"/></svg>
+                  Open folder
+                </button>
+                <div class="menu-line"></div>
+                <button id="game-hide" class="menu-item" title="Tuck it out of the library. Settings brings hidden games back.">
+                  <svg viewBox="0 0 16 16"><path d="M2 8s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4z"/><path d="M3 3l10 10"/></svg>
+                  Hide from library
+                </button>
+                <button id="game-remove" class="menu-item danger" hidden title="Take this one out of the library. The game itself is not touched.">
+                  <svg viewBox="0 0 16 16"><path d="M4 5h8l-.7 8H4.7zM6 5V3h4v2"/></svg>
+                  Remove from Freeplay
+                </button>
+              </div>
+            </div>
             <span class="spacer"></span>
             <button id="game-fav" class="icon-toggle" title="Add to favourites">
               <svg viewBox="0 0 20 20"><path d="M10 2.8l2.3 4.6 5.1.7-3.7 3.6.9 5.1L10 14.4l-4.6 2.4.9-5.1L2.6 8.1l5.1-.7z"/></svg>

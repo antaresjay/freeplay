@@ -1866,6 +1866,38 @@ $("game-attach").addEventListener("click", () => {
   else toast("Could not work out which file to attach to", true);
 });
 
+/* the More popover. every action inside keeps its own handler by id, so this
+   only opens and shuts the menu and gets out of the way */
+function shutMenu() {
+  $("game-menu").hidden = true;
+  $("game-more").setAttribute("aria-expanded", "false");
+}
+$("game-more").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const menu = $("game-menu");
+  const opening = menu.hidden;
+  if (opening) {
+    // the hero clips its overflow for the art, so the popover is pinned to the
+    // viewport under the button instead of living inside that clipped box
+    const r = e.currentTarget.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.top = r.bottom + 6 + "px";
+    menu.style.left = r.left + "px";
+  }
+  menu.hidden = !opening;
+  $("game-more").setAttribute("aria-expanded", String(opening));
+});
+$("game-menu").addEventListener("click", (e) => {
+  // a real action was picked, so let it run and then close
+  if (e.target.closest(".menu-item")) shutMenu();
+});
+document.addEventListener("click", (e) => {
+  if (!$("game-menu").hidden && !e.target.closest(".menu-wrap")) shutMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") shutMenu();
+});
+
 $("game-fav").addEventListener("click", () => {
   if (open) saveConfig({ favourites: toggleIn(config.favourites, open) });
 });

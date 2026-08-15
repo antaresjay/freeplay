@@ -421,6 +421,7 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 11px;
@@ -438,11 +439,24 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 .nav-item svg { width: 17px; height: 17px; flex: none; }
 .nav-item:hover { background: var(--raised); color: var(--text); }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); }
+/* a lit bar down the side of the active tab, like the glow behind a pressed
+   arcade button. the accent already tints the row, this gives it an edge */
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
 
 .rail-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 3px;
   padding: 22px 11px 8px;
   font-size: 11px;
   font-weight: 650;
@@ -450,6 +464,9 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   text-transform: uppercase;
   color: var(--faint);
 }
+/* the label keeps the add button beside it, refresh anchors the far end */
+.rail-head span { margin-right: 4px; }
+.rail-head #refresh { margin-left: auto; }
 
 .icon-btn {
   width: 24px;
@@ -675,9 +692,9 @@ input::placeholder { color: var(--faint); }
 .banner {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 15px 18px;
-  margin-bottom: 24px;
+  gap: 10px;
+  padding: 12px 15px;
+  margin-bottom: 18px;
   border: 1px solid var(--line);
   border-radius: var(--r);
   background: var(--panel);
@@ -686,11 +703,13 @@ input::placeholder { color: var(--faint); }
 .banner strong {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13.5px;
-  font-weight: 600;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 620;
 }
-.banner p { margin: 4px 0 0 17px; font-size: 12.5px; color: var(--faint); max-width: 70ch; }
+/* body on its own line, so a short message and a long one are the same height
+   and nothing below jumps when you switch between two games */
+.banner p { margin: 2px 0 0 18px; font-size: 12.5px; color: var(--faint); max-width: 80ch; }
 
 /* ---------- shelves on the library page ---------- */
 
@@ -894,10 +913,10 @@ input::placeholder { color: var(--faint); }
   position: relative;
   display: flex;
   align-items: flex-end;
-  gap: 20px;
-  min-height: 230px;
+  gap: 22px;
+  min-height: 224px;
   padding: 24px 26px;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   overflow: hidden;
@@ -967,9 +986,8 @@ input::placeholder { color: var(--faint); }
 }
 .fact.live b { color: var(--accent); }
 
-/* five buttons and a star. they fit side by side on a wide window and ran off
-   the edge of the card on a narrow one, so they wrap instead. the labels never
-   break, a button that says "Import" over "a table" is worse than a second row */
+/* two real actions and a star. everything else lives behind More, so the row
+   stays the same width whatever state the game is in */
 .game-actions {
   display: flex;
   flex-wrap: wrap;
@@ -977,7 +995,59 @@ input::placeholder { color: var(--faint); }
   gap: 9px;
   margin-top: 3px;
 }
-.game-actions > button { white-space: nowrap; }
+.game-actions > button,
+.game-actions .more { white-space: nowrap; }
+
+/* the More button and the popover it opens */
+.menu-wrap { position: relative; }
+.more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.more .caret-down { width: 13px; height: 13px; transition: transform 0.16s var(--ease); }
+.more[aria-expanded="true"] .caret-down { transform: rotate(180deg); }
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 210px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--raised);
+  box-shadow: 0 18px 44px var(--shadow-strong);
+  animation: pop 0.14s var(--ease);
+}
+@keyframes pop {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.menu-item svg { width: 15px; height: 15px; flex: none; color: var(--faint); }
+.menu-item:hover { background: var(--raised-2); }
+.menu-item:hover svg { color: var(--dim); }
+.menu-item.danger { color: var(--bad); }
+.menu-item.danger svg { color: var(--bad); }
+.menu-item.danger:hover { background: rgba(255, 107, 107, 0.12); }
+.menu-line { height: 1px; margin: 5px 8px; background: var(--line-soft); }
 
 .icon-toggle {
   width: 32px;
@@ -1002,40 +1072,45 @@ input::placeholder { color: var(--faint); }
 
 /* ---------- detail rows ---------- */
 
+/* reference facts, not the point of the page: quiet and unboxed, under the
+   hero. a grid rather than a wrapping row so the height is the same whatever
+   the values are, or an epic app id wraps to a second line for one game and
+   walks everything below it down when you switch */
 .detail {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 2px 26px;
-  padding: 14px 0 22px;
-  border-bottom: 1px solid var(--line-soft);
-  margin-bottom: 22px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 4px 24px;
+  padding: 0 2px 16px;
+  margin-bottom: 4px;
 }
 .detail-row {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 7px;
   min-width: 0;
-  padding: 3px 0;
 }
 .detail-row span {
   flex: none;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 650;
-  letter-spacing: 0.7px;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
   color: var(--faint);
 }
 /* an epic app id is three hex words joined by colons and it used to run off
    the right of the page */
 .detail-row b {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--dim);
   min-width: 0;
+  max-width: 340px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* anti-cheat is the one detail worth a colour when it is there */
+#detail-guard-row b { color: var(--bad); }
 /* install paths are long and the bit you want is the last folder */
 .detail-row b.path {
   direction: rtl;
