@@ -142,8 +142,10 @@ pub fn describes_itself(file: &Path) -> Option<String> {
     langs.push("040904b0".into());
     langs.push("040904e4".into());
 
+    // description first: a system binary's ProductName is "Microsoft Windows
+    // Operating System", which names nothing
     for lang in &langs {
-        for what in ["ProductName", "FileDescription", "CompanyName"] {
+        for what in ["FileDescription", "ProductName", "CompanyName"] {
             if let Some(text) = ask(&format!("\\StringFileInfo\\{lang}\\{what}")) {
                 return Some(text);
             }
