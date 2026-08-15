@@ -16,6 +16,12 @@ pub enum AaError {
     )]
     NeedsPlugin(String),
 
+    #[error(
+        "{0} reads addresses out of the game's Mono runtime, which Freeplay cannot walk yet. \
+         this is a Unity game and the table needs Cheat Engine's Mono dissector"
+    )]
+    NeedsMono(String),
+
     #[error("{0} is used but never scanned for, allocated or labelled")]
     UndefinedSymbol(String),
 

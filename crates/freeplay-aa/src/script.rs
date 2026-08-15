@@ -222,8 +222,12 @@ fn read_half(lines: &[(usize, String)]) -> Result<Half> {
 
         // `dbee(aob_hascontent)` and `monoTailCave32(1,"AIAir:Start",5)` come
         // from lua a table author had installed. saying so beats complaining
-        // that it is not an instruction, which it was never meant to be
+        // that it is not an instruction, which it was never meant to be. mono
+        // is worth naming on its own: it means a unity game, not a bad table
         if let Some(name) = plugin_call(trimmed) {
+            if is_mono(&name) {
+                return Err(AaError::NeedsMono(name));
+            }
             return Err(AaError::NeedsPlugin(name));
         }
 
@@ -463,6 +467,13 @@ fn read_directive(raw: &str) -> Result<Option<Directive>> {
     Ok(Some(directive))
 }
 
+// the mono helpers a table brings in from the ce mono plugin. all of them
+// start mono, bar a couple of camelcase ones cheat engine ships
+fn is_mono(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.starts_with("mono") || lower.starts_with("il2cpp") || lower.starts_with("getmono")
+}
+
 fn plugin_call(text: &str) -> Option<String> {
     let line = text.trim();
     let (name, rest) = line.split_once('(')?;
@@ -651,6 +662,23 @@ dealloc(newgetWitcher)
         let source = "[ENABLE]\n{$lua}\nif syntaxcheck then return end\nprint('hi')\n[DISABLE]\n";
         let why = parse(source).unwrap_err().to_string();
         assert!(why.contains("Lua"), "{why}");
+    }
+
+    // a mono helper is a unity table, worth its own message rather than the
+    // generic lua one
+    #[test]
+    fn a_mono_helper_is_refused_as_mono() {
+        let source = "[ENABLE]\nmonoTailCave32(1,\"AIAir:Start\",5)\nnop\n[DISABLE]\n";
+        let err = parse(source).unwrap_err();
+        assert!(matches!(err, AaError::NeedsMono(_)), "{err:?}");
+        assert!(err.to_string().contains("Mono"), "{err}");
+    }
+
+    #[test]
+    fn a_non_mono_plugin_is_still_a_plain_plugin() {
+        let source = "[ENABLE]\ndbee(aob_hascontent)\nnop\n[DISABLE]\n";
+        let err = parse(source).unwrap_err();
+        assert!(matches!(err, AaError::NeedsPlugin(_)), "{err:?}");
     }
 
     // real tables do this: a luacall on line one, above [ENABLE], where the
