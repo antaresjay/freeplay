@@ -120,8 +120,31 @@ pub struct Cheat {
     pub hint: String,
     #[serde(default)]
     pub locator: Option<Locator>,
+    // keys the table author bound, straight out of the file
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hotkeys: Vec<Hotkey>,
     #[serde(flatten)]
     pub action: Action,
+}
+
+// what pressing it does. cheat engine also has increase and decrease by a
+// step, which nothing here supports yet, so those are dropped on import
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tap {
+    Toggle,
+    On,
+    Off,
+    Set,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Hotkey {
+    pub does: Tap,
+    // virtual key codes, modifiers included, exactly as the table listed them
+    pub keys: Vec<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
 }
 
 fn default_category() -> Category {

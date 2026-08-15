@@ -5,7 +5,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 
 use crate::schema::{
-    Action, Category, Cheat, Choice, Game, Hop, Locator, Meta, Number, Table, TypeName,
+    Action, Category, Cheat, Choice, Game, Hop, Hotkey, Locator, Meta, Number, Table, Tap, TypeName,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,7 +100,16 @@ struct Entry {
     // whatever cheat engine last saw at that address. the only honest starting
     // number we have, so it beats making one up
     last_seen: String,
+    hotkeys: Vec<RawKey>,
     children: Vec<Entry>,
+}
+
+// a <Hotkey> block as written, sorted out into a schema hotkey later
+#[derive(Debug, Default, Clone)]
+struct RawKey {
+    action: String,
+    keys: Vec<u32>,
+    value: String,
 }
 
 pub fn import(xml: &str, exe: &str, game_name: &str) -> Result<Imported, String> {
@@ -137,6 +146,7 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
     let mut roots: Vec<Entry> = Vec::new();
     let mut field = String::new();
     let mut depth_of_offsets = 0usize;
+    let mut depth_of_hotkeys = 0usize;
     let mut depth = 0i32;
 
     loop {
@@ -157,6 +167,12 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
                 match name.as_str() {
                     "CheatEntry" => stack.push(Entry::default()),
                     "Offsets" => depth_of_offsets += 1,
+                    "Hotkeys" => depth_of_hotkeys += 1,
+                    "Hotkey" if depth_of_hotkeys > 0 => {
+                        if let Some(entry) = stack.last_mut() {
+                            entry.hotkeys.push(RawKey::default());
+                        }
+                    }
                     other => field = other.to_string(),
                 }
             }
@@ -209,6 +225,21 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
                             .collect();
                     }
                     "ShowAsHex" => entry.hex = value == "1",
+                    "Action" if depth_of_hotkeys > 0 => {
+                        if let Some(raw) = entry.hotkeys.last_mut() {
+                            raw.action = value;
+                        }
+                    }
+                    "Key" if depth_of_hotkeys > 0 => {
+                        if let (Some(raw), Ok(code)) = (entry.hotkeys.last_mut(), value.parse()) {
+                            raw.keys.push(code);
+                        }
+                    }
+                    "Value" if depth_of_hotkeys > 0 => {
+                        if let Some(raw) = entry.hotkeys.last_mut() {
+                            raw.value = value;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -218,6 +249,7 @@ fn parse(xml: &str) -> Result<Vec<Entry>, String> {
                 let name = String::from_utf8_lossy(tag.name().as_ref()).to_string();
                 match name.as_str() {
                     "Offsets" => depth_of_offsets = depth_of_offsets.saturating_sub(1),
+                    "Hotkeys" => depth_of_hotkeys = depth_of_hotkeys.saturating_sub(1),
                     "CheatEntry" => {
                         if let Some(done) = stack.pop() {
                             match stack.last_mut() {
@@ -341,6 +373,7 @@ fn convert(
         description: String::new(),
         hint: String::new(),
         locator: Some(locator),
+        hotkeys: keys_of(entry),
         action: Action::Value {
             kind: TypeName(kind),
             value: starting_value(&name, kind, &entry.last_seen, &choices),
@@ -472,10 +505,43 @@ fn script_cheat(
         description: String::new(),
         hint: String::new(),
         locator: None,
+        hotkeys: keys_of(entry),
         action: Action::Script {
             source: source.to_string(),
         },
     })
+}
+
+// the hotkey blocks an entry carried, minus the ones nothing here can do
+fn keys_of(entry: &Entry) -> Vec<Hotkey> {
+    entry
+        .hotkeys
+        .iter()
+        .filter_map(|raw| {
+            let does = match raw.action.as_str() {
+                // cheat engine writes an empty action for plain toggle
+                ""
+                | "Toggle Activation"
+                | "Toggle Activation Allow Increase"
+                | "Toggle Activation Allow Decrease" => Tap::Toggle,
+                "Activate" => Tap::On,
+                "Deactivate" => Tap::Off,
+                "Set Value" => Tap::Set,
+                _ => return None,
+            };
+            if raw.keys.is_empty() {
+                return None;
+            }
+            if does == Tap::Set && raw.value.trim().is_empty() {
+                return None;
+            }
+            Some(Hotkey {
+                does,
+                keys: raw.keys.clone(),
+                value: (does == Tap::Set).then(|| raw.value.trim().to_string()),
+            })
+        })
+        .collect()
 }
 
 fn symbol_in(address: &str) -> Option<String> {
@@ -990,5 +1056,61 @@ alloc(newmem,$1000)
         let back = crate::Table::parse(&text).expect("what we write we must be able to read");
         assert_eq!(back.cheats.len(), out.table.cheats.len());
         assert_eq!(back.cheats[0].name, "Infinite Health");
+    }
+
+    fn keyed() -> Imported {
+        let xml = SAMPLE.replace(
+            "<Address>witcher2.exe+3C4D5E</Address>",
+            "<Address>witcher2.exe+3C4D5E</Address>\
+             <Hotkeys>\
+               <Hotkey><Action>Toggle Activation</Action>\
+                 <Keys><Key>112</Key></Keys><ID>0</ID></Hotkey>\
+               <Hotkey><Action>Set Value</Action>\
+                 <Keys><Key>17</Key><Key>113</Key></Keys>\
+                 <Value>9999</Value><ID>1</ID></Hotkey>\
+               <Hotkey><Action>Increase Value</Action>\
+                 <Keys><Key>114</Key></Keys><Value>10</Value><ID>2</ID></Hotkey>\
+             </Hotkeys>",
+        );
+        import(&xml, "witcher2.exe", "The Witcher 2").unwrap()
+    }
+
+    #[test]
+    fn the_keys_the_author_bound_come_across() {
+        let out = keyed();
+        let orens = out.table.cheats.iter().find(|c| c.name == "Orens").unwrap();
+
+        assert_eq!(
+            orens.hotkeys.len(),
+            2,
+            "increase by a step is not a thing here"
+        );
+        assert_eq!(orens.hotkeys[0].does, Tap::Toggle);
+        assert_eq!(orens.hotkeys[0].keys, [112]);
+        assert_eq!(orens.hotkeys[1].does, Tap::Set);
+        assert_eq!(orens.hotkeys[1].keys, [17, 113]);
+        assert_eq!(orens.hotkeys[1].value.as_deref(), Some("9999"));
+    }
+
+    #[test]
+    fn a_key_on_one_entry_does_not_leak_onto_the_next() {
+        let out = keyed();
+        for cheat in out.table.cheats.iter().filter(|c| c.name != "Orens") {
+            assert!(
+                cheat.hotkeys.is_empty(),
+                "{} got keys from nowhere",
+                cheat.name
+            );
+        }
+    }
+
+    #[test]
+    fn bound_keys_survive_the_toml_round_trip() {
+        let out = keyed();
+        let text = toml::to_string_pretty(&out.table).unwrap();
+        let back = crate::Table::parse(&text).expect("keys must not break the file");
+        let orens = back.cheats.iter().find(|c| c.name == "Orens").unwrap();
+        assert_eq!(orens.hotkeys.len(), 2);
+        assert_eq!(orens.hotkeys[1].value.as_deref(), Some("9999"));
     }
 }
