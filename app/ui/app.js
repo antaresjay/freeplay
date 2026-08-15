@@ -752,6 +752,9 @@ function drawGamePage() {
     ? "unrecognised, found " + game.guard_file
     : game.guard || "";
   $("game-folder").disabled = !game.dir;
+  // only for games that were pointed at by hand. the stores put theirs back
+  // on the next scan, so offering to remove those would be a lie
+  $("game-remove").hidden = game.store !== "Manual";
 
 
   const fav = $("game-fav");
@@ -1912,6 +1915,32 @@ $("game-folder").addEventListener("click", () => {
   const game = gameFor(open);
   if (!game) return;
   invoke("open_folder", { dir: game.dir }).catch((e) => toast(String(e), true));
+});
+
+$("add-game").addEventListener("click", async () => {
+  try {
+    const name = await invoke("add_game");
+    // nothing back means the picker was closed, which needs no toast
+    if (!name) return;
+    toast(name + " added");
+    await loadGames(true);
+  } catch (e) {
+    toast(String(e), true);
+  }
+});
+
+$("game-remove").addEventListener("click", async () => {
+  const game = gameFor(open);
+  if (!game) return;
+  try {
+    await invoke("remove_added", { dir: game.dir });
+    toast(game.name + " removed");
+    open = null;
+    showView("library");
+    await loadGames(true);
+  } catch (e) {
+    toast(String(e), true);
+  }
 });
 
 /* dropping a .CT anywhere on the window imports it. tauri reports the drop, the

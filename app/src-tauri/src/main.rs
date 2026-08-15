@@ -395,6 +395,19 @@ fn guard_for(state: &tauri::State<'_, App>, dir: &Path) -> Option<Guard> {
         return cached.clone();
     }
 
+    /* a game folder with anti-cheat files in it is a strong hint. a windows
+    folder is not: system32 holds the installed anti-cheat services for every
+    game on the machine, and a hand added exe living there was reading as
+    guarded by all of them. the check that counts still runs at attach */
+    let system = std::env::var("WINDIR").is_ok_and(|windir| {
+        let lowered = PathBuf::from(dir.display().to_string().to_lowercase());
+        lowered.starts_with(PathBuf::from(windir.to_lowercase()))
+    });
+    if system {
+        state.guards.lock().unwrap().insert(dir.to_path_buf(), None);
+        return None;
+    }
+
     let mut paths = Vec::new();
     folder_names(dir, 2, &mut paths);
     let names: Vec<String> = paths
@@ -438,9 +451,116 @@ fn library(state: &tauri::State<'_, App>, refresh: bool) -> Vec<InstalledGame> {
         }
     }
 
-    let found = discover();
+    let mut found = discover();
+    hand_adds(state, &mut found);
     *state.library.lock().unwrap() = Some(found.clone());
     found
+}
+
+// the games pointed at by hand, folded in after the store scan. one a store
+// already found is skipped rather than listed twice
+fn hand_adds(state: &tauri::State<'_, App>, found: &mut Vec<InstalledGame>) {
+    let added = state.settings.lock().unwrap().added.clone();
+    for text in added {
+        let exe = PathBuf::from(&text);
+        if !exe.is_file() {
+            continue;
+        }
+        let mine = text.to_lowercase();
+        let twice = found.iter().any(|game| {
+            game.executables
+                .iter()
+                .any(|e| e.display().to_string().to_lowercase() == mine)
+        });
+        if twice {
+            continue;
+        }
+        found.push(InstalledGame {
+            name: called(&exe),
+            store: Store::Manual,
+            install_dir: exe
+                .parent()
+                .map(|d| d.to_path_buf())
+                .unwrap_or_else(|| PathBuf::from(".")),
+            app_id: None,
+            version: freeplay_library::build::of(&exe),
+            executables: vec![exe],
+        });
+    }
+}
+
+// what to call an exe somebody pointed at. its version block usually says
+fn called(exe: &Path) -> String {
+    if let Some(told) = freeplay_library::build::describes_itself(exe) {
+        if !told.to_ascii_lowercase().contains("operating system") {
+            return told;
+        }
+    }
+    exe.file_stem()
+        .map(|s| s.to_string_lossy().replace(['_', '-'], " "))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "Added game".into())
+}
+
+// point freeplay at any exe. no path means ask with the picker, and the
+// empty string back means it was closed without choosing, worth no toast
+#[tauri::command]
+async fn add_game(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, App>,
+    path: Option<String>,
+) -> Result<String, String> {
+    let path = match path {
+        Some(text) => {
+            let given = PathBuf::from(&text);
+            if !given.is_file() {
+                return Err(format!("there is no file at {text}"));
+            }
+            given
+        }
+        None => match dialog::open(&dialog::Ask {
+            owner: owner_window(&app),
+            title: "Pick the game's exe",
+            kinds: &[("Programs", "*.exe")],
+            suggested: "",
+            extension: "exe",
+        }) {
+            Some(picked) => picked,
+            None => return Ok(String::new()),
+        },
+    };
+
+    let text = path.display().to_string();
+    {
+        let mut settings = state.settings.lock().unwrap();
+        if !settings
+            .added
+            .iter()
+            .any(|held| held.eq_ignore_ascii_case(&text))
+        {
+            settings.added.push(text);
+            settings::save(&settings)?;
+        }
+    }
+    *state.library.lock().unwrap() = None;
+    Ok(called(&path))
+}
+
+#[tauri::command]
+fn remove_added(state: tauri::State<'_, App>, dir: String) -> Result<(), String> {
+    let wanted = dir.to_lowercase();
+    {
+        let mut settings = state.settings.lock().unwrap();
+        settings.added.retain(|held| {
+            PathBuf::from(held)
+                .parent()
+                .map(|p| p.display().to_string().to_lowercase())
+                != Some(wanted.clone())
+        });
+        settings::save(&settings)?;
+    }
+    *state.library.lock().unwrap() = None;
+    Ok(())
 }
 
 // async so it lands on a worker. a sync command runs on the main thread and
@@ -3230,6 +3350,8 @@ fn main() {
             set_cheat,
             set_cheat_value,
             bind_key,
+            add_game,
+            remove_added,
             scan_start,
             scan_next,
             write_value,

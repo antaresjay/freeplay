@@ -69,6 +69,10 @@ pub struct Settings {
     // installs have nobody else counting
     #[serde(default)]
     pub sittings: HashMap<String, Sitting>,
+    // games pointed at by hand, as full exe paths. the stores know nothing
+    // about these
+    #[serde(default)]
+    pub added: Vec<String>,
     // one key that switches every cheat off at once
     #[serde(default = "default_panic")]
     pub panic: String,
@@ -177,6 +181,7 @@ impl Default for Settings {
             keys: HashMap::new(),
             crashed: HashMap::new(),
             sittings: HashMap::new(),
+            added: Vec::new(),
             panic: default_panic(),
             chirp: true,
             install_id: String::new(),
