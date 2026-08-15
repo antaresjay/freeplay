@@ -919,13 +919,15 @@ async function refreshCheats() {
   let fit = null;
   let credit = null;
   let shut = null;
+  let kept = [];
   try {
-    [rows, tables, fit, credit, shut] = await Promise.all([
+    [rows, tables, fit, credit, shut, kept] = await Promise.all([
       invoke("cheats", { exe: game.exe }),
       fresh ? loadTables(game.exe) : null,
       fresh ? loadFit(game.exe) : null,
       fresh ? loadCredit(game.exe) : null,
       fresh ? invoke("folded", { exe: game.exe }).catch(() => []) : null,
+      invoke("last_loadout", { exe: game.exe }).catch(() => []),
     ]);
   } catch {
     return;
@@ -948,8 +950,20 @@ async function refreshCheats() {
   // thing most of them had to say and read as filler
   $("cheat-typing").hidden = !rows.some((row) => row.editable);
 
+  /* the one press that brings the last set back, offered only when nothing is
+     on and there was a last set. after a panic key this is the way home */
+  const offer = $("rearm-last");
+  const allOff = rows.length > 0 && rows.every((row) => !row.armed);
+  offer.hidden = !(allOff && kept.length);
+  if (!offer.hidden) {
+    offer.textContent = "Turn on what you had (" + kept.length + ")";
+  }
+
   const byCategory = new Map();
+  const pinned = rows.filter((row) => row.starred);
+  if (pinned.length) byCategory.set("Pinned", pinned);
   for (const row of rows) {
+    if (row.starred) continue;
     if (!byCategory.has(row.category)) byCategory.set(row.category, []);
     byCategory.get(row.category).push(row);
   }
@@ -958,7 +972,8 @@ async function refreshCheats() {
      again wiped hover, killed focus and made the whole panel blink, so the
      cards are only built when the table itself changes and patched otherwise.
      the value box is never touched here, or it would eat what you are typing */
-  const shape = game.exe + rows.map((r) => r.id + r.category).join("|");
+  const shape =
+    game.exe + rows.map((r) => r.id + r.category + (r.starred ? "*" : "")).join("|");
   if (shape !== refreshCheats.shape) {
     refreshCheats.shape = shape;
     refreshCheats.cards = new Map();
@@ -1275,6 +1290,18 @@ function applyCheatFilter() {
 
 $("cheat-filter").addEventListener("input", filterCheats);
 
+$("rearm-last").addEventListener("click", async () => {
+  const game = gameFor(open);
+  if (!game) return;
+  try {
+    const n = await invoke("rearm", { exe: game.exe });
+    toast(many(n, "cheat") + " back on");
+    await refreshCheats();
+  } catch (e) {
+    toast(String(e), true);
+  }
+});
+
 /* you can switch a cheat on whenever. whether it is actually doing anything is
    a separate thing the card says underneath, since the pointer most of them
    hang off is null until you load a save */
@@ -1311,6 +1338,7 @@ function cheatCard(item, exe) {
   name.appendChild(tag);
 
   name.appendChild(keyChip(item, exe));
+  name.appendChild(pinButton(item, exe));
 
   // only filled in when more than one table is folded into the list
   if (item.from) {
@@ -1345,6 +1373,27 @@ function cheatCard(item, exe) {
 
   card.append(main, toggle);
   return card;
+}
+
+/* a merged table runs to fifty rows and most people use three. the star
+   gathers those three on a shelf of their own at the top */
+function pinButton(item, exe) {
+  const pin = document.createElement("button");
+  pin.className = "cheat-pin" + (item.starred ? " on" : "");
+  pin.innerHTML =
+    '<svg viewBox="0 0 20 20"><path d="M10 2.8l2.3 4.6 5.1.7-3.7 3.6.9 5.1L10 14.4l-4.6 2.4.9-5.1L2.6 8.1l5.1-.7z"/></svg>';
+  pin.title = item.starred ? "Take it off the pinned shelf" : "Pin it to the top";
+  pin.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    try {
+      await invoke("star_cheat", { exe, id: item.id, on: !item.starred });
+      item.starred = !item.starred;
+      await refreshCheats();
+    } catch (err) {
+      toast(String(err), true);
+    }
+  });
+  return pin;
 }
 
 /* the key that flips this cheat while you play. tables bring their own, the
@@ -1928,6 +1977,7 @@ $("add-game").addEventListener("click", async () => {
     toast(String(e), true);
   }
 });
+
 
 $("game-remove").addEventListener("click", async () => {
   const game = gameFor(open);

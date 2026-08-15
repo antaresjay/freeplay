@@ -1606,6 +1606,39 @@ input::placeholder { color: var(--faint); }
   pointer-events: auto;
 }
 
+/* the pin star. out of the way until the card is hovered, always there once
+   the cheat is on the shelf */
+.cheat-pin {
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+  vertical-align: -1px;
+  opacity: 0;
+  pointer-events: none;
+  transition: color 0.14s, opacity 0.14s;
+}
+.cheat-pin svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.cheat:hover .cheat-pin,
+.cheat:focus-within .cheat-pin {
+  opacity: 0.7;
+  pointer-events: auto;
+}
+.cheat-pin.on {
+  opacity: 1;
+  pointer-events: auto;
+  color: var(--accent);
+}
+.cheat-pin.on svg { fill: currentColor; }
+
 .ov-kbd {
   white-space: nowrap;
   margin-left: 6px;

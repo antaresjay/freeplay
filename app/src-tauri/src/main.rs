@@ -155,6 +155,8 @@ struct CheatRow {
     key: String,
     // the game went down right after this one was switched on, last time
     suspect: bool,
+    // pinned to the top of the list
+    starred: bool,
     does: String,
     // takes a number rather than being a plain switch
     editable: bool,
@@ -2305,6 +2307,7 @@ fn cheat_row(cheat: &freeplay_table::schema::Cheat, typed: Option<&String>) -> C
         live: false,
         key: String::new(),
         suspect: false,
+        starred: false,
         does: cheat.action.label().to_string(),
         editable: cheat.action.takes_a_number(),
         kind: cheat
@@ -2389,11 +2392,16 @@ fn credit(state: tauri::State<'_, App>, exe: String) -> Credit {
 fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
     let typed = values_for(&state, &exe);
     let named = credits(&exe);
-    let (bound, scars) = {
+    let (bound, scars, stars) = {
         let settings = state.settings.lock().unwrap();
         (
             settings.keys.get(&exe.to_lowercase()).cloned(),
             settings.crashed.get(&exe.to_lowercase()).cloned(),
+            settings
+                .starred
+                .get(&exe.to_lowercase())
+                .cloned()
+                .unwrap_or_default(),
         )
     };
     let guard = state.session.lock().unwrap();
@@ -2417,6 +2425,7 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
                 let mut row = cheat_row(cheat, typed.get(&cheat.id));
                 row.key = shown_key(bound.as_ref(), cheat);
                 row.suspect = scars.as_ref().is_some_and(|s| s.contains_key(&cheat.id));
+                row.starred = stars.contains(&cheat.id);
                 row.from = whose(&named, &cheat.id);
                 row.state = if live { "on".into() } else { label.to_string() };
                 row.reason = reason;
@@ -2459,6 +2468,7 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
             let mut row = cheat_row(cheat, typed.get(&cheat.id));
             row.key = shown_key(bound.as_ref(), cheat);
             row.suspect = scars.as_ref().is_some_and(|s| s.contains_key(&cheat.id));
+            row.starred = stars.contains(&cheat.id);
             row.from = whose(&named, &cheat.id);
             row.armed = armed.contains(&cheat.id);
             row
@@ -2900,9 +2910,62 @@ fn remember_armed(state: &tauri::State<'_, App>, exe: &str, ids: Vec<String>) {
     if ids.is_empty() {
         settings.armed.remove(&exe.to_lowercase());
     } else {
+        // the last set that was on together, for bringing back in one press
+        // after a panic
+        settings.loadout.insert(exe.to_lowercase(), ids.clone());
         settings.armed.insert(exe.to_lowercase(), ids);
     }
     let _ = settings::save(&settings);
+}
+
+// the set the one click would bring back, but only when it would change
+// anything: with cheats already on there is nothing to offer
+#[tauri::command]
+fn last_loadout(state: tauri::State<'_, App>, exe: String) -> Vec<String> {
+    let settings = state.settings.lock().unwrap();
+    if settings.armed.contains_key(&exe.to_lowercase()) {
+        return Vec::new();
+    }
+    settings
+        .loadout
+        .get(&exe.to_lowercase())
+        .cloned()
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn rearm(state: tauri::State<'_, App>, exe: String) -> Result<usize, String> {
+    let wanted = last_loadout(state.clone(), exe.clone());
+    if wanted.is_empty() {
+        return Err("there is nothing to bring back".into());
+    }
+    for id in &wanted {
+        // one that stopped resolving must not stop the rest coming back
+        if let Err(e) = set_cheat(state.clone(), exe.clone(), id.clone(), true) {
+            tracing::info!("{id} did not come back: {e}");
+        }
+    }
+    Ok(wanted.len())
+}
+
+#[tauri::command]
+fn star_cheat(state: tauri::State<'_, App>, exe: String, id: String, on: bool) -> Vec<String> {
+    let mut settings = state.settings.lock().unwrap();
+    let held = settings.starred.entry(exe.to_lowercase()).or_default();
+    held.retain(|kept| kept != &id);
+    if on {
+        held.push(id);
+    }
+    if held.is_empty() {
+        settings.starred.remove(&exe.to_lowercase());
+    }
+    let out = settings
+        .starred
+        .get(&exe.to_lowercase())
+        .cloned()
+        .unwrap_or_default();
+    let _ = settings::save(&settings);
+    out
 }
 
 #[tauri::command]
@@ -3352,6 +3415,9 @@ fn main() {
             bind_key,
             add_game,
             remove_added,
+            star_cheat,
+            last_loadout,
+            rearm,
             scan_start,
             scan_next,
             write_value,

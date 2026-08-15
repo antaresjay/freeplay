@@ -67,7 +67,7 @@ const GAMES = [
 ];
 
 const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true,
-               from:"", key:"", suspect:false};
+               from:"", key:"", suspect:false, starred:false};
 // categories somebody shut, the way settings.json keeps them
 let FOLDED = {};
 
@@ -192,6 +192,19 @@ window.__TAURI__ = {
           // the picker was closed without choosing
           window.__added = true;
           return "";
+        case "star_cheat": {
+          const row = CHEATS.find(c => c.id === args.id);
+          window.__starred = {id: args.id, on: args.on, found: !!row};
+          if (row) row.starred = args.on;
+          return CHEATS.filter(c => c.starred).map(c => c.id);
+        }
+        case "last_loadout":
+          return CHEATS.some(c => c.armed) ? [] : ["vitality"];
+        case "rearm": {
+          const row = CHEATS.find(c => c.id === "vitality");
+          if (row) row.armed = true;
+          return 1;
+        }
         case "remove_added":
           window.__removed = args.dir;
           GAMES.splice(GAMES.findIndex(g => g.dir === args.dir), 1);
@@ -236,14 +249,16 @@ window.__TAURI__ = {
             if (held.length && held.every(t => !t.using)) return [];
           }
           // the witcher answers slowly on purpose. switching away mid flight
-          // used to paint the game you had just left
+          // used to paint the game you had just left. copied on the way out
+          // because real ipc serialises: handing the same objects to the page
+          // let its optimistic flip undo what star_cheat had just written
           if (args.exe === "witcher2.exe") {
             await new Promise(r => setTimeout(r, 400));
-            return CHEATS;
+            return JSON.parse(JSON.stringify(CHEATS));
           }
           if (args.exe === "Detroit.exe") {
             await new Promise(r => setTimeout(r, 300));
-            return OTHER_CHEATS;
+            return JSON.parse(JSON.stringify(OTHER_CHEATS));
           }
           return [];
         case "set_cheat": return null;
@@ -570,6 +585,37 @@ PROBE = r"""
            why.textContent.includes("went down right after"),
            "a cheat blamed for a crash warns on its card (" + why.textContent + ")");
     }
+
+    /* pinning. the star moves a cheat onto a shelf of its own at the top,
+       and unpinning puts it back where it came from */
+    {
+      const named = (want) => [...document.querySelectorAll("#cheat-groups .cheat")]
+        .find(c => c.querySelector(".cheat-name").textContent.startsWith(want));
+      named("Orens").querySelector(".cheat-pin").click();
+      // the witcher stub answers slowly on purpose, so wait it out
+      await settle(1100);
+      note(window.__starred && window.__starred.id === "orens" && window.__starred.on,
+           "the star pins the cheat (found " + (window.__starred && window.__starred.found) + ")");
+      const groups = document.querySelectorAll("#cheat-groups .group");
+      const heads = [...document.querySelectorAll("#cheat-groups .group h3")]
+        .map(h => h.textContent).join(",");
+      note(groups[0].querySelector("h3").textContent === "Pinned" &&
+           groups[0].querySelectorAll(".cheat").length === 1,
+           "and a pinned shelf appears first with it on (" + heads + ")");
+      note(named("Orens").querySelector(".cheat-pin").classList.contains("on"),
+           "the star on the card is filled in (" +
+           named("Orens").querySelector(".cheat-pin").className + ")");
+
+      named("Orens").querySelector(".cheat-pin").click();
+      await settle(1100);
+      note(![...document.querySelectorAll("#cheat-groups .group h3")]
+             .some(h => h.textContent === "Pinned"),
+           "unpinning takes the shelf away again");
+    }
+
+    // the one press that brings a loadout back only shows when nothing is on
+    note(document.getElementById("rearm-last").hidden,
+         "with a cheat still armed there is nothing to bring back");
 
     // a cheat that needs a number, which plenty of them are
     const boxes = document.querySelectorAll("#cheat-groups .cheat-value input");

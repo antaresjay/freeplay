@@ -24,7 +24,8 @@ window.__errors = [];
 window.addEventListener("error", e => window.__errors.push(String(e.message)));
 window.addEventListener("unhandledrejection", e => window.__errors.push("promise: " + e.reason));
 
-const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true};
+const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true,
+               starred:false};
 let ATTACHED = {process:"witcher2.exe", pid:1234, game:"The Witcher 2",
                 table:true, arch:"32-bit"};
 let FOLDED = {};
@@ -41,7 +42,7 @@ let CHEATS = [
    editable:true, kind:"i32", value:"5000", current:""},
   {id:"difficulty", name:"Difficulty", category:"Game", description:"", hint:"",
    state:"ready", reason:"", armed:false, live:false, does:"Set once", ...plain,
-   editable:true, kind:"i32", value:"1", holds:false, suspect:true,
+   editable:true, kind:"i32", value:"1", holds:false, suspect:true, starred:true,
    choices:[{value:"0",label:"Easy"},{value:"1",label:"Normal"},{value:"2",label:"Hard"}]}
 ];
 
@@ -138,6 +139,10 @@ PROBE = r"""
   const scar = document.querySelector(".ov-why.dead");
   note(!!scar && scar.textContent === "Went down with the game last time",
        "a blamed cheat warns in the overlay too");
+
+  // the pinned shelf carries over from the main window
+  const heads = [...document.querySelectorAll(".ov-group h3")].map(h => h.textContent);
+  note(heads[0] === "Pinned", "the pinned shelf comes first (" + heads.join(", ") + ")");
 
   // switching one on from over the game, which is the whole point
   const off = [...document.querySelectorAll(".ov-cheat")]

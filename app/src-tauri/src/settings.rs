@@ -73,6 +73,14 @@ pub struct Settings {
     // about these
     #[serde(default)]
     pub added: Vec<String>,
+    // cheats starred to the top of the list, per exe. a merged table runs to
+    // fifty rows and most people use three of them
+    #[serde(default)]
+    pub starred: HashMap<String, Vec<String>>,
+    // the last set that was on together, per exe. what the one click brings
+    // back after a panic key or a clear
+    #[serde(default)]
+    pub loadout: HashMap<String, Vec<String>>,
     // one key that switches every cheat off at once
     #[serde(default = "default_panic")]
     pub panic: String,
@@ -182,6 +190,8 @@ impl Default for Settings {
             crashed: HashMap::new(),
             sittings: HashMap::new(),
             added: Vec::new(),
+            starred: HashMap::new(),
+            loadout: HashMap::new(),
             panic: default_panic(),
             chirp: true,
             install_id: String::new(),

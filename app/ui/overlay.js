@@ -153,15 +153,21 @@ function patch(row, item) {
 
 function draw() {
   const host = $("ov-list");
-  const next = attached ? rows.map((r) => r.id + r.category).join("|") : "";
+  const next = attached
+    ? rows.map((r) => r.id + r.category + (r.starred ? "*" : "")).join("|")
+    : "";
 
   if (next !== shape) {
     shape = next;
     cards = new Map();
     host.innerHTML = "";
 
+    // the same shelf the main window keeps: pinned first, then the rest
     const byCategory = new Map();
+    const pinned = rows.filter((r) => r.starred);
+    if (pinned.length) byCategory.set("Pinned", pinned);
     for (const row of rows) {
+      if (row.starred) continue;
       if (!byCategory.has(row.category)) byCategory.set(row.category, []);
       byCategory.get(row.category).push(row);
     }
