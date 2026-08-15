@@ -465,6 +465,7 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
         .unwrap_or_default();
     let favourites = state.settings.lock().unwrap().favourites.clone();
     let switched_off = state.settings.lock().unwrap().off.clone();
+    let sittings = state.settings.lock().unwrap().sittings.clone();
 
     Ok(library(&state, refresh)
         .into_iter()
@@ -510,8 +511,16 @@ async fn list_games(state: tauri::State<'_, App>, refresh: bool) -> Result<Vec<G
                         Some(d) => tables_for(e).iter().any(|(tag, _)| !d.contains(tag)),
                     }
                 }),
-                minutes: play.minutes,
-                last_played: play.last_played,
+                // the store's own count wins when it has one. ours fills in
+                // for gog, manual installs and games started from the exe
+                minutes: play.minutes.or_else(|| {
+                    let ours = sittings.get(&lower).copied().unwrap_or_default();
+                    (ours.seconds >= 60).then_some((ours.seconds / 60) as u32)
+                }),
+                last_played: {
+                    let ours = sittings.get(&lower).map(|s| s.last).unwrap_or(0);
+                    play.last_played.max((ours > 0).then_some(ours as u64))
+                },
                 version: game.version,
                 genres,
                 favourite: favourites.contains(&key),
@@ -2845,6 +2854,11 @@ fn provider_for(state: &tauri::State<'_, App>, exe: &str, id: &str) -> Option<St
 // pointer most cheats hang off is null until you load a save, so trying once
 // and giving up is what makes people alt-tab back to the app
 fn watch_for_games(handle: tauri::AppHandle) {
+    // when each library game was first seen running, and when the count was
+    // last folded into settings
+    let mut on_screen: HashMap<String, std::time::Instant> = HashMap::new();
+    let mut folded_at = std::time::Instant::now();
+
     loop {
         std::thread::sleep(std::time::Duration::from_millis(1500));
 
@@ -2854,6 +2868,8 @@ fn watch_for_games(handle: tauri::AppHandle) {
             .into_iter()
             .map(|p| p.name.to_lowercase())
             .collect();
+
+        clock_games(&state, &running, &mut on_screen, &mut folded_at);
 
         {
             let mut declined = state.declined.lock().unwrap();
@@ -2911,6 +2927,61 @@ fn watch_for_games(handle: tauri::AppHandle) {
             }
         }
     }
+}
+
+/* steam counts its own launches, epic writes a line in an ini, gog only
+counts inside galaxy, and a bare exe counts nowhere. this counts everything
+the same way: the game was running, so it was played. folded into settings a
+minute at a time so closing freeplay mid session loses next to nothing */
+fn clock_games(
+    state: &tauri::State<'_, App>,
+    running: &[String],
+    on_screen: &mut HashMap<String, std::time::Instant>,
+    folded_at: &mut std::time::Instant,
+) {
+    let watched: Vec<String> = {
+        let held = state.library.lock().unwrap();
+        match held.as_ref() {
+            Some(games) => games
+                .iter()
+                .filter_map(|g| g.main_exe())
+                .map(|e| e.to_lowercase())
+                .collect(),
+            // the first scan has not finished, so there is nothing to clock
+            None => return,
+        }
+    };
+
+    let mut fold: Vec<(String, u64)> = Vec::new();
+    for exe in &watched {
+        let up = running.contains(exe);
+        if up && !on_screen.contains_key(exe) {
+            on_screen.insert(exe.clone(), std::time::Instant::now());
+        } else if !up {
+            if let Some(began) = on_screen.remove(exe) {
+                fold.push((exe.clone(), began.elapsed().as_secs()));
+            }
+        }
+    }
+
+    if folded_at.elapsed().as_secs() >= 60 && !on_screen.is_empty() {
+        *folded_at = std::time::Instant::now();
+        for (exe, began) in on_screen.iter_mut() {
+            fold.push((exe.clone(), began.elapsed().as_secs()));
+            *began = std::time::Instant::now();
+        }
+    }
+
+    if fold.is_empty() {
+        return;
+    }
+    let mut settings = state.settings.lock().unwrap();
+    for (exe, seconds) in fold {
+        let sitting = settings.sittings.entry(exe).or_default();
+        sitting.seconds += seconds;
+        sitting.last = now_seconds();
+    }
+    let _ = settings::save(&settings);
 }
 
 // alt tab away from the game and the panel goes with it. it is pinned over

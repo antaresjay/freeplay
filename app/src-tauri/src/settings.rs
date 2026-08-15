@@ -65,6 +65,10 @@ pub struct Settings {
     card. a cheat that later stays on without incident is taken off the list */
     #[serde(default)]
     pub crashed: HashMap<String, HashMap<String, i64>>,
+    // our own clock on every library game, per exe. gog offline and manual
+    // installs have nobody else counting
+    #[serde(default)]
+    pub sittings: HashMap<String, Sitting>,
     // one key that switches every cheat off at once
     #[serde(default = "default_panic")]
     pub panic: String,
@@ -91,6 +95,13 @@ pub struct Settings {
     // where the window was when it was last closed
     #[serde(default)]
     pub window: Option<Spot>,
+}
+
+// seconds a game has been seen running, and when it was last seen
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Sitting {
+    pub seconds: u64,
+    pub last: i64,
 }
 
 // physical pixels, which is what tauri hands back and takes, so a window put
@@ -165,6 +176,7 @@ impl Default for Settings {
             overlay_key: default_hotkey(),
             keys: HashMap::new(),
             crashed: HashMap::new(),
+            sittings: HashMap::new(),
             panic: default_panic(),
             chirp: true,
             install_id: String::new(),
