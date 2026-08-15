@@ -11,6 +11,7 @@ pub mod galaxy;
 pub mod launch;
 pub mod pe;
 pub mod play;
+pub mod runtime;
 pub mod vdf;
 
 use rayon::prelude::*;
