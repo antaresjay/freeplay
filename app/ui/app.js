@@ -1189,6 +1189,11 @@ function whyFor(item) {
     return [item.reason || "not in this version of the game", "dead"];
   }
   if (item.armed && item.state === "wait") return [item.hint || item.reason, "wait"];
+  /* worth more than the description: last time this one went on, the game
+     went down within seconds. it clears itself after a quiet sitting */
+  if (item.suspect) {
+    return ["The game went down right after this was switched on last time", "dead"];
+  }
   if (item.armed) return ["Waiting for the game to get there", "wait"];
   if (item.description) return [item.description, ""];
   if (item.does === "Script") return ["Finds the addresses the other cheats here need.", ""];

@@ -24,6 +24,7 @@ function whyFor(item) {
     return [item.reason || "not in this version", "dead"];
   }
   if (item.armed && item.state === "wait") return [item.hint || item.reason, "wait"];
+  if (item.suspect) return ["Went down with the game last time", "dead"];
   if (item.armed) return ["Waiting for the game", "wait"];
   if (item.does === "Script") return ["Finds what the others need", ""];
   return [item.description || "", ""];

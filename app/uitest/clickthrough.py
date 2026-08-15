@@ -63,7 +63,7 @@ const GAMES = [
 ];
 
 const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true,
-               from:"", key:""};
+               from:"", key:"", suspect:false};
 // categories somebody shut, the way settings.json keeps them
 let FOLDED = {};
 
@@ -107,7 +107,7 @@ const CHEATS = [
   // long ones come from. no spaces in it, so nothing wraps unless it is told to
   {id:"long", name:"INDEPENDENCE_DAY_DEACTIVATE_FIREWORKS_LAUNCHER_AND_PLACED", category:"Game",
    description:"", hint:"", state:"idle", reason:"", armed:false, live:false, does:"Value",
-   ...plain, editable:true, kind:"i32", value:"1"}
+   ...plain, editable:true, kind:"i32", value:"1", suspect:true}
 ];
 
 const OTHER_CHEATS = [
@@ -546,6 +546,17 @@ PROBE = r"""
       await settle(120);
       note(window.__bound.key === "" && shown[0].classList.contains("empty"),
            "right click removes the key");
+    }
+
+    /* the crash memory. this one was on when the game went down last time,
+       and its card has to say so in red rather than sitting there blank */
+    {
+      const scarred = [...document.querySelectorAll("#cheat-groups .cheat")]
+        .find(c => c.querySelector(".cheat-name").textContent.startsWith("INDEPENDENCE"));
+      const why = scarred.querySelector(".cheat-why");
+      note(why.classList.contains("dead") &&
+           why.textContent.includes("went down right after"),
+           "a cheat blamed for a crash warns on its card (" + why.textContent + ")");
     }
 
     // a cheat that needs a number, which plenty of them are

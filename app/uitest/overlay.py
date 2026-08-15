@@ -41,7 +41,7 @@ let CHEATS = [
    editable:true, kind:"i32", value:"5000", current:""},
   {id:"difficulty", name:"Difficulty", category:"Game", description:"", hint:"",
    state:"ready", reason:"", armed:false, live:false, does:"Set once", ...plain,
-   editable:true, kind:"i32", value:"1", holds:false,
+   editable:true, kind:"i32", value:"1", holds:false, suspect:true,
    choices:[{value:"0",label:"Easy"},{value:"1",label:"Normal"},{value:"2",label:"Hard"}]}
 ];
 
@@ -133,6 +133,11 @@ PROBE = r"""
   const keycaps = document.querySelectorAll(".ov-kbd");
   note(keycaps.length === 1 && keycaps[0].textContent === "F1",
        "a cheat with a key shows it (" + keycaps.length + ")");
+
+  // the crash memory reads the same over the game
+  const scar = document.querySelector(".ov-why.dead");
+  note(!!scar && scar.textContent === "Went down with the game last time",
+       "a blamed cheat warns in the overlay too");
 
   // switching one on from over the game, which is the whole point
   const off = [...document.querySelectorAll(".ov-cheat")]

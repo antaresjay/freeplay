@@ -57,6 +57,9 @@ struct App {
     hotkey: Mutex<Option<hotkey::Listener>>,
     // every key the table binds, held while a game is attached
     bank: Mutex<Option<hotkey::Bank>>,
+    // when each cheat was switched on this sitting, for working out what to
+    // blame if the game goes down
+    lit: Mutex<HashMap<String, std::time::Instant>>,
     // set once at startup, so a key landing on its own thread can reach the
     // rest of the app
     handle: std::sync::OnceLock<tauri::AppHandle>,
@@ -150,6 +153,8 @@ struct CheatRow {
     live: bool,
     // the key that flips it while you play, "" when there is none
     key: String,
+    // the game went down right after this one was switched on, last time
+    suspect: bool,
     does: String,
     // takes a number rather than being a plain switch
     editable: bool,
@@ -1974,6 +1979,7 @@ fn attach(
             }
         }
         session.arm_all(&armed_for(&state, &exe));
+        relight(&state, &session);
         *state.session.lock().unwrap() = Some(session);
     }
     *state.target.lock().unwrap() = Some(shared);
@@ -2013,6 +2019,16 @@ fn detach(state: tauri::State<'_, App>) {
 fn tear_down(state: &tauri::State<'_, App>) {
     // keys first, or one could land between the session going and the target
     *state.bank.lock().unwrap() = None;
+    if let Some(exe) = state
+        .target
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|t| t.name().to_lowercase())
+    {
+        // a quiet sitting is what takes an old blame away
+        write_verdicts(state, &exe, false);
+    }
     if let Some(mut session) = state.session.lock().unwrap().take() {
         remember_the_sitting(state, &session);
         session.stop();
@@ -2020,6 +2036,65 @@ fn tear_down(state: &tauri::State<'_, App>) {
     }
     *state.target.lock().unwrap() = None;
     *state.search.lock().unwrap() = None;
+    state.lit.lock().unwrap().clear();
+}
+
+// how long each armed cheat has been on, for the blame below
+fn ages_of(state: &tauri::State<'_, App>) -> Vec<(String, u64)> {
+    let armed = state
+        .session
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|s| s.armed())
+        .unwrap_or_default();
+    let lit = state.lit.lock().unwrap();
+    armed
+        .into_iter()
+        .filter_map(|id| lit.get(&id).map(|t| (id, t.elapsed().as_secs())))
+        .collect()
+}
+
+// switched on moments ago and the game died: suspect. on for ages without
+// incident: let off. the stretch in between says nothing either way
+const RECENT: u64 = 25;
+const PROVEN: u64 = 90;
+
+fn verdicts(ages: &[(String, u64)]) -> (Vec<String>, Vec<String>) {
+    let mut blamed = Vec::new();
+    let mut proven = Vec::new();
+    for (id, seconds_on) in ages {
+        if *seconds_on <= RECENT {
+            blamed.push(id.clone());
+        } else if *seconds_on >= PROVEN {
+            proven.push(id.clone());
+        }
+    }
+    (blamed, proven)
+}
+
+// died is true when the game went down on its own rather than being let go
+fn write_verdicts(state: &tauri::State<'_, App>, exe: &str, died: bool) {
+    let (blamed, proven) = verdicts(&ages_of(state));
+    if (!died || blamed.is_empty()) && proven.is_empty() {
+        return;
+    }
+
+    let mut settings = state.settings.lock().unwrap();
+    let held = settings.crashed.entry(exe.to_string()).or_default();
+    if died {
+        for id in blamed {
+            tracing::info!("{exe} went down moments after {id} was switched on");
+            held.insert(id, now_seconds());
+        }
+    }
+    for id in proven {
+        held.remove(&id);
+    }
+    if held.is_empty() {
+        settings.crashed.remove(exe);
+    }
+    let _ = settings::save(&settings);
 }
 
 // a session holds the table it was built with, so swapping tables on a game
@@ -2067,9 +2142,22 @@ fn reseat(state: &tauri::State<'_, App>, exe: &str) {
         }
     }
     session.arm_all(&armed_for(state, exe));
+    relight(state, &session);
     *state.session.lock().unwrap() = Some(session);
     arm_keys(state);
     tracing::info!("reseated {exe} on the table that just landed");
+}
+
+/* cheats brought back by arm_all count as switched on now. without this a
+restored cheat had no timeline: it could never clear an old blame however
+long it behaved, and a crash seconds into a sitting blamed nobody */
+fn relight(state: &tauri::State<'_, App>, session: &Session) {
+    let now = std::time::Instant::now();
+    let mut lit = state.lit.lock().unwrap();
+    lit.clear();
+    for id in session.armed() {
+        lit.insert(id, now);
+    }
 }
 
 // everything except the four fields that need a live process, so the same
@@ -2087,6 +2175,7 @@ fn cheat_row(cheat: &freeplay_table::schema::Cheat, typed: Option<&String>) -> C
         armed: false,
         live: false,
         key: String::new(),
+        suspect: false,
         does: cheat.action.label().to_string(),
         editable: cheat.action.takes_a_number(),
         kind: cheat
@@ -2171,13 +2260,13 @@ fn credit(state: tauri::State<'_, App>, exe: String) -> Credit {
 fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
     let typed = values_for(&state, &exe);
     let named = credits(&exe);
-    let bound = state
-        .settings
-        .lock()
-        .unwrap()
-        .keys
-        .get(&exe.to_lowercase())
-        .cloned();
+    let (bound, scars) = {
+        let settings = state.settings.lock().unwrap();
+        (
+            settings.keys.get(&exe.to_lowercase()).cloned(),
+            settings.crashed.get(&exe.to_lowercase()).cloned(),
+        )
+    };
     let guard = state.session.lock().unwrap();
     let attached = guard.as_ref().filter(|s| s.table().matches_process(&exe));
 
@@ -2198,6 +2287,7 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
 
                 let mut row = cheat_row(cheat, typed.get(&cheat.id));
                 row.key = shown_key(bound.as_ref(), cheat);
+                row.suspect = scars.as_ref().is_some_and(|s| s.contains_key(&cheat.id));
                 row.from = whose(&named, &cheat.id);
                 row.state = if live { "on".into() } else { label.to_string() };
                 row.reason = reason;
@@ -2239,6 +2329,7 @@ fn cheats(state: tauri::State<'_, App>, exe: String) -> Vec<CheatRow> {
         .map(|cheat| {
             let mut row = cheat_row(cheat, typed.get(&cheat.id));
             row.key = shown_key(bound.as_ref(), cheat);
+            row.suspect = scars.as_ref().is_some_and(|s| s.contains_key(&cheat.id));
             row.from = whose(&named, &cheat.id);
             row.armed = armed.contains(&cheat.id);
             row
@@ -2699,8 +2790,15 @@ fn set_cheat(
         if let Some(session) = guard.as_ref().filter(|s| s.table().matches_process(&exe)) {
             if on {
                 session.arm(&id).map_err(|e| e.to_string())?;
+                // written down so the crash, if one follows, has a timeline
+                state
+                    .lit
+                    .lock()
+                    .unwrap()
+                    .insert(id.clone(), std::time::Instant::now());
             } else {
                 session.disarm(&id).map_err(|e| e.to_string())?;
+                state.lit.lock().unwrap().remove(&id);
             }
             wanted = session.armed();
         } else {
@@ -2773,6 +2871,9 @@ fn watch_for_games(handle: tauri::AppHandle) {
             Some((name, alive)) => {
                 if !alive || !running.contains(&name) {
                     tracing::info!("{name} closed, letting go");
+                    // gone without being asked to go, so note what was just
+                    // switched on before the timeline is thrown away
+                    write_verdicts(&state, &name, true);
                     tear_down(&state);
                     // the panel was pinned over a window that is gone
                     overlay::hide(&handle);
@@ -3084,7 +3185,29 @@ fn main() {
 
 #[cfg(test)]
 mod wording {
-    use super::{how_long, link_in};
+    use super::{how_long, link_in, verdicts};
+
+    #[test]
+    fn a_cheat_lit_moments_before_the_crash_is_blamed() {
+        let ages = [("god-mode".to_string(), 5u64), ("orens".to_string(), 50)];
+        let (blamed, proven) = verdicts(&ages);
+        assert_eq!(blamed, ["god-mode"]);
+        assert!(proven.is_empty(), "50 seconds says nothing either way");
+    }
+
+    #[test]
+    fn a_cheat_on_for_ages_without_incident_is_let_off() {
+        let ages = [("god-mode".to_string(), 300u64)];
+        let (blamed, proven) = verdicts(&ages);
+        assert!(blamed.is_empty());
+        assert_eq!(proven, ["god-mode"]);
+    }
+
+    #[test]
+    fn nothing_lit_means_nothing_to_say() {
+        let (blamed, proven) = verdicts(&[]);
+        assert!(blamed.is_empty() && proven.is_empty());
+    }
 
     #[test]
     fn how_long_reads_like_somebody_said_it() {

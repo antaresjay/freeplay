@@ -60,6 +60,11 @@ pub struct Settings {
     // own key was switched off
     #[serde(default)]
     pub keys: HashMap<String, HashMap<String, String>>,
+    /* cheats that were switched on moments before the game went down, per exe
+    then per cheat id, unix seconds of the crash. shown as a warning on the
+    card. a cheat that later stays on without incident is taken off the list */
+    #[serde(default)]
+    pub crashed: HashMap<String, HashMap<String, i64>>,
     // one key that switches every cheat off at once
     #[serde(default = "default_panic")]
     pub panic: String,
@@ -159,6 +164,7 @@ impl Default for Settings {
             overlay: false,
             overlay_key: default_hotkey(),
             keys: HashMap::new(),
+            crashed: HashMap::new(),
             panic: default_panic(),
             chirp: true,
             install_id: String::new(),
