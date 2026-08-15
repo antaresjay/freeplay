@@ -1979,6 +1979,16 @@ $("add-game").addEventListener("click", async () => {
 });
 
 
+async function dropGame(path) {
+  try {
+    const name = await invoke("add_game", { path });
+    toast(name + " added");
+    await loadGames(true);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
 $("game-remove").addEventListener("click", async () => {
   const game = gameFor(open);
   if (!game) return;
@@ -2013,7 +2023,10 @@ if (window.__TAURI__.event) {
     if (table) return importTable(table);
     const carried = paths.find((p) => p.toLowerCase().endsWith(".freeplay"));
     if (carried) return dropProfile(carried);
-    toast("Drop a Cheat Engine .CT file or a Freeplay profile", true);
+    // an exe is a game somebody wants in the library
+    const program = paths.find((p) => p.toLowerCase().endsWith(".exe"));
+    if (program) return dropGame(program);
+    toast("Drop a Cheat Engine .CT file, a game's exe, or a Freeplay profile", true);
   });
 }
 
