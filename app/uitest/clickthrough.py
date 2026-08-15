@@ -63,7 +63,7 @@ const GAMES = [
 ];
 
 const plain = {editable:false, kind:"", value:"", current:"", choices:[], hex:false, holds:true,
-               from:""};
+               from:"", key:""};
 // categories somebody shut, the way settings.json keeps them
 let FOLDED = {};
 
@@ -95,7 +95,7 @@ const CHEATS = [
    from:"Tomb Raider GOTY"},
   {id:"vitality", name:"Infinite Vitality", category:"Player", description:"never die", hint:"",
    state:"idle", reason:"", armed:true, live:false, does:"Freeze", ...plain,
-   editable:true, kind:"f32", value:"9999", current:"312"},
+   editable:true, kind:"f32", value:"9999", current:"312", key:"F1"},
   {id:"orens", name:"Orens", category:"Resources", description:"money", hint:"",
    state:"idle", reason:"", armed:false, live:false, does:"Value", ...plain,
    editable:true, kind:"i32", value:"5000", current:"120"},
@@ -163,7 +163,8 @@ window.__calls = [];
 let SETTINGS = {theme:"dark", accent:"amber", favourites:[], shared_open:true, community:true,
                 armed:{"witcher2.exe":["vitality"]},
                 values:{"witcher2.exe":{"orens":"5000"}},
-                grabbed:{"witcher2.exe":7}};
+                grabbed:{"witcher2.exe":7},
+                panic:"Ctrl+Shift+Backspace", chirp:true};
 window.__TAURI__ = {
   core: {
     invoke: async (cmd, args) => {
@@ -180,8 +181,19 @@ window.__TAURI__ = {
             auto_update: args.next.auto_update, auto_attach: args.next.auto_attach,
             shared_open: args.next.shared_open,
             community: args.next.community,
+            panic: args.next.panic, chirp: args.next.chirp,
           };
           return SETTINGS;
+        case "bind_key": {
+          // echoes the spelling back and keeps it, the way the real one does.
+          // without the keeping, the next refresh tick painted the old key
+          // straight back over the chip
+          window.__bound = {id: args.id, key: args.key};
+          const spelled = args.key === null ? "F1" : args.key;
+          const row = CHEATS.find(c => c.id === args.id);
+          if (row) row.key = spelled;
+          return spelled;
+        }
         case "list_games": return GAMES;
         case "game_art": return {cover:null, hero:null, logo:null};
         case "table_fit":
@@ -498,6 +510,43 @@ PROBE = r"""
     switches[0].click();
     await settle(250);
     note(window.__calls.includes("set_cheat"), "toggling arms the cheat");
+
+    /* the key chips. a table key shows on its card, the empty ones stay out
+       of the way until the card is hovered */
+    {
+      const chips = document.querySelectorAll("#cheat-groups .cheat-key");
+      note(chips.length === 5, "every card carries a key chip (" + chips.length + ")");
+      const shown = [...chips].filter(c => !c.classList.contains("empty"));
+      note(shown.length === 1 && shown[0].textContent === "F1",
+           "the table's own key reads F1 on its card");
+
+      // rebinding: click the chip, press a key, the chip takes the spelling
+      shown[0].click();
+      await settle(60);
+      note(shown[0].classList.contains("listening") &&
+           shown[0].textContent === "press a key",
+           "clicking the chip starts listening");
+      window.dispatchEvent(new KeyboardEvent("keydown",
+        {key:"F3", code:"F3", bubbles:true, cancelable:true}));
+      await settle(120);
+      note(window.__bound && window.__bound.key === "F3" && shown[0].textContent === "F3",
+           "pressing F3 rebinds and the chip says so");
+
+      // escape hands back whatever was there before
+      shown[0].click();
+      await settle(60);
+      window.dispatchEvent(new KeyboardEvent("keydown",
+        {key:"Escape", code:"Escape", bubbles:true, cancelable:true}));
+      await settle(60);
+      note(shown[0].textContent === "F3" && !shown[0].classList.contains("listening"),
+           "escape keeps the key that was set");
+
+      // right click takes the key away and the chip goes quiet
+      shown[0].dispatchEvent(new MouseEvent("contextmenu", {bubbles:true, cancelable:true}));
+      await settle(120);
+      note(window.__bound.key === "" && shown[0].classList.contains("empty"),
+           "right click removes the key");
+    }
 
     // a cheat that needs a number, which plenty of them are
     const boxes = document.querySelectorAll("#cheat-groups .cheat-value input");
@@ -1149,6 +1198,22 @@ PROBE = r"""
   const settingsSpill = spilling("#view-settings");
   note(settingsSpill.length === 0, "nothing on settings is cut off (" +
        settingsSpill.slice(0, 3).join("; ") + ")");
+
+  // the panic key, caught from a real press like the overlay shortcut
+  note(document.getElementById("panic-key").textContent === "Ctrl+Shift+Backspace",
+       "the panic key shows its default");
+  document.getElementById("panic-key").click();
+  await settle(60);
+  document.getElementById("panic-key").dispatchEvent(new KeyboardEvent("keydown",
+    {key:"F8", code:"F8", ctrlKey:true, bubbles:true, cancelable:true}));
+  await settle(200);
+  note(SETTINGS.panic === "Ctrl+F8",
+       "pressing ctrl F8 in the box makes it the panic key (" + SETTINGS.panic + ")");
+
+  document.getElementById("chirp-on").click();
+  await settle(200);
+  note(SETTINGS.chirp === false, "the chirp can be switched off");
+
   document.getElementById("community-on").click();
   await settle(400);
   note(document.getElementById("community-on").classList.contains("on"),

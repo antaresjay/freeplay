@@ -33,7 +33,7 @@ let CHEATS = [
    state:"ready", reason:"", armed:false, live:false, does:"Script", ...plain},
   {id:"vitality", name:"Infinite Vitality", category:"Player", description:"", hint:"",
    state:"on", reason:"", armed:true, live:true, does:"Freeze", ...plain,
-   editable:true, kind:"f32", value:"9999", current:"312"},
+   editable:true, kind:"f32", value:"9999", current:"312", key:"F1"},
   {id:"endurance", name:"[Endurance] Health", category:"Player", description:"", hint:"",
    state:"on", reason:"", armed:true, live:true, does:"Freeze", ...plain},
   {id:"orens", name:"Orens", category:"Resources", description:"money", hint:"",
@@ -128,6 +128,11 @@ PROBE = r"""
        "and one waiting says what it is waiting for");
   note(document.getElementById("ov-count").textContent === "3 of 5 cheats on",
        "the footer counts them (" + document.getElementById("ov-count").textContent + ")");
+
+  // the key the table bound rides along, drawn as a little keycap
+  const keycaps = document.querySelectorAll(".ov-kbd");
+  note(keycaps.length === 1 && keycaps[0].textContent === "F1",
+       "a cheat with a key shows it (" + keycaps.length + ")");
 
   // switching one on from over the game, which is the whole point
   const off = [...document.querySelectorAll(".ov-cheat")]
