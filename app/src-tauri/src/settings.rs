@@ -73,6 +73,10 @@ pub struct Settings {
     // about these
     #[serde(default)]
     pub added: Vec<String>,
+    // game keys tucked out of sight. stores install soundtracks and tools
+    // next to the games and the rail has no room for them
+    #[serde(default)]
+    pub hidden: Vec<String>,
     // cheats starred to the top of the list, per exe. a merged table runs to
     // fifty rows and most people use three of them
     #[serde(default)]
@@ -190,6 +194,7 @@ impl Default for Settings {
             crashed: HashMap::new(),
             sittings: HashMap::new(),
             added: Vec::new(),
+            hidden: Vec::new(),
             starred: HashMap::new(),
             loadout: HashMap::new(),
             panic: default_panic(),
@@ -221,6 +226,7 @@ impl Settings {
             }
         }
         self.favourites.dedup();
+        self.hidden.dedup();
 
         // never ask about one twice, and never let the queue become a chore
         self.played.retain(|p| !self.rated.contains(&p.id));

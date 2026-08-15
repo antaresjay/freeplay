@@ -315,6 +315,11 @@ function applyTheme() {
   $("chirp-on").classList.toggle("on", config.chirp !== false);
   $("panic-key").textContent = config.panic || "None";
   $("panic-off").hidden = !config.panic;
+  const tucked = (config.hidden || []).length;
+  $("hidden-note").textContent = tucked
+    ? many(tucked, "game") + " hidden from the library"
+    : "Nothing is hidden. Hide soundtracks and tools from a game's page.";
+  $("unhide-all").hidden = !tucked;
   drawDock();
 }
 
@@ -484,12 +489,16 @@ function signature(list) {
 }
 
 function draw() {
-  const list = ordered(games);
-  const stamp = signature(list);
+  const hidden = config.hidden || [];
+  const list = ordered(games.filter((g) => !hidden.includes(g.key)));
+  const stamp = signature(list) + "#" + hidden.length;
   if (stamp === drawn) return;
   drawn = stamp;
 
-  drawRail(list);
+  // the filter narrows the rail too. with a hundred games installed, the
+  // strip is where you actually look for one
+  const needle = $("filter").value.trim().toLowerCase();
+  drawRail(needle ? list.filter((g) => g.name.toLowerCase().includes(needle)) : list);
   drawGrids(list);
 
   const live = list.filter((g) => g.running).length;
@@ -1988,6 +1997,17 @@ async function dropGame(path) {
     toast(String(e), true);
   }
 }
+
+$("game-hide").addEventListener("click", async () => {
+  const game = gameFor(open);
+  if (!game) return;
+  await saveConfig({ hidden: [...(config.hidden || []), game.key] });
+  toast(game.name + " hidden. Settings brings it back");
+  open = null;
+  showView("library");
+});
+
+$("unhide-all").addEventListener("click", () => saveConfig({ hidden: [] }));
 
 $("game-remove").addEventListener("click", async () => {
   const game = gameFor(open);

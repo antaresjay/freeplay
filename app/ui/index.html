@@ -165,6 +165,7 @@
             <button id="game-import" class="ghost" title="Convert a Cheat Engine .CT file for this game">Import a table</button>
             <button id="game-find-table" class="ghost" title="Look for a Cheat Engine table for this game">Search online</button>
             <button id="game-folder" class="ghost" title="Open the install folder">Folder</button>
+            <button id="game-hide" class="ghost" title="Tuck it out of the library. Settings brings hidden games back.">Hide</button>
             <button id="game-remove" class="ghost" hidden title="Take this one out of the library. The game itself is not touched.">Remove</button>
             <span class="spacer"></span>
             <button id="game-fav" class="icon-toggle" title="Add to favourites">
@@ -408,6 +409,16 @@
             <strong>Freeplay watches the keyboard for it</strong>
             <span>Many games swallow every key while they have focus, so an ordinary shortcut never arrives. Freeplay compares each key against the combination on the left and nothing else. Nothing is recorded, stored or sent, and it stops the moment you switch this off.</span>
           </div>
+        </div>
+      </div>
+
+      <div class="setting">
+        <div class="setting-label">
+          <strong>Hidden games</strong>
+          <span id="hidden-note">Nothing is hidden. Hide soundtracks and tools from a game's page.</span>
+        </div>
+        <div class="setting-actions">
+          <button id="unhide-all" class="ghost" hidden>Bring them back</button>
         </div>
       </div>
 

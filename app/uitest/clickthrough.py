@@ -168,7 +168,7 @@ let SETTINGS = {theme:"dark", accent:"amber", favourites:[], shared_open:true, c
                 armed:{"witcher2.exe":["vitality"]},
                 values:{"witcher2.exe":{"orens":"5000"}},
                 grabbed:{"witcher2.exe":7},
-                panic:"Ctrl+Shift+Backspace", chirp:true};
+                panic:"Ctrl+Shift+Backspace", chirp:true, hidden:[]};
 window.__TAURI__ = {
   core: {
     invoke: async (cmd, args) => {
@@ -186,6 +186,7 @@ window.__TAURI__ = {
             shared_open: args.next.shared_open,
             community: args.next.community,
             panic: args.next.panic, chirp: args.next.chirp,
+            hidden: args.next.hidden,
           };
           return SETTINGS;
         case "add_game":
@@ -1242,6 +1243,33 @@ PROBE = r"""
     note(window.__removed === "D:/old/gothic2", "removing hands over the folder");
     note(!row("Gothic"), "and the game leaves the rail");
     note(!document.getElementById("view-library").hidden, "back on the library");
+  }
+
+  /* hiding. the stores install soundtracks and tools next to the games, and
+     the hide button tucks them away without touching anything on disk */
+  {
+    const row = (name) => [...document.querySelectorAll("#library-rail .rail-game")]
+      .find(r => r.textContent.includes(name));
+    row("GOG").click();
+    await settle(600);
+    document.getElementById("game-hide").click();
+    await settle(600);
+    note(!row("GOG"), "hiding takes the game off the rail");
+    note((SETTINGS.hidden || []).length === 1, "and the key is kept in settings");
+    note(!document.getElementById("view-library").hidden, "hiding lands you back on the library");
+
+    [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "settings").click();
+    await settle(300);
+    note(document.getElementById("hidden-note").textContent.includes("1 game hidden"),
+         "settings counts what is hidden");
+    document.getElementById("unhide-all").click();
+    await settle(500);
+    note((SETTINGS.hidden || []).length === 0 &&
+         document.getElementById("unhide-all").hidden,
+         "bring them back empties the list");
+    [...document.querySelectorAll(".nav-item")].find(i => i.dataset.view === "library").click();
+    await settle(500);
+    note(!!row("GOG"), "and the game is back on the rail");
   }
 
   // a game with an anti-cheat is refused outright

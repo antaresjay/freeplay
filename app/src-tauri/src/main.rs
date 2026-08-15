@@ -1771,6 +1771,7 @@ fn save_settings(state: tauri::State<'_, App>, next: Settings) -> Result<Setting
     held.community = next.community;
     held.auto_attach = next.auto_attach;
     held.shared_open = next.shared_open;
+    held.hidden = next.hidden;
     let repanic = held.panic != next.panic;
     held.panic = next.panic;
     held.chirp = next.chirp;
