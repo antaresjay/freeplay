@@ -40,10 +40,50 @@ const gameFor = (key) => games.find((g) => g.key === key);
 /* ---------- opening screen ---------- */
 
 const bootedAt = Date.now();
+const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/* the wordmark assembles itself: every letter spins through junk glyphs and
+   locks into place left to right */
+function scrambleWord() {
+  const word = document.querySelector(".splash-word");
+  if (!word || still()) return;
+  const text = word.textContent;
+  const glyphs = "01#/FREPLAY<>";
+  word.textContent = "";
+  [...text].forEach((ch, at) => {
+    const span = document.createElement("span");
+    span.textContent = glyphs[(Math.random() * glyphs.length) | 0];
+    word.appendChild(span);
+    const spin = setInterval(() => {
+      span.textContent = glyphs[(Math.random() * glyphs.length) | 0];
+    }, 40);
+    setTimeout(() => {
+      clearInterval(spin);
+      span.textContent = ch;
+      span.classList.add("set");
+    }, 240 + at * 90);
+  });
+}
+scrambleWord();
+
+/* the readout types rather than appearing, so the boot reads as a machine
+   waking up. a new step cancels whatever the last one was still typing */
+let bootTyper = null;
 const bootStep = (what) => {
   const step = $("splash-step");
-  if (step) step.textContent = what;
+  if (!step) return;
+  clearInterval(bootTyper);
+  if (still()) {
+    step.textContent = what;
+    return;
+  }
+  let at = 0;
+  step.textContent = "";
+  bootTyper = setInterval(() => {
+    at++;
+    step.textContent = what.slice(0, at);
+    if (at >= what.length) clearInterval(bootTyper);
+  }, 12);
 };
 
 /* held for a moment even when everything is instant, because something that
@@ -53,10 +93,19 @@ async function stopBooting() {
   if (!splash || splash.classList.contains("gone")) return;
 
   const waited = Date.now() - bootedAt;
-  if (waited < 1200) await new Promise((r) => setTimeout(r, 1200 - waited));
+  if (waited < 1500) await new Promise((r) => setTimeout(r, 1500 - waited));
 
+  clearInterval(bootTyper);
+  // the lights collapse before the screen lets go
+  if (!still()) {
+    splash.classList.add("folding");
+    await new Promise((r) => setTimeout(r, 420));
+  }
   document.body.classList.remove("booting");
   splash.classList.add("gone");
+  // one calibration line sweeps the library as the shelves deal in
+  document.body.classList.add("calibrate");
+  setTimeout(() => document.body.classList.remove("calibrate"), 900);
   setTimeout(() => splash.remove(), 600);
 }
 
@@ -294,6 +343,115 @@ const sameExe = (a, b) =>
 
 const many = (n, one, more) => `${n} ${n === 1 ? one : more || one + "s"}`;
 
+/* ---------- sound ---------- */
+
+/* tiny synthesized clicks, no files. rides the chirp setting, and the context
+   only exists once a real press has happened, which autoplay rules want anyway */
+let audio = null;
+
+document.addEventListener(
+  "pointerdown",
+  (e) => {
+    if (!e.isTrusted || audio !== null) return;
+    try {
+      audio = new AudioContext();
+    } catch {
+      audio = false;
+    }
+  },
+  { capture: true }
+);
+
+function blip(kind) {
+  if (!audio || config.chirp === false) return;
+  const now = audio.currentTime;
+  const gain = audio.createGain();
+  gain.connect(audio.destination);
+  const osc = audio.createOscillator();
+  osc.connect(gain);
+  if (kind === "on" || kind === "off") {
+    // a relay click, higher on the way in
+    osc.type = "square";
+    osc.frequency.setValueAtTime(kind === "on" ? 1900 : 1200, now);
+    osc.frequency.exponentialRampToValueAtTime(kind === "on" ? 1400 : 900, now + 0.028);
+    gain.gain.setValueAtTime(0.025, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+    osc.start(now);
+    osc.stop(now + 0.032);
+  } else if (kind === "attach") {
+    // something heavy seating itself
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(110, now);
+    osc.frequency.exponentialRampToValueAtTime(70, now + 0.14);
+    gain.gain.setValueAtTime(0.05, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+    osc.start(now);
+    osc.stop(now + 0.16);
+  } else if (kind === "open") {
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(620, now);
+    osc.frequency.exponentialRampToValueAtTime(920, now + 0.06);
+    gain.gain.setValueAtTime(0.02, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+}
+
+/* ---------- the pointer field ---------- */
+
+/* one listener, one loop. the hero art leans away from the cursor and a
+   spotlight tracks across the covers, all off two numbers written here. the
+   loop kills itself shortly after the pointer stops so nothing burns frames
+   in the background, and a machine that never moves the mouse never runs it */
+const field = { x: 0, y: 0, tx: 0, ty: 0, cx: -1, cy: -1, raf: 0, until: 0 };
+let litCards = [];
+
+function fieldLoop() {
+  field.x += (field.tx - field.x) * 0.1;
+  field.y += (field.ty - field.y) * 0.1;
+  const root = document.documentElement.style;
+  root.setProperty("--mx", field.x.toFixed(4));
+  root.setProperty("--my", field.y.toFixed(4));
+
+  // reads first, writes after, or every frame forces a layout
+  const seen = [];
+  for (const art of document.querySelectorAll(".grid .card:not(.guarded) .art")) {
+    const box = art.getBoundingClientRect();
+    if (!box.width) continue;
+    const dx = field.cx - (box.left + box.width / 2);
+    const dy = field.cy - (box.top + box.height / 2);
+    if (dx * dx + dy * dy > 340 * 340) continue;
+    seen.push([art.closest(".card"), box]);
+  }
+  for (const card of litCards) card.classList.remove("lit");
+  litCards = [];
+  for (const [card, box] of seen) {
+    card.style.setProperty("--lx", (((field.cx - box.left) / box.width) * 100).toFixed(1) + "%");
+    card.style.setProperty("--ly", (((field.cy - box.top) / box.height) * 100).toFixed(1) + "%");
+    card.classList.add("lit");
+    litCards.push(card);
+  }
+
+  const moving =
+    Math.abs(field.tx - field.x) > 0.001 || Math.abs(field.ty - field.y) > 0.001;
+  if (performance.now() < field.until || moving) {
+    field.raf = requestAnimationFrame(fieldLoop);
+  } else {
+    field.raf = 0;
+  }
+}
+
+document.addEventListener("pointermove", (e) => {
+  if (still()) return;
+  field.tx = (e.clientX / innerWidth) * 2 - 1;
+  field.ty = (e.clientY / innerHeight) * 2 - 1;
+  field.cx = e.clientX;
+  field.cy = e.clientY;
+  field.until = performance.now() + 250;
+  if (!field.raf) field.raf = requestAnimationFrame(fieldLoop);
+});
+
 /* ---------- settings ---------- */
 
 function applyTheme() {
@@ -409,6 +567,85 @@ async function loadArt() {
   }
 }
 
+/* the page's art, washed across the whole window as ambient light. the css
+   decides how it reads, this only hands the url over */
+function paintBackdrop(url) {
+  const img = $("page-art-img");
+  if (!img) return;
+  if (url) {
+    if (img.getAttribute("src") !== url) {
+      const swapping = !!img.getAttribute("src");
+      img.src = url;
+      // ease the new wash in rather than blinking the whole room's light
+      if (swapping && !still()) {
+        img.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 600, easing: "ease-out" });
+      }
+    }
+  } else {
+    img.removeAttribute("src");
+  }
+  document.body.classList.toggle("has-art", !!url);
+}
+
+/* letters spin like a lock finding its combination, then land on the truth.
+   only for the big names, only when they actually change, and it always ends
+   byte identical to what was asked for */
+const decryptTokens = new Map();
+function decrypt(el, text) {
+  if (el.textContent === text) return;
+  if (still()) {
+    el.textContent = text;
+    return;
+  }
+  const glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#/";
+  const token = (decryptTokens.get(el) || 0) + 1;
+  decryptTokens.set(el, token);
+  const started = performance.now();
+  const step = () => {
+    if (decryptTokens.get(el) !== token) return;
+    const gone = (performance.now() - started) / 380;
+    const locked = Math.floor(gone * text.length);
+    if (locked >= text.length) {
+      el.textContent = text;
+      return;
+    }
+    let out = text.slice(0, locked);
+    for (let n = locked; n < text.length; n++) {
+      out += text[n] === " " ? " " : glyphs[(Math.random() * glyphs.length) | 0];
+    }
+    el.textContent = out;
+    requestAnimationFrame(step);
+  };
+  step();
+  // frames stop when the window is covered or dragged, and a name stuck half
+  // scrambled is a name nobody asked for. whatever happens, it lands
+  setTimeout(() => {
+    if (decryptTokens.get(el) === token) el.textContent = text;
+  }, 500);
+}
+
+/* the old cover slides off like a shutter when the page changes games,
+   instead of the art teleporting */
+function shutter(img, nextSrc) {
+  const ghost = $("game-hero-ghost");
+  if (!ghost || still()) return;
+  if (img.hidden || !img.getAttribute("src") || img.getAttribute("src") === nextSrc || !nextSrc) return;
+  ghost.src = img.getAttribute("src");
+  ghost.hidden = false;
+  ghost
+    .animate(
+      [
+        { clipPath: "polygon(0 0, 100% 0, 100% 100%, 0 100%)" },
+        { clipPath: "polygon(100% 0, 100% 0, 100% 100%, 100% 100%)" },
+      ],
+      { duration: 320, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
+    )
+    .onfinish = () => {
+      ghost.hidden = true;
+      ghost.removeAttribute("src");
+    };
+}
+
 function initials(name) {
   const words = name.replace(/[^\w\s]/g, " ").split(/\s+/).filter(Boolean);
   if (!words.length) return "?";
@@ -488,7 +725,53 @@ function signature(list) {
   );
 }
 
+/* the strip along the floor of the window. quiet until something is attached,
+   then it names the process the way a debugger would */
+function drawStatus() {
+  const mode = $("status-mode");
+  if (!mode) return;
+  if (attached) {
+    const bits = ["Attached", attached.process, "pid " + attached.pid];
+    if (attached.arch) bits.push(attached.arch);
+    mode.textContent = bits.join("  ·  ");
+    mode.classList.add("live");
+  } else {
+    const live = games.filter((g) => g.running && !g.guard).length;
+    mode.textContent = live ? many(live, "game") + " running" : "Standby";
+    mode.classList.remove("live");
+  }
+  $("status-hint").textContent = config.panic ? "panic  " + config.panic : "";
+}
+
+/* the rail murmurs: one small reading at a time, swapped every few seconds */
+function tickStatus() {
+  const el = $("status-tick");
+  if (!el) return;
+  const lines = [];
+  if (attached) {
+    lines.push("pid " + attached.pid);
+    if (attached.arch) lines.push(attached.arch + " build");
+  }
+  if (games.length) lines.push(many(games.length, "game") + " indexed");
+  const live = games.filter((g) => g.running).length;
+  if (live) lines.push(many(live, "game") + " running");
+  const up = playedFor(Math.floor((Date.now() - bootedAt) / 60000));
+  lines.push("up " + (up || "under a minute"));
+
+  tickStatus.at = ((tickStatus.at || 0) + 1) % lines.length;
+  const next = lines[tickStatus.at];
+  if (el.textContent === next) return;
+  el.textContent = next;
+  if (!still()) {
+    el.animate(
+      [{ opacity: 0, transform: "translateY(5px)" }, { opacity: 1, transform: "none" }],
+      { duration: 200, easing: "ease-out" }
+    );
+  }
+}
+
 function draw() {
+  drawStatus();
   const hidden = config.hidden || [];
   const list = ordered(games.filter((g) => !hidden.includes(g.key)));
   const stamp = signature(list) + "#" + hidden.length;
@@ -519,10 +802,13 @@ function drawFeature(list) {
   const recent = [...list]
     .filter((g) => !g.guard && g.last_played)
     .sort((a, b) => (b.last_played || 0) - (a.last_played || 0))[0];
-  const pick = running || recent || list.find((g) => !g.guard);
+  // the game that is running, else the last one played. no alphabetical
+  // fallback: a banner that changes because a sort order did reads as random
+  const pick = running || recent;
   if (!pick) {
     el.hidden = true;
     featuredKey = null;
+    if (!$("view-library").hidden) paintBackdrop("");
     return;
   }
   featuredKey = pick.key;
@@ -531,6 +817,8 @@ function drawFeature(list) {
 
   const art = artFor(pick) || {};
   const url = art.hero || art.cover || "";
+  // the game page paints its own, so only the library speaks for the backdrop
+  if (!$("view-library").hidden) paintBackdrop(url);
   const img = $("feature-img");
   img.src = url;
   img.hidden = !url;
@@ -538,7 +826,7 @@ function drawFeature(list) {
   el.style.setProperty("--h", hue(pick.name));
 
   $("feature-kicker").textContent = pick.running ? "Running now" : "Jump back in";
-  $("feature-name").textContent = pick.name;
+  decrypt($("feature-name"), pick.name);
 
   const bits = [pick.store];
   const played = playedFor(pick.minutes);
@@ -554,6 +842,9 @@ function drawFeature(list) {
 
 function drawRail(list) {
   const host = $("library-rail");
+  // same once-only deal as the shelves, or every poll redraw replays it
+  host.classList.toggle("deal", !host.dataset.dealt && list.length > 0);
+  if (list.length) host.dataset.dealt = "1";
   host.innerHTML = "";
 
   if (!list.length) {
@@ -561,6 +852,7 @@ function drawRail(list) {
     return;
   }
 
+  let at = 0;
   let split = false;
   for (const game of list) {
     /* they are last in the order already, so one line here is enough to say
@@ -609,6 +901,7 @@ function drawRail(list) {
     }
 
     button.append(thumb, name, mark);
+    button.style.setProperty("--i", Math.min(at++, 16));
     button.addEventListener("click", () => showGame(game.key));
     host.appendChild(button);
   }
@@ -656,8 +949,16 @@ function drawGrids(list) {
 }
 
 function fill(host, list) {
+  // the deal only plays the first time a shelf is drawn. the grid is rebuilt
+  // on every filter keystroke and replaying it each time reads as flicker
+  host.classList.toggle("deal", !host.dataset.dealt && list.length > 0);
+  if (list.length) host.dataset.dealt = "1";
   host.innerHTML = "";
-  for (const game of list) host.appendChild(card(game));
+  list.forEach((game, at) => {
+    const built = card(game);
+    built.style.setProperty("--i", Math.min(at, 14));
+    host.appendChild(built);
+  });
 }
 
 function card(game) {
@@ -754,8 +1055,10 @@ function drawGamePage() {
     if (!$("cheat-groups").children.length) skeletons(game.has_table);
   }
   const images = artFor(game) || {};
+  paintBackdrop(images.hero || images.cover || "");
 
   const hero = $("game-hero-img");
+  shutter(hero, images.hero || "");
   hero.src = images.hero || "";
   // an empty src reads back as this page's own url, so test the value we set
   hero.hidden = !images.hero;
@@ -773,7 +1076,7 @@ function drawGamePage() {
   const logo = $("game-logo");
   logo.src = images.logo || "";
   logo.hidden = !images.logo;
-  $("game-name").textContent = game.name;
+  decrypt($("game-name"), game.name);
 
   const facts = $("game-facts");
   facts.innerHTML = "";
@@ -871,6 +1174,34 @@ function drawGamePage() {
 
 /* ---------- attaching ---------- */
 
+/* the moment a game is locked on: one scanline sweeps the window and leaves a
+   faint accent frame around everything for as long as the session holds */
+function lockOn() {
+  const frame = $("frame");
+  if (!frame || !frame.hidden) return;
+  frame.hidden = false;
+  if (still()) return;
+  const line = $("lockon");
+  line.hidden = false;
+  const sweep = line.animate(
+    [{ transform: "translateY(0)" }, { transform: `translateY(${innerHeight + 200}px)` }],
+    { duration: 550, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
+  );
+  sweep.onfinish = () => (line.hidden = true);
+}
+
+function lockOff() {
+  $("frame").hidden = true;
+}
+
+/* the panic key just fired: the frame barks red twice before settling */
+function frameAlarm() {
+  const frame = $("frame");
+  if (!frame || frame.hidden || still()) return;
+  frame.classList.add("alarm");
+  setTimeout(() => frame.classList.remove("alarm"), 700);
+}
+
 async function doAttach(exe) {
   try {
     attached = await invoke("attach", { exe });
@@ -889,6 +1220,8 @@ async function doAttach(exe) {
   // attaching starts a new process with a new address space, and the backend
   // drops the old search, so nothing already on the finder still means anything
   resetScan();
+  lockOn();
+  blip("attach");
 
   const known = games.find((g) => g.exe === exe);
   if (known) open = known.key;
@@ -911,6 +1244,7 @@ async function doDetach() {
   attached = null;
   scanning = false;
   resetScan();
+  lockOff();
   if (open) drawGamePage();
   drawn = "";
   draw();
@@ -1024,6 +1358,10 @@ async function refreshCheats() {
   $("remove-table").classList.toggle("away", rows.length === 0);
   $("game-export").hidden = rows.length === 0;
   $("cheat-count").textContent = rows.length ? `${many(rows.length, "cheat")}` : "";
+  // the sliver of light under the console header follows what is switched on
+  document
+    .querySelector("#cheats-panel .section-head")
+    .style.setProperty("--armed", rows.length ? rows.filter((r) => r.armed).length / rows.length : 0);
   // said once up here rather than on all forty cards, where it was the only
   // thing most of them had to say and read as filler
   $("cheat-typing").hidden = !rows.some((row) => row.editable);
@@ -1447,6 +1785,7 @@ function cheatCard(item, exe) {
     try {
       await invoke("set_cheat", { exe, id: item.id, on: !item.armed });
       item.armed = !item.armed;
+      blip(item.armed ? "on" : "off");
       patchCard(card, item);
       await refreshCheats();
     } catch (e) {
@@ -1727,10 +2066,22 @@ function drawResults(results) {
   }
 }
 
+/* the sweep along the scan bar while the backend walks the game's memory,
+   held on screen long enough to read as a sweep rather than a flicker */
+function scanFxOn() {
+  $("finder-panel").classList.add("scanning");
+  return performance.now();
+}
+function scanFxOff(t0) {
+  const wait = Math.max(0, 600 - (performance.now() - t0));
+  setTimeout(() => $("finder-panel").classList.remove("scanning"), wait);
+}
+
 async function startScan() {
   if (!attached) return toast("Attach to a game first", true);
   $("scan-start").disabled = true;
   $("scan-status").textContent = "Scanning";
+  const t0 = scanFxOn();
   try {
     const report = await invoke("scan_start", {
       kind: $("scan-type").value,
@@ -1743,6 +2094,7 @@ async function startScan() {
     $("scan-status").textContent = "";
   } finally {
     $("scan-start").disabled = false;
+    scanFxOff(t0);
   }
 }
 
@@ -1764,6 +2116,7 @@ async function narrow(filter) {
   narrowing = true;
   chipsEnabled(false);
   $("scan-status").textContent = "Scanning";
+  const t0 = scanFxOn();
   try {
     setScanStatus(await invoke("scan_next", { filter, value }));
   } catch (e) {
@@ -1772,6 +2125,7 @@ async function narrow(filter) {
   } finally {
     narrowing = false;
     chipsEnabled(true);
+    scanFxOff(t0);
   }
 }
 
@@ -1781,6 +2135,7 @@ function chipsEnabled(on) {
 
 function resetScan() {
   scanning = false;
+  $("finder-panel").classList.remove("scanning");
   $("finder-filters").hidden = true;
   $("scan-status").textContent = "";
   $("results").innerHTML = "";
@@ -1831,8 +2186,17 @@ function currentView() {
   ) || "library";
 }
 
+const VIEW_ORDER = { library: 0, game: 0, finder: 1, settings: 2, about: 3 };
+
 function showView(name) {
   if (name === "game" && !open) name = "library";
+
+  // the page slides in from the direction you travelled
+  const was = currentView();
+  if (was !== name) {
+    document.querySelector(".content").dataset.dir =
+      (VIEW_ORDER[name] ?? 0) >= (VIEW_ORDER[was] ?? 0) ? "fwd" : "back";
+  }
 
   for (const id of ["library", "game", "finder", "settings", "about"]) {
     $(`view-${id}`).hidden = id !== name;
@@ -1918,6 +2282,11 @@ $("game-attach").addEventListener("click", () => {
 
 /* the More popover. every action inside keeps its own handler by id, so this
    only opens and shuts the menu and gets out of the way */
+/* it lives on the body, not in the hero. the hero isolates its stacking and
+   the readout strip under it carries a backdrop blur, so a popover left in
+   there gets painted over by the strip no matter what its z-index says */
+document.body.appendChild($("game-menu"));
+
 function shutMenu() {
   $("game-menu").hidden = true;
   $("game-more").setAttribute("aria-expanded", "false");
@@ -1926,15 +2295,22 @@ $("game-more").addEventListener("click", (e) => {
   e.stopPropagation();
   const menu = $("game-menu");
   const opening = menu.hidden;
+  menu.hidden = !opening;
   if (opening) {
     // the hero clips its overflow for the art, so the popover is pinned to the
-    // viewport under the button instead of living inside that clipped box
+    // viewport under the button instead of living inside that clipped box.
+    // shown first so it has a size, then clamped so a small window cannot
+    // push it off the edge, flipping above the button when there is no room
     const r = e.currentTarget.getBoundingClientRect();
     menu.style.position = "fixed";
-    menu.style.top = r.bottom + 6 + "px";
-    menu.style.left = r.left + "px";
+    const w = menu.offsetWidth || 210;
+    const h = menu.offsetHeight || 200;
+    menu.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
+    menu.style.top =
+      (r.bottom + 6 + h > innerHeight - 8 && r.top - h - 6 > 8
+        ? r.top - h - 6
+        : Math.min(r.bottom + 6, innerHeight - h - 8)) + "px";
   }
-  menu.hidden = !opening;
   $("game-more").setAttribute("aria-expanded", String(opening));
 });
 $("game-menu").addEventListener("click", (e) => {
@@ -2275,6 +2651,201 @@ document.addEventListener("keydown", (e) => {
   });
 });
 
+
+/* ---------- the palette ---------- */
+
+/* ctrl k, or slash. every game, view and action behind one box, scored by
+   subsequence with a leaning toward word starts and unbroken runs */
+function fuzzy(hay, needle) {
+  hay = hay.toLowerCase();
+  let score = 0;
+  let at = -1;
+  let run = 0;
+  for (const ch of needle.toLowerCase()) {
+    const found = hay.indexOf(ch, at + 1);
+    if (found < 0) return -1;
+    run = found === at + 1 ? run + 1 : 0;
+    score += 1 + run * 2 + (found === 0 || " .:/_-".includes(hay[found - 1] || "") ? 3 : 0);
+    at = found;
+  }
+  return score;
+}
+
+let paletteSel = 0;
+let paletteRows = [];
+
+function paletteEntries() {
+  const hidden = config.hidden || [];
+  const entries = [];
+  for (const game of games) {
+    if (hidden.includes(game.key) || game.guard) continue;
+    entries.push({
+      kind: game.running ? "live" : "game",
+      label: game.name,
+      sub: game.store + (game.has_table ? "  ·  table" : ""),
+      game,
+      weight: (game.running ? 40 : 0) + (game.last_played || 0) / 1e9,
+      go: () => showGame(game.key),
+    });
+  }
+  for (const [id, label] of [
+    ["library", "Library"],
+    ["finder", "Find a value"],
+    ["settings", "Settings"],
+    ["about", "About"],
+  ]) {
+    entries.push({
+      kind: "view",
+      label,
+      sub: "view",
+      weight: 0,
+      go: () => {
+        leaveGame();
+        showView(id);
+        drawn = "";
+        draw();
+      },
+    });
+  }
+  entries.push({ kind: "act", label: "Attach by process", sub: "action", weight: 0, go: openProcesses });
+  entries.push({ kind: "act", label: "Import a .CT file", sub: "action", weight: 0, go: pickTable });
+  entries.push({ kind: "act", label: "Export your profile", sub: "action", weight: 0, go: openExport });
+  entries.push({ kind: "act", label: "Check for new tables", sub: "action", weight: 0, go: () => checkForTables(true) });
+  entries.push({
+    kind: "act",
+    label: "Rescan the library",
+    sub: "action",
+    weight: 0,
+    go: () => {
+      art.clear();
+      loadGames(true);
+    },
+  });
+  return entries;
+}
+
+function drawPalette() {
+  const query = $("palette-input").value.trim();
+  let list = paletteEntries();
+
+  if (query) {
+    list = list
+      .map((e) => ({ ...e, score: fuzzy(e.label, query) }))
+      .filter((e) => e.score >= 0)
+      .sort((a, b) => b.score - a.score || b.weight - a.weight)
+      .slice(0, 12);
+  } else {
+    // nothing typed: what you probably want, running first, then recent
+    const gamesFirst = list
+      .filter((e) => e.game)
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 7);
+    list = [...gamesFirst, ...list.filter((e) => e.kind === "view")];
+  }
+
+  paletteSel = Math.min(paletteSel, Math.max(0, list.length - 1));
+  paletteRows = list;
+
+  const host = $("palette-list");
+  host.innerHTML = "";
+  list.forEach((entry, at) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "palette-row" + (at === paletteSel ? " sel" : "") + (entry.kind === "live" ? " live" : "");
+
+    if (entry.game) {
+      const thumb = document.createElement("span");
+      thumb.className = "palette-thumb";
+      coverInto(thumb, entry.game);
+      row.appendChild(thumb);
+    }
+
+    const main = document.createElement("span");
+    main.className = "palette-main";
+    const label = document.createElement("b");
+    label.textContent = entry.label;
+    const sub = document.createElement("i");
+    sub.textContent = entry.kind === "live" ? "running now  ·  " + entry.sub : entry.sub;
+    main.append(label, sub);
+    row.appendChild(main);
+
+    const kind = document.createElement("span");
+    kind.className = "palette-kind";
+    kind.textContent = { live: "game", game: "game", view: "view", act: "run" }[entry.kind];
+    row.appendChild(kind);
+
+    row.addEventListener("click", () => runPalette(entry));
+    row.addEventListener("pointerenter", () => {
+      paletteSel = at;
+      for (const other of host.children) other.classList.remove("sel");
+      row.classList.add("sel");
+    });
+    host.appendChild(row);
+  });
+
+  if (!list.length) {
+    host.innerHTML = '<p class="palette-none">Nothing matches that.</p>';
+  }
+}
+
+function runPalette(entry) {
+  closePalette();
+  entry.go();
+}
+
+function openPalette() {
+  // not over a sheet, and never while a key capture box is listening
+  const busy = ["sheet", "name-sheet", "export-sheet", "import-sheet", "elevate-sheet"].some(
+    (id) => !$(id).hidden
+  );
+  if (busy || catching || catchingPanic || document.querySelector(".cheat-key.listening")) return;
+  paletteSel = 0;
+  $("palette-input").value = "";
+  $("palette").hidden = false;
+  drawPalette();
+  $("palette-input").focus();
+  blip("open");
+}
+
+function closePalette() {
+  $("palette").hidden = true;
+}
+
+document.addEventListener("keydown", (e) => {
+  const wantsIt =
+    (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") ||
+    (e.key === "/" && !e.ctrlKey && !e.altKey && !inABox(e.target));
+  if (wantsIt) {
+    e.preventDefault();
+    if ($("palette").hidden) openPalette();
+    else closePalette();
+    return;
+  }
+  if ($("palette").hidden) return;
+  if (e.key === "Escape") closePalette();
+});
+
+$("palette").addEventListener("click", (e) => {
+  if (e.target === $("palette")) closePalette();
+});
+
+$("palette-input").addEventListener("input", () => {
+  paletteSel = 0;
+  drawPalette();
+});
+
+$("palette-input").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const n = paletteRows.length;
+    if (!n) return;
+    paletteSel = (paletteSel + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+    drawPalette();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (paletteRows[paletteSel]) runPalette(paletteRows[paletteSel]);
+  }
+});
 
 /* ---------- shared tables ---------- */
 
@@ -3202,11 +3773,15 @@ async function start() {
   // its own, so this is not only driven by the detach event
   setInterval(drawQuestion, 60000);
   setInterval(refreshCheats, 1500);
+  tickStatus();
+  setInterval(tickStatus, 6000);
 
   if (window.__TAURI__.event) {
     const { listen } = window.__TAURI__.event;
     listen("attached", (e) => {
       attached = e.payload;
+      lockOn();
+      blip("attach");
       drawn = "";
       draw();
       if (open) drawGamePage();
@@ -3218,12 +3793,16 @@ async function start() {
     // a cheat key landed in the game, so the cards are out of date
     listen("keys-fired", (e) => {
       const hit = e.payload || {};
-      if (hit.panic) toast("Panic key. Everything switched off");
+      if (hit.panic) {
+        frameAlarm();
+        toast("Panic key. Everything switched off");
+      }
       const game = gameFor(open);
       if (game && sameExe(game.exe, hit.exe)) refreshCheats();
     });
     listen("detached", () => {
       attached = null;
+      lockOff();
       // this is the moment a sitting ends, and the moment there is something
       // to ask about
       drawQuestion();

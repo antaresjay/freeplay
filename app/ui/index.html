@@ -3,9 +3,14 @@
 <head>
 <meta charset="utf-8">
 <title>Freeplay</title>
+<link rel="preload" href="fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 </head>
 <body class="booting">
+
+<!-- whatever game the page is about, blurred into the room's light -->
+<div id="page-art" aria-hidden="true"><img id="page-art-img" alt=""></div>
 
 <div id="splash" class="splash" data-tauri-drag-region>
   <div class="sky">
@@ -22,25 +27,13 @@
   </div>
 </div>
 
-<div class="titlebar" data-tauri-drag-region>
-  <div class="brand" data-tauri-drag-region>
-    <img class="mark" src="icon.png" alt="" data-tauri-drag-region>
-    <span class="wordmark">Freeplay</span>
-  </div>
-  <div class="titlebar-fill" data-tauri-drag-region></div>
-  <div class="window-buttons">
-    <button id="win-min" class="win" title="Minimise"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
-    <button id="win-max" class="win" title="Maximise">
-      <svg class="when-small" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg>
-      <svg class="when-big" viewBox="0 0 12 12"><rect x="2.5" y="4" width="5.5" height="5.5" rx="1"/><path d="M4.5 3.5V2.5h5v5h-1"/></svg>
-    </button>
-    <button id="win-close" class="win danger" title="Close"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg></button>
-  </div>
-</div>
-
 <div class="shell">
 
   <aside class="sidebar">
+    <div class="brand" data-tauri-drag-region>
+      <img class="mark" src="icon.png" alt="" data-tauri-drag-region>
+      <span class="wordmark">Freeplay</span>
+    </div>
     <nav class="nav">
       <button class="nav-item active" data-view="library">
         <svg viewBox="0 0 20 20"><rect x="2.5" y="3" width="6" height="14" rx="1.5"/><rect x="11.5" y="3" width="6" height="6" rx="1.5"/><rect x="11.5" y="11" width="6" height="6" rx="1.5"/></svg>
@@ -80,10 +73,38 @@
     </div>
   </aside>
 
+  <div class="main">
+
+  <div class="titlebar" data-tauri-drag-region>
+    <div class="titlebar-fill" data-tauri-drag-region></div>
+    <div class="window-buttons">
+      <button id="win-min" class="win" title="Minimise"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+      <button id="win-max" class="win" title="Maximise">
+        <svg class="when-small" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg>
+        <svg class="when-big" viewBox="0 0 12 12"><rect x="2.5" y="4" width="5.5" height="5.5" rx="1"/><path d="M4.5 3.5V2.5h5v5h-1"/></svg>
+      </button>
+      <button id="win-close" class="win danger" title="Close"><svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg></button>
+    </div>
+  </div>
+
   <main class="content">
 
     <!-- library ------------------------------------------------------- -->
     <section id="view-library" class="view">
+      <div id="feature" class="feature" hidden>
+        <div class="feature-art"><img id="feature-img" alt=""></div>
+        <div class="feature-glow"></div>
+        <div class="feature-body">
+          <span id="feature-kicker" class="feature-kicker"></span>
+          <h2 id="feature-name"></h2>
+          <div id="feature-facts" class="feature-facts"></div>
+          <div class="feature-actions">
+            <button id="feature-play" class="primary big"></button>
+            <button id="feature-open" class="glassbtn big">Open</button>
+          </div>
+        </div>
+      </div>
+
       <div id="ask" class="ask-card" hidden>
         <div class="ask-body">
           <strong id="ask-title"></strong>
@@ -101,20 +122,6 @@
         <div class="banner-body">
           <strong><span class="pip"></span>Nothing running</strong>
           <p>Launch a game and it shows up here ready to attach. Freeplay reads memory from a running process, so the game has to be open.</p>
-        </div>
-      </div>
-
-      <div id="feature" class="feature" hidden>
-        <div class="feature-art"><img id="feature-img" alt=""></div>
-        <div class="feature-glow"></div>
-        <div class="feature-body">
-          <span id="feature-kicker" class="feature-kicker"></span>
-          <h2 id="feature-name"></h2>
-          <div id="feature-facts" class="feature-facts"></div>
-          <div class="feature-actions">
-            <button id="feature-play" class="primary big"></button>
-            <button id="feature-open" class="glassbtn big">Open</button>
-          </div>
         </div>
       </div>
 
@@ -163,11 +170,8 @@
         Library
       </button>
 
-      <div class="game-layout">
-      <div class="game-main">
-
       <div class="game-hero">
-        <div class="game-hero-art"><img id="game-hero-img" alt=""></div>
+        <div class="game-hero-art"><img id="game-hero-img" alt=""><img id="game-hero-ghost" alt="" hidden></div>
         <div id="game-cover" class="game-cover"><img id="game-cover-img" alt=""><span id="game-cover-initials" class="initials"></span></div>
         <div class="game-hero-body">
           <img id="game-logo" class="game-logo" alt="" hidden>
@@ -223,6 +227,9 @@
         <div class="detail-row" id="detail-id-row"><span>App id</span><b id="detail-id"></b></div>
         <div class="detail-row" id="detail-guard-row"><span>Anti-cheat</span><b id="detail-guard"></b></div>
       </div>
+
+      <div class="game-layout">
+      <div class="game-main">
 
       <div id="attach-note" class="banner" hidden>
         <div class="banner-body">
@@ -602,6 +609,29 @@
     </section>
 
   </main>
+
+  </div><!-- main -->
+</div>
+
+<footer id="status-rail">
+  <span id="status-mode">Standby</span>
+  <span id="status-tick"></span>
+  <span id="status-hint"></span>
+</footer>
+
+<!-- the sweep that plays when a game is locked on, and the frame that stays -->
+<div id="lockon" hidden></div>
+<div id="frame" hidden></div>
+
+<div id="palette" class="palette" hidden>
+  <div class="palette-card">
+    <div class="palette-top">
+      <svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
+      <input id="palette-input" type="text" placeholder="Jump to a game, view or action" autocomplete="off" spellcheck="false">
+      <span class="palette-key">esc</span>
+    </div>
+    <div id="palette-list" class="palette-list"></div>
+  </div>
 </div>
 
 <div id="elevate-sheet" class="sheet" hidden>

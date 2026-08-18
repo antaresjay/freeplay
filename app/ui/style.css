@@ -1,129 +1,156 @@
-/* dark is the default. light overrides the same names below so nothing further
-   down has to know which one is on.
+/* dark is the default. light overrides the same names further down so nothing
+   below has to know which one is on.
 
-   the look: a deep blue-black canvas lit from the top, glass panels floating on
-   it with a hairline of light along their top edge, and the accent used as a
-   real glow rather than a flat fill. surfaces are translucent white over the
-   canvas so depth comes from light, not from a darker grey box */
+   the look this time: an instrument, not a website. carbon black canvas with a
+   faint survey grid scribed into it, the running game's art washed across the
+   whole window as light, and everything technical (labels, counts, addresses,
+   states) set in a mono face so the app reads like equipment. corners get cut,
+   not rounded off, and state is said with a lit rail down the side of a card
+   rather than a coloured box around it */
+
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("fonts/space-grotesk.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("fonts/jetbrains-mono.woff2") format("woff2");
+}
+
 :root {
-  --bg: #070810;
-  --bg-2: #0a0c16;
+  --bg: #060709;
+  --bg-2: #0a0c11;
   /* the lit canvas behind everything */
   --canvas:
-    radial-gradient(1200px 680px at 18% -8%, rgba(120, 130, 170, 0.10), transparent 60%),
-    radial-gradient(1000px 600px at 108% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 55%),
+    radial-gradient(1100px 600px at 16% -10%, rgba(110, 125, 165, 0.09), transparent 60%),
+    radial-gradient(900px 560px at 106% 2%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%),
     linear-gradient(180deg, var(--bg-2), var(--bg));
 
-  --panel: rgba(22, 26, 38, 0.55);
-  --panel-solid: #11141f;
-  --raised: rgba(255, 255, 255, 0.045);
-  --raised-2: rgba(255, 255, 255, 0.08);
+  --panel: rgba(16, 19, 27, 0.55);
+  --panel-solid: #0e1118;
+  --raised: rgba(255, 255, 255, 0.04);
+  --raised-2: rgba(255, 255, 255, 0.075);
   --line: rgba(255, 255, 255, 0.09);
   --line-soft: rgba(255, 255, 255, 0.055);
   --line-strong: rgba(255, 255, 255, 0.16);
-  /* the sliver of light along the top of a raised surface */
   --edge: rgba(255, 255, 255, 0.06);
 
-  --text: #f3f5fb;
-  --dim: #a4abbd;
-  --faint: #626a7e;
+  --text: #eef1f8;
+  --dim: #9ba3b6;
+  --faint: #5c6478;
+  --muted: #9ba3b6;
 
   --shadow: rgba(0, 0, 0, 0.5);
-  --shadow-strong: rgba(0, 0, 0, 0.66);
-  --scrim: 7, 8, 16;
-  --overlay: 4, 5, 12;
+  --shadow-strong: rgba(0, 0, 0, 0.68);
+  --scrim: 6, 7, 9;
+  --overlay: 3, 4, 8;
   --hairline: rgba(255, 255, 255, 0.07);
+  /* what a text box sits on. an inset well in the dark, barely a tint in the light */
+  --field: rgba(3, 4, 8, 0.28);
+  --field-focus: rgba(3, 4, 8, 0.42);
 
-  --bad: #ff6b6b;
+  --bad: #ff5d5d;
   --warn: #f0b429;
+  --good: #4ade80;
 
-  --r-sm: 9px;
-  --r: 14px;
-  --r-lg: 20px;
-  --r-xl: 26px;
+  /* corners are tight and technical. the chamfer is the signature */
+  --r-sm: 6px;
+  --r: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+  --cut: 12px;
+  --cut-sm: 8px;
 
-  --titlebar: 40px;
+  --titlebar: 42px;
   --sidebar: 256px;
+  --status: 26px;
+
+  --font-display: "Space Grotesk", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
 
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --spring: cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 
-/* light keeps the same idea, lit from the top, glass panels, but the glass is
-   near-white over a soft grey canvas */
-:root[data-theme="light"],
-:root[data-theme="system"] {
-  --light-bg: #e9ebf2;
-  --light-bg-2: #f4f5f9;
-}
 :root[data-theme="light"] {
-  --bg: #e9ebf2;
-  --bg-2: #f4f5f9;
+  --bg: #e8eaf0;
+  --bg-2: #f3f4f8;
   --canvas:
-    radial-gradient(1200px 680px at 18% -8%, rgba(90, 100, 140, 0.10), transparent 60%),
-    radial-gradient(1000px 600px at 108% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 55%),
+    radial-gradient(1100px 600px at 16% -10%, rgba(90, 100, 140, 0.1), transparent 60%),
+    radial-gradient(900px 560px at 106% 2%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 55%),
     linear-gradient(180deg, var(--bg-2), var(--bg));
 
   --panel: rgba(255, 255, 255, 0.72);
   --panel-solid: #ffffff;
   --raised: rgba(20, 23, 40, 0.035);
   --raised-2: rgba(20, 23, 40, 0.07);
-  --line: rgba(20, 23, 40, 0.1);
-  --line-soft: rgba(20, 23, 40, 0.06);
-  --line-strong: rgba(20, 23, 40, 0.17);
+  --line: rgba(20, 23, 40, 0.16);
+  --line-soft: rgba(20, 23, 40, 0.09);
+  --line-strong: rgba(20, 23, 40, 0.26);
   --edge: rgba(255, 255, 255, 0.85);
 
-  --text: #12151d;
-  --dim: #515867;
-  --faint: #838b98;
+  --text: #0f1219;
+  --dim: #3d4452;
+  --faint: #646c7b;
+  --muted: #3d4452;
 
   --shadow: rgba(20, 23, 29, 0.1);
-  --shadow-strong: rgba(20, 23, 29, 0.16);
+  --shadow-strong: rgba(20, 23, 29, 0.17);
   --scrim: 255, 255, 255;
   --overlay: 20, 23, 29;
-  --hairline: rgba(20, 23, 29, 0.09);
+  --hairline: rgba(20, 23, 29, 0.13);
+  --field: rgba(20, 23, 40, 0.07);
+  --field-focus: rgba(20, 23, 40, 0.11);
 }
 
 @media (prefers-color-scheme: light) {
   :root[data-theme="system"] {
-    --bg: #e9ebf2;
-    --bg-2: #f4f5f9;
+    --bg: #e8eaf0;
+    --bg-2: #f3f4f8;
     --canvas:
-      radial-gradient(1200px 680px at 18% -8%, rgba(90, 100, 140, 0.10), transparent 60%),
-      radial-gradient(1000px 600px at 108% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 55%),
+      radial-gradient(1100px 600px at 16% -10%, rgba(90, 100, 140, 0.1), transparent 60%),
+      radial-gradient(900px 560px at 106% 2%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 55%),
       linear-gradient(180deg, var(--bg-2), var(--bg));
 
     --panel: rgba(255, 255, 255, 0.72);
     --panel-solid: #ffffff;
     --raised: rgba(20, 23, 40, 0.035);
     --raised-2: rgba(20, 23, 40, 0.07);
-    --line: rgba(20, 23, 40, 0.1);
-    --line-soft: rgba(20, 23, 40, 0.06);
-    --line-strong: rgba(20, 23, 40, 0.17);
+    --line: rgba(20, 23, 40, 0.16);
+    --line-soft: rgba(20, 23, 40, 0.09);
+    --line-strong: rgba(20, 23, 40, 0.26);
     --edge: rgba(255, 255, 255, 0.85);
 
-    --text: #12151d;
-    --dim: #515867;
-    --faint: #838b98;
+    --text: #0f1219;
+    --dim: #3d4452;
+    --faint: #646c7b;
+    --muted: #3d4452;
 
     --shadow: rgba(20, 23, 29, 0.1);
-    --shadow-strong: rgba(20, 23, 29, 0.16);
+    --shadow-strong: rgba(20, 23, 29, 0.17);
     --scrim: 255, 255, 255;
     --overlay: 20, 23, 29;
-    --hairline: rgba(20, 23, 29, 0.09);
+    --hairline: rgba(20, 23, 29, 0.13);
+    --field: rgba(20, 23, 40, 0.07);
+    --field-focus: rgba(20, 23, 40, 0.11);
   }
 }
 
-/* amber by default. the arcade cabinets this is named after glowed this
-   colour */
-/* the three lights behind the opening screen sit alongside the accent rather
-   than being worked out from it. a hue rotation gives you a colour that is
+/* amber by default. the arcade cabinets this is named after glowed this colour */
+/* the lights behind the opening screen sit alongside the accent rather than
+   being worked out from it. a hue rotation gives you a colour that is
    technically related and still looks wrong, so these are picked by eye */
 :root,
 :root[data-accent="amber"] {
   --accent: #f0a52a;
   --accent-ink: #1d1403;
-  --accent-soft: rgba(240, 165, 42, 0.14);
+  --accent-soft: rgba(240, 165, 42, 0.13);
   --accent-line: rgba(240, 165, 42, 0.45);
   --lit-2: #a78bfa;
   --lit-3: #d64030;
@@ -132,7 +159,7 @@
 :root[data-accent="violet"] {
   --accent: #a78bfa;
   --accent-ink: #150f2e;
-  --accent-soft: rgba(167, 139, 250, 0.16);
+  --accent-soft: rgba(167, 139, 250, 0.15);
   --accent-line: rgba(167, 139, 250, 0.5);
   --lit-2: #4f46e5;
   --lit-3: #e879f9;
@@ -141,7 +168,7 @@
 :root[data-accent="cyan"] {
   --accent: #38bdf8;
   --accent-ink: #04141f;
-  --accent-soft: rgba(56, 189, 248, 0.15);
+  --accent-soft: rgba(56, 189, 248, 0.14);
   --accent-line: rgba(56, 189, 248, 0.5);
   --lit-2: #4f46e5;
   --lit-3: #0d9488;
@@ -150,7 +177,7 @@
 :root[data-accent="rose"] {
   --accent: #fb7185;
   --accent-ink: #29060d;
-  --accent-soft: rgba(251, 113, 133, 0.15);
+  --accent-soft: rgba(251, 113, 133, 0.14);
   --accent-line: rgba(251, 113, 133, 0.5);
   --lit-2: #a855f7;
   --lit-3: #b91c3c;
@@ -159,20 +186,48 @@
 :root[data-accent="lime"] {
   --accent: #a3e635;
   --accent-ink: #131c04;
-  --accent-soft: rgba(163, 230, 53, 0.16);
+  --accent-soft: rgba(163, 230, 53, 0.15);
   --accent-line: rgba(163, 230, 53, 0.5);
   --lit-2: #14b8a6;
   --lit-3: #4d7c0f;
   --lit-4: #eab308;
 }
 
-/* the accent as light, worked out from whatever it is set to, so a glow is one
-   token rather than five hand-picked shadows */
+/* the accent as light, worked out from whatever it is set to */
 :root {
   --accent-bloom: 0 0 26px color-mix(in srgb, var(--accent) 42%, transparent);
   --accent-bloom-soft: 0 0 18px color-mix(in srgb, var(--accent) 26%, transparent);
   --accent-wash: color-mix(in srgb, var(--accent) 8%, transparent);
   --glass-shadow: 0 20px 50px -18px var(--shadow-strong);
+  --chamfer: polygon(
+    var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  --chamfer-sm: polygon(
+    var(--cut-sm) 0, 100% 0, 100% calc(100% - var(--cut-sm)),
+    calc(100% - var(--cut-sm)) 100%, 0 100%, 0 var(--cut-sm));
+}
+
+/* the accent tints that read fine over black are barely there over white, so
+   the light theme mixes them harder. after the per accent blocks on purpose,
+   so these win */
+:root[data-theme="light"] {
+  --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-wash: color-mix(in srgb, var(--accent) 15%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 65%, transparent);
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
+    --accent-wash: color-mix(in srgb, var(--accent) 15%, transparent);
+    --accent-line: color-mix(in srgb, var(--accent) 65%, transparent);
+  }
+}
+
+/* the sweep angle on the live ring */
+@property --a {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
 * { box-sizing: border-box; }
@@ -192,27 +247,66 @@ body {
   user-select: none;
 }
 
-/* the lit canvas, painted once behind the whole window and held still while
-   views scroll over it. a fixed layer rather than a body background so the
-   glow does not drift when a long page scrolls */
+/* the canvas, painted once behind the whole window and held still while views
+   scroll over it. three fixed layers, back to front: the lit gradient, the
+   game's art as ambient light, and a survey grid scribed over both */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: -2;
+  z-index: -4;
   background: var(--canvas);
   pointer-events: none;
 }
-/* a whisper of texture over the canvas so the flat dark does not band on a
-   cheap panel. one tiny tiled dot grid at very low opacity */
+
+/* whatever art the page has, blurred into a wash. the img is set from app.js,
+   this only decides how it reads */
+#page-art {
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  opacity: 0;
+  transition: opacity 0.7s var(--ease);
+  pointer-events: none;
+  overflow: hidden;
+}
+#page-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(70px) saturate(1.35) brightness(0.5);
+  /* barely a drift, but the room never feels like a still */
+  animation: art-drift 50s ease-in-out infinite alternate;
+}
+@keyframes art-drift {
+  from { transform: scale(1.22); }
+  to { transform: scale(1.32) translateY(-1.5%); }
+}
+#page-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(var(--scrim), 0.55), rgba(var(--scrim), 0.9) 75%),
+    radial-gradient(1200px 700px at 50% 0%, transparent, rgba(var(--scrim), 0.55));
+}
+body.has-art #page-art { opacity: 0.6; }
+:root[data-theme="light"] #page-art img { filter: blur(70px) saturate(1.1) brightness(1.15); }
+:root[data-theme="light"] body.has-art #page-art { opacity: 0.3; }
+
+/* the grid. two hairline rasters and a breath of noise so the flat dark does
+   not band on a cheap panel. quiet enough that you feel it more than see it */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -2;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.5) 0.5px, transparent 0.5px);
-  background-size: 22px 22px;
-  opacity: 0.015;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.45) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.45) 1px, transparent 1px),
+    radial-gradient(rgba(255, 255, 255, 0.5) 0.5px, transparent 0.5px);
+  background-size: 30px 30px, 30px 30px, 15px 15px;
+  opacity: 0.014;
   pointer-events: none;
 }
 
@@ -226,14 +320,18 @@ svg {
   stroke-linejoin: round;
 }
 
-.mono { font-family: "Cascadia Mono", Consolas, monospace; font-size: 11.5px; }
+.mono { font-family: var(--font-mono); font-size: 11px; }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb {
   background: var(--raised-2);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--line-strong);
+  background-clip: content-box;
 }
 ::-webkit-scrollbar-track { background: transparent; }
 
@@ -249,24 +347,39 @@ svg {
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: #07080b;
+  background: #050608;
   transition: opacity 0.45s var(--ease), filter 0.45s var(--ease);
+}
+
+/* the same grid the app sits on, so the handoff from splash to window reads
+   as the lights coming up in one room rather than a scene change */
+.splash::before {
+  content: "";
+  position: absolute;
+  inset: -30px 0 0 -30px;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+  background-size: 30px 30px;
+  opacity: 0.02;
+  mask-image: radial-gradient(70% 70% at 50% 45%, #000, transparent);
+  -webkit-mask-image: radial-gradient(70% 70% at 50% 45%, #000, transparent);
+  animation: grid-crawl 24s linear infinite;
+}
+@keyframes grid-crawl {
+  from { transform: translate(0, 0); }
+  to { transform: translate(30px, 30px); }
 }
 
 /* the window buttons stay reachable over the top of it, and the bar itself
    gets out of the way so the colour runs edge to edge */
-body.booting .titlebar {
-  position: relative;
-  z-index: 61;
-  background: none;
-  border-bottom-color: transparent;
-}
+body.booting .titlebar { z-index: 61; }
 body.booting .brand { opacity: 0; }
 body.booting .win { color: rgba(255, 255, 255, 0.7); }
 body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 
-/* four wide soft lights drifting behind everything. blurred this hard they
-   read as one moving field rather than four circles */
+/* wide soft lights drifting behind everything. blurred this hard they read as
+   one moving field rather than four circles */
 /* it comes up from nothing rather than being there on the first frame, partly
    because it looks better and partly because the accent is only known once
    settings have been read, a few milliseconds in, and a swap while the lights
@@ -274,51 +387,51 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 .sky {
   position: absolute;
   inset: -20%;
-  filter: blur(90px);
-  opacity: 0.85;
-  animation: lights-up 0.9s var(--ease) both;
+  filter: blur(95px);
+  opacity: 0.55;
+  animation: lights-up 1.1s var(--ease) both;
 }
 
 @keyframes lights-up {
   from { opacity: 0; }
-  to { opacity: 0.85; }
+  to { opacity: 0.55; }
 }
 
 .glow {
   position: absolute;
-  width: 62%;
-  height: 62%;
+  width: 58%;
+  height: 58%;
   border-radius: 50%;
   will-change: transform;
 }
 .g1 {
-  top: -6%;
-  left: -4%;
+  top: -4%;
+  left: -6%;
   background: radial-gradient(circle, var(--accent) 0%, transparent 66%);
-  opacity: 0.85;
+  opacity: 0.8;
   animation: drift-a 19s ease-in-out infinite;
 }
 .g2 {
-  top: 18%;
-  right: -10%;
+  top: 20%;
+  right: -12%;
   background: radial-gradient(circle, var(--lit-2) 0%, transparent 66%);
-  opacity: 0.7;
+  opacity: 0.55;
   animation: drift-b 23s ease-in-out infinite;
 }
 .g3 {
-  bottom: -18%;
-  left: 14%;
+  bottom: -20%;
+  left: 12%;
   background: radial-gradient(circle, var(--lit-3) 0%, transparent 66%);
-  opacity: 0.6;
+  opacity: 0.45;
   animation: drift-c 27s ease-in-out infinite;
 }
 .g4 {
-  bottom: 4%;
-  right: 16%;
-  width: 44%;
-  height: 44%;
+  bottom: 2%;
+  right: 18%;
+  width: 40%;
+  height: 40%;
   background: radial-gradient(circle, var(--lit-4) 0%, transparent 66%);
-  opacity: 0.42;
+  opacity: 0.35;
   animation: drift-d 21s ease-in-out infinite;
 }
 
@@ -343,7 +456,7 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 .grain {
   position: absolute;
   inset: 0;
-  opacity: 0.32;
+  opacity: 0.3;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 }
@@ -353,7 +466,7 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 26px;
+  gap: 30px;
   animation: splash-in 0.7s var(--ease) both;
 }
 
@@ -363,10 +476,12 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 }
 
 .splash-word {
-  font-size: clamp(38px, 3.6vw, 62px);
-  font-weight: 780;
-  letter-spacing: 14px;
-  text-indent: 14px;
+  position: relative;
+  font-family: var(--font-display);
+  font-size: clamp(40px, 4vw, 66px);
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
   color: var(--accent);
 }
 
@@ -377,14 +492,14 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 @supports (color: color-mix(in srgb, red, white)) {
   .splash-word {
     --ink: color-mix(in srgb, var(--accent) 74%, white);
-    --shine: color-mix(in srgb, var(--accent) 14%, white);
+    --shine: color-mix(in srgb, var(--accent) 10%, white);
     background: linear-gradient(100deg,
       var(--ink) 0%, var(--ink) 38%, var(--shine) 50%, var(--ink) 62%, var(--ink) 100%);
     background-size: 260% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    filter: drop-shadow(0 0 26px color-mix(in srgb, var(--accent) 40%, transparent));
+    filter: drop-shadow(0 0 30px color-mix(in srgb, var(--accent) 38%, transparent));
     animation: sweep 4.5s var(--ease) infinite;
   }
 }
@@ -394,18 +509,35 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   100% { background-position: -30% 0; }
 }
 
+/* the crosshair ticks either side of the word. drawn, not typed, so they
+   cannot end up in anybody's clipboard */
+.splash-word::before,
+.splash-word::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 26px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-line));
+  filter: none;
+}
+.splash-word::before { right: 100%; margin-right: 18px; }
+.splash-word::after {
+  left: 100%;
+  margin-left: 4px;
+  background: linear-gradient(90deg, var(--accent-line), transparent);
+}
+
 .splash-bar {
-  width: 176px;
+  width: 210px;
   height: 2px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
 }
 .splash-bar span {
   display: block;
   width: 42%;
   height: 100%;
-  border-radius: inherit;
   background: linear-gradient(90deg, transparent, var(--accent), transparent);
   animation: crawl 1.5s var(--ease) infinite;
 }
@@ -419,9 +551,12 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 .splash-step {
   margin: 0;
   height: 15px;
-  font-size: 12px;
-  letter-spacing: 0.4px;
-  color: rgba(255, 255, 255, 0.55);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
   transition: opacity 0.2s var(--ease);
 }
 
@@ -436,33 +571,43 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 
 /* ---------- title bar ---------- */
 
+/* not a bar any more: a strip of glass floating over the content, which
+   scrolls underneath it. the art of whatever page you are on runs right up
+   under the window buttons */
 .titlebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
   height: var(--titlebar);
   display: flex;
   align-items: center;
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
-  backdrop-filter: blur(18px) saturate(140%);
-  border-bottom: 1px solid var(--line-soft);
 }
+/* the glass lives on its own layer so the fade cannot touch the buttons */
+.titlebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(var(--scrim), 0.55), transparent);
+  backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(#000 55%, transparent);
+  mask-image: linear-gradient(#000 55%, transparent);
+  pointer-events: none;
+}
+/* over art the wash is always night. the banners keep their dark scrims in
+   both themes, and the light theme's white fog over a dark shot read as a
+   smudge across the top of the window */
+body.has-art .titlebar::before {
+  background: linear-gradient(180deg, rgba(4, 5, 10, 0.5), transparent);
+}
+body.has-art .win { color: rgba(255, 255, 255, 0.72); }
+body.has-art .win:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+body.has-art .win.danger:hover { background: #d93a3a; color: #fff; }
+body.booting .titlebar::before { display: none; }
 
 .titlebar-fill { flex: 1; align-self: stretch; }
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 14px;
-  align-self: stretch;
-}
-
-.mark {
-  width: 21px;
-  height: 21px;
-  object-fit: contain;
-  flex: none;
-}
-
-.wordmark { font-size: 13px; font-weight: 650; letter-spacing: 0.2px; }
 
 .window-buttons { display: flex; height: 100%; }
 
@@ -483,62 +628,133 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 
 /* ---------- shell ---------- */
 
-.shell { display: flex; height: calc(100% - var(--titlebar)); }
+.shell { display: flex; height: calc(100% - var(--status)); }
+
+/* the right hand side: a floating titlebar over a scrolling page */
+.main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 .sidebar {
   width: var(--sidebar);
   flex: none;
-  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
   backdrop-filter: blur(20px) saturate(140%);
   border-right: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
-  padding: 12px 12px 0;
+  padding: 0 12px;
 }
 
-.nav { display: flex; flex-direction: column; gap: 2px; }
+/* the name lives at the top of the rail now, like the badge on a machine */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--titlebar);
+  flex: none;
+  margin: 0 -12px 10px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.mark {
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+  flex: none;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+/* the accent's one appearance in the chrome: a lit tick after the name */
+.wordmark::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 7px;
+  margin-bottom: 1px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  counter-reset: nav;
+}
 
 .nav-item {
   position: relative;
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 9px 11px;
+  padding: 10px 12px;
   border: 0;
   border-radius: var(--r-sm);
   background: none;
   color: var(--dim);
-  font: inherit;
+  font-family: var(--font-display);
+  font-size: 13px;
   font-weight: 500;
+  letter-spacing: 0.02em;
   text-align: left;
   cursor: pointer;
   transition: background 0.14s, color 0.14s;
 }
-.nav-item svg { width: 17px; height: 17px; flex: none; }
+/* every tab carries its index, the way a channel strip does */
+.nav-item::before {
+  counter-increment: nav;
+  content: "0" counter(nav);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  opacity: 0.75;
+  width: 15px;
+  flex: none;
+  transition: color 0.14s;
+}
+.nav-item svg { width: 16px; height: 16px; flex: none; }
 .nav-item:hover { background: var(--raised); color: var(--text); }
-.nav-item.active { background: var(--accent-soft); color: var(--accent); }
-/* a lit bar down the side of the active tab, like the glow behind a pressed
-   arcade button. the accent already tints the row, this gives it an edge */
-.nav-item.active::before {
+.nav-item.active {
+  background: linear-gradient(90deg, var(--accent-soft), transparent 80%);
+  color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.nav-item.active::before { color: var(--accent); opacity: 1; }
+.nav-item.active::after {
   content: "";
   position: absolute;
   left: 0;
-  top: 7px;
-  bottom: 7px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
-  box-shadow: 0 0 10px var(--accent);
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  box-shadow: 0 0 12px 1px var(--accent);
+  pointer-events: none;
 }
 
 .rail-head {
   display: flex;
   align-items: center;
   gap: 3px;
-  padding: 22px 11px 8px;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.9px;
+  padding: 24px 12px 9px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--faint);
 }
@@ -576,38 +792,37 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   gap: 11px;
   padding: 7px 8px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: none;
   color: var(--dim);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background 0.14s, color 0.14s;
+  transition: background 0.14s, color 0.14s, transform 0.2s var(--ease);
 }
-.rail-game:hover { background: var(--raised); color: var(--text); }
-.rail-game.active { background: var(--accent-wash); color: var(--text); }
-.rail-game.active::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
-  box-shadow: var(--accent-bloom-soft);
+.rail-game:hover { background: var(--raised); color: var(--text); transform: translateX(2px); }
+/* first fill of the rail only, same gate as the shelves */
+.rail-list.deal .rail-game {
+  animation: rise-item 0.3s var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 16ms);
+}
+.rail-game.active {
+  background: linear-gradient(90deg, var(--accent-wash), transparent 85%);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .thumb {
   width: 32px;
   height: 44px;
   flex: none;
-  border-radius: 6px;
+  border-radius: 5px;
   overflow: hidden;
   background: var(--raised-2);
   box-shadow: 0 2px 8px var(--shadow), inset 0 0 0 1px var(--hairline);
   display: grid;
   place-items: center;
+  font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
   color: var(--dim);
@@ -631,9 +846,10 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   margin: 14px 7px 6px;
   padding-top: 12px;
   border-top: 1px solid var(--line-soft);
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--faint);
 }
@@ -653,7 +869,7 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 .pip.live {
   background: var(--accent);
   border-color: transparent;
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 10px var(--accent);
 }
 
 .rail-foot {
@@ -663,7 +879,9 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   gap: 8px;
   padding: 10px 8px;
   border-top: 1px solid var(--line-soft);
-  font-size: 11.5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
   color: var(--faint);
 }
 
@@ -677,24 +895,55 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   cursor: pointer;
 }
 .link-btn:hover { text-decoration: underline; }
+.rail-foot .link-btn { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.03em; }
 
 /* ---------- content ---------- */
 
 .content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   /* the gutter is always there, taken or not. a long page has a scrollbar and
      a short one does not, so without this every game you switch to that needs
      less room drags the whole layout ten pixels sideways */
   scrollbar-gutter: stable;
-  padding: 26px 30px 40px;
+  padding: 0 0 40px;
 }
 
-.view { animation: rise 0.22s var(--ease); }
+/* each page carries its own padding so a hero can throw it off and run the
+   full width of the window, under the titlebar. clip rather than hidden so
+   the sticky panels inside keep working */
+.view {
+  position: relative;
+  padding: calc(var(--titlebar) + 18px) 30px 0;
+  overflow-x: clip;
+  animation: view-in 0.16s var(--ease);
+}
+/* the page arrives as a cascade, not a block: each stripe of it a beat late */
+.view > * { animation: rise-item 0.34s var(--ease) backwards; }
+.view > *:nth-child(2) { animation-delay: 40ms; }
+.view > *:nth-child(3) { animation-delay: 80ms; }
+.view > *:nth-child(4) { animation-delay: 115ms; }
+.view > *:nth-child(5) { animation-delay: 150ms; }
+.view > *:nth-child(6) { animation-delay: 180ms; }
+.view > *:nth-child(7) { animation-delay: 205ms; }
+.view > *:nth-child(n + 8) { animation-delay: 230ms; }
+/* the settings grids sit the cascade out. a transform on a grid, even a
+   finished one, makes it the containing block for every card inside it, and
+   anything measuring card positions then sees three grids folded into one */
+#view-settings > .settings-grid { animation: none; }
 
+@keyframes view-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rise-item {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
 @keyframes rise {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
 
@@ -702,12 +951,28 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   display: flex;
   align-items: center;
   gap: 14px;
-  margin: 4px 0 16px;
+  margin: 4px 0 18px;
 }
-/* the same size as the heading on the about page, so every page in the app
-   opens the same way. at seventeen it was barely bigger than a shelf title
-   under it and the page read as one flat list of headings */
-.section-head h2 { margin: 0; font-size: 25px; font-weight: 740; letter-spacing: -0.5px; }
+/* the heading wears the accent tick. it is the one ornament headings get */
+.section-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.section-head h2::before {
+  content: "";
+  width: 4px;
+  height: 22px;
+  flex: none;
+  background: var(--accent);
+  clip-path: polygon(0 0, 100% 3px, 100% 100%, 0 calc(100% - 3px));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
+}
 
 .head-count {
   display: flex;
@@ -716,14 +981,15 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   flex: 1;
   min-width: 0;
 }
-.head-count h3 { margin: 0; }
+.head-count h3 { margin: 0; font-family: var(--font-display); font-weight: 600; }
 .section-head .filter { margin-left: auto; width: 200px; }
 
 .shelf {
   margin: 0 0 12px;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.9px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--faint);
 }
@@ -747,11 +1013,12 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
   font-size: 12.5px;
 }
 #cheat-typing b {
+  font-family: var(--font-mono);
   color: var(--faint);
-  font-weight: 650;
+  font-weight: 600;
   text-transform: uppercase;
-  font-size: 10.5px;
-  letter-spacing: 0.5px;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
 }
 
 .credit a {
@@ -764,22 +1031,27 @@ body.booting .win:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
 
 .credit a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 
+/* one tier of controls: everything you click or type into stands 34px tall
+   and wears the same cut corners as the buttons. the ring a box-shadow would
+   draw gets clipped with the corners, so focus speaks through the border and
+   a glow that follows the shape */
 .filter, input[type="text"], select {
-  height: 32px;
+  height: 34px;
   padding: 0 11px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--raised);
+  background: var(--field);
   color: var(--text);
   font: inherit;
   font-size: 13px;
   outline: none;
-  transition: border-color 0.14s, box-shadow 0.14s;
+  clip-path: var(--chamfer-sm);
+  transition: border-color 0.14s, filter 0.14s, background 0.14s;
 }
 input::placeholder { color: var(--faint); }
 .filter:focus, input[type="text"]:focus, select:focus {
   border-color: var(--accent-line);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: var(--field-focus);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent) 30%, transparent));
 }
 
 .banner {
@@ -788,9 +1060,10 @@ input::placeholder { color: var(--faint); }
   gap: 10px;
   padding: 12px 15px;
   margin-bottom: 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
+  border: 1px solid var(--line-soft);
   background: var(--panel);
+  box-shadow: inset 2px 0 0 var(--line);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
 }
 .banner-body { flex: 1; min-width: 0; }
 .banner strong {
@@ -806,30 +1079,48 @@ input::placeholder { color: var(--faint); }
 
 /* ---------- the featured banner ---------- */
 
-/* the game that is running, or the one played last, across the top of the
-   library. art bleeds full width behind a left-to-right scrim so the title and
-   buttons sit on the dark side and stay readable over any cover */
+/* the game that is running, or the one played last, as the opening shot of
+   the library: edge to edge, under the titlebar, art bleeding behind a
+   left-to-right scrim so the title and buttons sit on the dark side and stay
+   readable over any cover */
 .feature {
   position: relative;
   display: block;
-  width: 100%;
-  min-height: 264px;
-  margin: 0 0 32px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-xl);
+  width: auto;
+  min-height: 340px;
+  margin: calc(-1 * (var(--titlebar) + 18px)) -30px 34px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
   overflow: hidden;
   isolation: isolate;
   cursor: pointer;
   background: var(--panel-solid);
-  box-shadow: var(--glass-shadow);
-  transition: transform 0.24s var(--ease), box-shadow 0.24s var(--ease);
+  box-shadow: 0 30px 60px -34px var(--shadow-strong);
+  transition: box-shadow 0.24s var(--ease), border-color 0.24s;
 }
-.feature:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 34px 70px -24px var(--shadow-strong);
-}
+.feature:hover { border-bottom-color: var(--accent-line); }
 .feature-art { position: absolute; inset: 0; z-index: -2; }
 .feature-art img { width: 100%; height: 100%; object-fit: cover; }
+/* the shot stays alive with a slow band of light crossing it, not by moving
+   the image. anything that scales a full bleed img pushes its box past the
+   window edge, which is exactly what the harness calls a spill */
+.feature-art::after,
+.game-hero-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg,
+    transparent 0 42%, rgba(255, 255, 255, 0.06) 50%, transparent 58% 100%);
+  background-size: 250% 100%;
+  animation: art-light 9s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes art-light {
+  0% { background-position: 130% 0; }
+  60% { background-position: -30% 0; }
+  100% { background-position: -30% 0; }
+}
 .feature.no-art .feature-art {
   background: linear-gradient(135deg, hsl(var(--h) 46% 30%), hsl(var(--h) 52% 12%));
 }
@@ -838,13 +1129,39 @@ input::placeholder { color: var(--faint); }
   inset: 0;
   z-index: -1;
   background:
-    linear-gradient(90deg, rgba(5, 6, 14, 0.95) 0%, rgba(5, 6, 14, 0.72) 44%, rgba(5, 6, 14, 0.1) 100%),
-    linear-gradient(0deg, rgba(5, 6, 14, 0.66), transparent 55%);
+    linear-gradient(90deg, rgba(4, 5, 10, 0.96) 0%, rgba(4, 5, 10, 0.74) 44%, rgba(4, 5, 10, 0.08) 100%),
+    linear-gradient(0deg, rgba(4, 5, 10, 0.7), transparent 55%);
 }
+/* the corner brackets. the one flourish the banner allows itself */
+.feature::before,
+.feature::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.85;
+  transition: opacity 0.24s;
+}
+.feature::before {
+  top: calc(var(--titlebar) + 6px);
+  left: 16px;
+  border-top: 1.5px solid var(--accent);
+  border-left: 1.5px solid var(--accent);
+}
+.feature::after {
+  bottom: 14px;
+  right: 16px;
+  border-bottom: 1.5px solid var(--accent);
+  border-right: 1.5px solid var(--accent);
+}
+.feature:hover::before, .feature:hover::after { opacity: 1; }
+
 .feature-body {
   position: relative;
   max-width: 62%;
-  padding: 34px 38px;
+  padding: calc(var(--titlebar) + 28px) 44px 40px;
   display: flex;
   flex-direction: column;
   gap: 13px;
@@ -853,9 +1170,10 @@ input::placeholder { color: var(--faint); }
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
   text-transform: uppercase;
   color: var(--accent);
 }
@@ -870,14 +1188,21 @@ input::placeholder { color: var(--faint); }
 }
 .feature h2 {
   margin: 0;
-  font-size: 34px;
-  font-weight: 760;
-  letter-spacing: -0.9px;
-  line-height: 1.04;
+  font-family: var(--font-display);
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.02;
   color: #fff;
   max-width: 16ch;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5);
 }
-.feature-facts { font-size: 13px; color: rgba(255, 255, 255, 0.72); }
+.feature-facts {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.66);
+}
 .feature-actions { display: flex; gap: 10px; margin-top: 8px; }
 
 @keyframes pulse {
@@ -885,44 +1210,46 @@ input::placeholder { color: var(--faint); }
   50% { opacity: 0.35; }
 }
 
-/* the bigger buttons the banner uses */
-.big {
+/* the bigger buttons the banner uses. tagged on the element so it outranks
+   the base button height, which used to win and left Play a size smaller
+   than the Open beside it */
+button.big {
   height: 44px;
-  padding: 0 24px;
+  padding: 0 26px;
   font-size: 14px;
-  border-radius: 12px;
-  font-weight: 620;
 }
-/* a glass button for use over art, where a solid ghost would look heavy */
+/* a glass button for use over art, where a solid ghost would look heavy.
+   same cut corners as the primary next to it, or the pair reads as two
+   different apps holding hands */
 .glassbtn {
   border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(8px);
   color: #fff;
-  font: inherit;
+  font-family: var(--font-display);
+  font-size: 13px;
   font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
+  clip-path: var(--chamfer-sm);
   transition: background 0.14s, border-color 0.14s;
 }
 .glassbtn:hover { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.4); }
 
 /* ---------- shelves on the library page ---------- */
 
-/* these were eleven pixel grey capitals sitting right under the row of covers
-   above them, so a shelf title read as a caption for the wrong shelf. same
-   size as everything else on the page and no room around it is not a heading */
 .shelf-head {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin: 34px 0 15px;
+  margin: 36px 0 16px;
 }
 .shelf-head h3 {
   margin: 0;
+  font-family: var(--font-display);
   font-size: 16px;
-  font-weight: 660;
-  letter-spacing: -0.2px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .shelf-icon { width: 15px; height: 15px; flex: none; color: var(--accent); }
@@ -932,33 +1259,38 @@ input::placeholder { color: var(--faint); }
 .shelf-head.barred + .shelf-note { margin: -6px 0 15px; font-size: 12.5px; color: var(--faint); }
 
 .tally {
-  padding: 1px 8px;
-  border-radius: 99px;
-  background: var(--raised-2);
+  padding: 1px 7px;
+  border: 1px solid var(--line);
   color: var(--faint);
-  font-size: 11.5px;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  background: var(--raised);
 }
 
-/* the rule runs from the title to the right edge, which is what separates one
-   shelf from the covers above it */
+/* the rule runs from the title to the right edge, ending in a tick, which is
+   what separates one shelf from the covers above it */
 .shelf-head::after {
   content: "";
   flex: 1;
-  height: 1px;
-  margin-left: 4px;
-  background: linear-gradient(90deg, var(--line), transparent);
+  height: 5px;
+  margin-left: 6px;
+  background:
+    linear-gradient(90deg, var(--line), transparent 70%) 0 2px / 100% 1px no-repeat,
+    linear-gradient(var(--line-strong), var(--line-strong)) 0 0 / 1px 5px no-repeat;
 }
 
 /* ---------- game grid ---------- */
 
-/* fixed columns, not 1fr. box art has one right shape and stretching five
-   posters across a wide window is how it ends up looking wrong */
+/* posters flex between narrow bounds. a hard 178px column left a poster
+   sized strip of nothing down the right of a small window, and a bare 1fr
+   stretches five covers across a big one. the band keeps both honest */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 178px);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   justify-content: start;
-  gap: 26px 20px;
+  gap: 28px 20px;
 }
 
 .card {
@@ -970,14 +1302,24 @@ input::placeholder { color: var(--faint); }
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: transform 0.24s var(--spring);
+  transition: transform 0.26s var(--spring);
+}
+/* only on the first paint of a shelf. the grid rebuilds on every filter
+   keystroke and replaying the deal each time reads as flicker */
+.grid.deal .card {
+  animation: card-in 0.4s var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 22ms);
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
 }
 .card:hover { transform: translateY(-7px); }
 
 .art {
   position: relative;
   aspect-ratio: 2 / 3;
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   overflow: hidden;
   background: var(--raised);
   box-shadow: 0 10px 26px -8px var(--shadow), 0 2px 6px var(--shadow);
@@ -986,10 +1328,17 @@ input::placeholder { color: var(--faint); }
 .card:hover .art {
   box-shadow: 0 22px 48px -12px var(--shadow-strong), var(--accent-bloom-soft);
 }
-.art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.5s var(--ease);
+}
+.card:hover .art img { transform: scale(1.06); }
 
-/* a hairline ring in rest, the accent when hovered, and a permanent lit ring
-   on whatever is running right now so it reads across the whole grid */
+/* a hairline ring in rest, the accent when hovered, and a lit sweep running
+   round whatever is playing right now so it reads across the whole grid */
 .art::after {
   content: "";
   position: absolute;
@@ -1000,18 +1349,39 @@ input::placeholder { color: var(--faint); }
 }
 .card:hover .art::after { box-shadow: inset 0 0 0 2px var(--accent); }
 .card.running .art { box-shadow: 0 14px 34px -10px var(--shadow-strong), var(--accent-bloom); }
-.card.running .art::after { box-shadow: inset 0 0 0 2px var(--accent); }
+.card.running .art::after {
+  box-shadow: none;
+  padding: 2px;
+  background: conic-gradient(from var(--a),
+    color-mix(in srgb, var(--accent) 35%, transparent) 0%,
+    var(--accent) 12%,
+    color-mix(in srgb, var(--accent) 35%, transparent) 25%,
+    color-mix(in srgb, var(--accent) 35%, transparent) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: ring-sweep 3.2s linear infinite;
+}
+@keyframes ring-sweep {
+  to { --a: 360deg; }
+}
 
 /* no cached art gets a tinted tile with the initials */
 .blankart {
   display: grid;
   place-items: center;
-  background: linear-gradient(155deg, hsl(var(--h) 42% 34%), hsl(var(--h) 48% 16%));
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.4) 1px, transparent 1px) 0 0 / 26px 26px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.4) 1px, transparent 1px) 0 0 / 26px 26px,
+    linear-gradient(155deg, hsl(var(--h) 40% 30%), hsl(var(--h) 46% 13%));
+  background-blend-mode: overlay, overlay, normal;
 }
 .initials {
+  font-family: var(--font-display);
   font-size: 40px;
-  font-weight: 750;
-  letter-spacing: 2px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   color: rgba(255, 255, 255, 0.92);
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
@@ -1022,35 +1392,40 @@ input::placeholder { color: var(--faint); }
   display: grid;
   place-items: center;
   border-radius: var(--r);
-  background: linear-gradient(0deg, rgba(var(--overlay), 0.92), rgba(var(--overlay), 0.72));
+  background: linear-gradient(0deg, rgba(var(--overlay), 0.92), rgba(var(--overlay), 0.7));
   opacity: 0;
   transition: opacity 0.2s var(--ease);
 }
 .card:hover .card-overlay { opacity: 1; }
 
 .card-overlay b {
-  padding: 7px 15px;
-  border-radius: 99px;
+  padding: 8px 18px;
   background: var(--accent);
   color: var(--accent-ink);
+  font-family: var(--font-display);
   font-size: 12.5px;
-  font-weight: 650;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  clip-path: var(--chamfer-sm);
 }
-.card.idle .card-overlay b { background: var(--raised-2); color: var(--dim); }
+.card.idle .card-overlay b { background: var(--raised-2); color: var(--text); }
 
 .card-title {
   display: block;
-  margin: 9px 2px 0;
+  margin: 10px 2px 0;
+  font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .card-sub {
   display: block;
-  margin: 1px 2px 0;
-  font-size: 11.5px;
+  margin: 2px 2px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
   color: var(--faint);
   white-space: nowrap;
   overflow: hidden;
@@ -1067,84 +1442,108 @@ input::placeholder { color: var(--faint); }
 }
 .badge {
   padding: 3px 8px;
-  border-radius: 99px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.3px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: rgba(8, 10, 14, 0.86);
+  background: rgba(6, 8, 12, 0.88);
   color: #d7dbe2;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
 }
 .badge.live { background: var(--accent); color: var(--accent-ink); }
 .badge.spare { margin-left: auto; }
-.badge.guarded { background: rgba(255, 107, 107, 0.92); color: #2a0808; }
+.badge.guarded { background: rgba(255, 93, 93, 0.92); color: #2a0808; }
+.badge.fav { background: var(--accent); color: var(--accent-ink); }
 
 /* games with an anti-cheat are shown but never offered. hiding them would
-   just look like Freeplay could not find them.
-   A filter here would be nicer but it makes the whole grid a compositing
-   layer, so the poster is dimmed directly and the fallback tile goes grey. */
-.card.guarded .art > img { opacity: 0.4; }
-.card.guarded .art.blankart { background: linear-gradient(155deg, #2b3039, #171a20); }
+   just look like Freeplay could not find them */
+.card.guarded .art > img { opacity: 0.78; }
+.card.guarded .art.blankart { background: linear-gradient(155deg, #262b34, #14171d); }
 .card.guarded:hover { transform: none; }
 .card.guarded:hover .art::after { box-shadow: inset 0 0 0 2px var(--bad); }
 .card.guarded .card-overlay b { background: var(--bad); color: #2a0808; }
 
 /* ---------- one game ---------- */
 
+/* floats over the hero art, up in the titlebar's strip, like a breadcrumb on
+   a player. glass, because whatever cover is behind it is anybody's guess */
+/* above the titlebar glass, or the drag region would swallow its clicks */
 .back {
+  position: absolute;
+  top: 9px;
+  left: 30px;
+  z-index: 30;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 16px;
-  padding: 5px 11px 5px 7px;
-  border: 1px solid var(--line);
-  border-radius: 99px;
-  background: var(--raised);
-  color: var(--dim);
-  font: inherit;
-  font-size: 12.5px;
+  padding: 5px 12px 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(8, 9, 13, 0.4);
+  backdrop-filter: blur(10px);
+  color: #dfe3ec;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   cursor: pointer;
-  transition: color 0.14s, border-color 0.14s;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: color 0.14s, border-color 0.14s, background 0.14s;
 }
-.back svg { width: 14px; height: 14px; }
-.back:hover { color: var(--text); border-color: var(--faint); }
+.back svg { width: 13px; height: 13px; }
+.back:hover { color: var(--accent); border-color: var(--accent-line); background: rgba(8, 9, 13, 0.6); }
 
+/* edge to edge and under the titlebar, the way a store page opens */
 .game-hero {
   position: relative;
   display: flex;
   align-items: flex-end;
   gap: 26px;
-  min-height: 264px;
-  padding: 28px 30px;
-  margin-bottom: 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-xl);
+  min-height: 320px;
+  padding: calc(var(--titlebar) + 46px) 40px 26px;
+  margin: calc(-1 * (var(--titlebar) + 18px)) -30px 0;
+  border: 0;
   overflow: hidden;
   isolation: isolate;
-  box-shadow: var(--glass-shadow);
 }
 .game-hero-art { position: absolute; inset: 0; z-index: -1; }
 .game-hero-art img { width: 100%; height: 100%; object-fit: cover; }
-/* the banner stays dark in both themes. steam logos are white
-   cutouts drawn for a dark background, and on a light wash they disappear. */
+/* the banner stays dark in both themes. steam logos are white cutouts drawn
+   for a dark background, and on a light wash they disappear */
 .game-hero::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   background:
-    linear-gradient(0deg, rgba(5, 6, 12, 0.97) 6%, rgba(5, 6, 12, 0.7) 55%, rgba(5, 6, 12, 0.32)),
-    linear-gradient(90deg, rgba(5, 6, 12, 0.5), transparent 60%);
+    linear-gradient(0deg, rgba(4, 5, 10, 0.97) 6%, rgba(4, 5, 10, 0.7) 55%, rgba(4, 5, 10, 0.3)),
+    linear-gradient(90deg, rgba(4, 5, 10, 0.5), transparent 60%);
+}
+/* the same brackets the library banner wears, so the two rhyme */
+.game-hero::before {
+  content: "";
+  position: absolute;
+  bottom: 14px;
+  right: 16px;
+  width: 22px;
+  height: 22px;
+  z-index: 1;
+  border-bottom: 1.5px solid var(--accent);
+  border-right: 1.5px solid var(--accent);
+  opacity: 0.85;
+  pointer-events: none;
 }
 .game-hero:not(.no-art) h1,
 .game-hero:not(.no-art) .fact b { color: #f2f4f8; }
-.game-hero:not(.no-art) .fact span { color: rgba(242, 244, 248, 0.55); }
+.game-hero:not(.no-art) .fact span { color: rgba(242, 244, 248, 0.5); }
 .game-hero:not(.no-art) .fact.live b { color: var(--accent); }
 .game-hero:not(.no-art) .ghost,
 .game-hero:not(.no-art) .icon-toggle {
-  background: rgba(255, 255, 255, 0.11);
+  background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.18);
   color: #e7eaf0;
 }
@@ -1158,15 +1557,17 @@ input::placeholder { color: var(--faint); }
 
 .game-hero.no-art { min-height: 0; }
 .game-hero.no-art::after {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--panel-solid)), var(--panel-solid));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, var(--panel-solid)), var(--panel-solid));
 }
+.game-hero.no-art::before { opacity: 0.4; }
+.game-hero.no-art .game-hero-art img { animation: none; }
 
 .game-cover {
   position: relative;
-  width: 132px;
+  width: 134px;
   aspect-ratio: 2 / 3;
   flex: none;
-  border-radius: var(--r-lg);
+  border-radius: var(--r);
   overflow: hidden;
   background: var(--raised);
   box-shadow: 0 18px 40px -10px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
@@ -1177,21 +1578,51 @@ input::placeholder { color: var(--faint); }
 .game-cover .initials { font-size: 34px; }
 
 .game-hero-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 13px; }
+/* the title, the readings and the buttons land a beat apart when the page opens */
+.game-hero-body > * { animation: rise-item 0.4s var(--ease) backwards; }
+.game-hero-body > *:nth-child(2) { animation-delay: 50ms; }
+.game-hero-body > *:nth-child(3) { animation-delay: 95ms; }
+.game-hero-body > *:nth-child(n + 4) { animation-delay: 135ms; }
 .game-logo { max-width: 300px; max-height: 84px; object-fit: contain; align-self: flex-start; }
-.game-logo + h1 { display: none; }
-.game-hero h1 { margin: 0; font-size: 31px; font-weight: 760; letter-spacing: -0.8px; line-height: 1.05; }
+/* the title always owns a two line box, bottom aligned, clamped. a name that
+   wraps and one that does not leave the hero the same height, and the page
+   below never moves when you switch between them */
+.game-hero h1 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-box-pack: end;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-height: calc(2 * 1.08em);
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5);
+}
+/* a game that ships a logo does not also say its name in type. the old
+   sibling rule lost this fight to the two line box above, and the pages with
+   logos came out taller than everyone else's on top of saying it twice */
+.game-hero-body:has(.game-logo:not([hidden])) h1 { display: none; }
 
-.game-facts { display: flex; flex-wrap: wrap; gap: 22px; }
-.fact { display: flex; flex-direction: column; gap: 1px; }
-.fact b { font-size: 13px; font-weight: 600; }
+.game-facts { display: flex; flex-wrap: wrap; gap: 24px; }
+.fact { display: flex; flex-direction: column; gap: 2px; }
+.fact b {
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 600;
+}
 .fact span {
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.7px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--faint);
 }
-.fact.live b { color: var(--accent); }
+.fact.live b { color: var(--accent); text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 55%, transparent); }
 
 /* two real actions and a star. everything else lives behind More, so the row
    stays the same width whatever state the game is in */
@@ -1223,9 +1654,11 @@ input::placeholder { color: var(--faint); }
   min-width: 210px;
   padding: 6px;
   border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--raised);
-  box-shadow: 0 18px 44px var(--shadow-strong);
+  background: color-mix(in srgb, var(--panel-solid) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: inset 0 1px 0 var(--edge);
+  clip-path: var(--chamfer);
+  filter: drop-shadow(0 18px 30px var(--shadow-strong));
   animation: pop 0.14s var(--ease);
 }
 @keyframes pop {
@@ -1239,7 +1672,7 @@ input::placeholder { color: var(--faint); }
   width: 100%;
   padding: 8px 10px;
   border: 0;
-  border-radius: var(--r-sm);
+  border-radius: 4px;
   background: none;
   color: var(--text);
   font: inherit;
@@ -1247,19 +1680,28 @@ input::placeholder { color: var(--faint); }
   text-align: left;
   cursor: pointer;
   transition: background 0.12s;
+  animation: menu-in 0.18s var(--ease) backwards;
+}
+.menu-item:nth-child(2) { animation-delay: 25ms; }
+.menu-item:nth-child(3) { animation-delay: 50ms; }
+.menu-item:nth-child(4) { animation-delay: 70ms; }
+.menu-item:nth-child(n + 5) { animation-delay: 90ms; }
+@keyframes menu-in {
+  from { opacity: 0; transform: translateX(-5px); }
+  to { opacity: 1; transform: none; }
 }
 .menu-item svg { width: 15px; height: 15px; flex: none; color: var(--faint); }
 .menu-item:hover { background: var(--raised-2); }
 .menu-item:hover svg { color: var(--dim); }
 .menu-item.danger { color: var(--bad); }
 .menu-item.danger svg { color: var(--bad); }
-.menu-item.danger:hover { background: rgba(255, 107, 107, 0.12); }
+.menu-item.danger:hover { background: rgba(255, 93, 93, 0.12); }
 .menu-line { height: 1px; margin: 5px 8px; background: var(--line-soft); }
 
 .icon-toggle {
-  width: 32px;
-  height: 32px;
-  padding: 7px;
+  width: 34px;
+  height: 34px;
+  padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   background: var(--raised);
@@ -1272,46 +1714,56 @@ input::placeholder { color: var(--faint); }
   color: var(--accent);
   border-color: var(--accent-line);
   background: var(--accent-soft);
+  box-shadow: var(--accent-bloom-soft);
 }
 .icon-toggle.on svg { fill: var(--accent); }
 
-/* ---------- cheats ---------- */
-
 /* ---------- detail rows ---------- */
 
-/* reference facts, not the point of the page: quiet and unboxed, under the
-   hero. a grid rather than a wrapping row so the height is the same whatever
-   the values are, or an epic app id wraps to a second line for one game and
-   walks everything below it down when you switch */
+/* the readout strip welded to the bottom of the hero: executable, folder,
+   app id, in mono, divided by hairlines, running the full width. reference
+   facts read like instrument readings here rather than a paragraph */
 .detail {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 4px 24px;
-  padding: 0 2px 16px;
-  margin-bottom: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  margin: 0 -30px 24px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--panel-solid) 62%, transparent);
+  backdrop-filter: blur(12px) saturate(130%);
 }
+/* every reading shares the width evenly and squeezes with an ellipsis rather
+   than wrapping, so the strip is one row tall whatever the values hold and
+   the page below it sits at the same height for every game */
 .detail-row {
   display: flex;
   align-items: baseline;
-  gap: 7px;
+  gap: 8px;
+  flex: 1 1 0;
   min-width: 0;
+  padding: 10px 18px;
+  border-left: 1px solid var(--line-soft);
 }
+.detail-row:first-child { border-left: 0; padding-left: 0; }
 .detail-row span {
   flex: none;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.6px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--faint);
 }
 /* an epic app id is three hex words joined by colons and it used to run off
    the right of the page */
 .detail-row b {
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
   color: var(--dim);
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 340px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1324,73 +1776,7 @@ input::placeholder { color: var(--faint); }
   text-align: left;
 }
 
-/* ---------- cheat cards ---------- */
-
-.table-card {
-  padding: 18px 20px 20px;
-  margin-bottom: 26px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--panel);
-}
-.table-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
-}
-.table-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
-.table-head p { margin: 3px 0 0; }
-.tag {
-  flex: none;
-  padding: 4px 10px;
-  border: 1px solid var(--accent-line);
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 650;
-}
-.table-notes {
-  margin: 0 0 14px;
-  font-size: 12.5px;
-  color: var(--dim);
-  max-width: 70ch;
-}
-
-.preview {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 18px 26px;
-}
-.preview-group h4 {
-  margin: 0 0 6px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: var(--faint);
-}
-.preview-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 5px 0;
-  border-bottom: 1px solid var(--line-soft);
-}
-.preview-row:last-child { border-bottom: none; }
-.preview-name { font-size: 12.5px; color: var(--dim); }
-.preview-does {
-  flex: none;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: var(--faint);
-}
-.locked { margin: 16px 0 0; }
+/* ---------- cheat groups ---------- */
 
 .group { margin-bottom: 26px; }
 .group.shut { margin-bottom: 10px; }
@@ -1400,7 +1786,7 @@ input::placeholder { color: var(--faint); }
 .group-head {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   width: 100%;
   margin: 0 0 11px;
   padding: 2px 0;
@@ -1413,13 +1799,22 @@ input::placeholder { color: var(--faint); }
 .group.shut .group-head { margin-bottom: 0; }
 .group-head h3 {
   margin: 0;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--faint);
 }
 .group-head:hover h3 { color: var(--text); }
+/* the rule that carries the heading to the right edge */
+.group-head::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  margin-left: 4px;
+  background: linear-gradient(90deg, var(--line-soft), transparent 80%);
+}
 
 /* the chevron is a rotated square, and rotating the element itself made its
    box stick out past the left edge of the group. the box stays put and the
@@ -1446,10 +1841,11 @@ input::placeholder { color: var(--faint); }
 .group-head:hover .caret::before { border-color: var(--text); }
 
 .group-count {
-  font-size: 10px;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
   color: var(--faint);
-  opacity: 0.6;
+  opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1457,27 +1853,50 @@ input::placeholder { color: var(--faint); }
 /* a shut group still hands over its matches while a search is running */
 #cheat-groups.searching .group.shut .cheats { display: grid; }
 
+/* ---------- cheat cards ---------- */
+
 .cheats {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 10px;
 }
 
+/* state is a lit rail down the left edge, not a coloured box. the bottom right
+   corner is cut, which is what makes a grid of these read as one machine */
 .cheat {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 13px 15px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--panel);
-  transition: border-color 0.16s, background 0.16s;
+  border: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, var(--raised), transparent 70%), var(--panel);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  box-shadow: inset 2px 0 0 var(--line);
+  transition: border-color 0.16s, background 0.16s, box-shadow 0.16s;
 }
-.cheat:hover { border-color: var(--faint); }
-.cheat.on { border-color: var(--accent-line); background: var(--accent-soft); }
+.cheat:hover {
+  border-color: var(--line-strong);
+  box-shadow: inset 2px 0 0 var(--line-strong);
+}
+.cheat.on {
+  border-color: var(--accent-line);
+  background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--panel);
+  box-shadow: inset 2px 0 0 var(--accent), inset 8px 0 18px -10px var(--accent);
+  /* one breath of light the moment it comes on */
+  animation: cheat-ping 0.5s var(--ease);
+}
+@keyframes cheat-ping {
+  0% { box-shadow: inset 2px 0 0 var(--accent), inset 60px 0 40px -20px color-mix(in srgb, var(--accent) 30%, transparent); }
+  100% { box-shadow: inset 2px 0 0 var(--accent), inset 8px 0 18px -10px var(--accent); }
+}
 /* armed but not doing anything yet, which is every cheat until the game is far
    enough in for its pointer to exist */
-.cheat.armed:not(.on) { border-color: var(--line); background: var(--raised); }
+.cheat.armed:not(.on) {
+  border-color: var(--line);
+  background: var(--raised);
+  box-shadow: inset 2px 0 0 var(--warn);
+}
 .cheat.armed:not(.on) .switch { opacity: 0.65; }
 
 .cheat-main { flex: 1; min-width: 0; }
@@ -1491,7 +1910,14 @@ input::placeholder { color: var(--faint); }
 .cheat-why { margin-top: 2px; font-size: 12px; color: var(--faint); overflow-wrap: anywhere; }
 .cheat-why.wait { color: var(--warn); }
 .cheat-why.dead { color: var(--bad); }
-.cheat-why.live { color: var(--accent); font-weight: 600; }
+.cheat-why.live {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
 
 .switch {
   position: relative;
@@ -1499,24 +1925,28 @@ input::placeholder { color: var(--faint); }
   height: 22px;
   flex: none;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--line);
   border-radius: 99px;
-  background: var(--raised-2);
+  background: var(--field);
   cursor: pointer;
-  transition: background 0.18s var(--ease);
+  transition: background 0.18s var(--ease), border-color 0.18s, box-shadow 0.18s;
 }
 .switch::after {
   content: "";
   position: absolute;
-  top: 3px;
+  top: 2px;
   left: 3px;
   width: 16px;
   height: 16px;
   border-radius: 50%;
   background: var(--faint);
-  transition: transform 0.18s var(--ease), background 0.18s;
+  transition: transform 0.18s var(--spring), background 0.18s;
 }
-.switch.on { background: var(--accent); }
+.switch.on {
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: var(--accent-bloom-soft);
+}
 .switch.on::after { transform: translateX(16px); background: var(--accent-ink); }
 .switch:disabled { cursor: not-allowed; opacity: 0.5; }
 
@@ -1528,43 +1958,61 @@ input::placeholder { color: var(--faint); }
   gap: 10px;
   padding: 16px;
   border: 1px solid var(--line);
-  border-radius: var(--r);
   background: var(--panel);
+  box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 var(--edge);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
 }
 .finder-bar label { display: flex; flex-direction: column; gap: 6px; }
-.finder-bar label span { font-size: 11.5px; color: var(--faint); }
+.finder-bar label span {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
 .finder-bar .grow { flex: 1; }
 
-.steps { display: flex; flex-wrap: wrap; gap: 20px; margin: 14px 2px 0; }
+/* the three moves, drawn as one pipeline rather than three floating notes */
+.steps { display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; margin: 16px 2px 0; }
 .step { font-size: 12px; color: var(--faint); display: flex; align-items: center; gap: 8px; }
+.step:not(:last-child)::after {
+  content: "";
+  width: 26px;
+  height: 1px;
+  margin-left: 14px;
+  background: linear-gradient(90deg, var(--line), var(--line-soft));
+}
 .step b {
   display: grid;
   place-items: center;
   width: 19px;
   height: 19px;
-  border-radius: 50%;
-  background: var(--raised-2);
+  border: 1px solid var(--line);
+  background: var(--raised);
   color: var(--dim);
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
 }
 
 .finder-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 
 .chip {
-  padding: 7px 13px;
+  padding: 7px 14px;
   border: 1px solid var(--line);
-  border-radius: 99px;
   background: var(--raised);
   color: var(--dim);
   font: inherit;
   font-size: 12.5px;
   cursor: pointer;
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
   transition: border-color 0.14s, color 0.14s, background 0.14s;
 }
 .chip:hover { border-color: var(--accent-line); color: var(--accent); background: var(--accent-soft); }
 
 .scan-status { margin: 18px 2px 10px; font-size: 13px; color: var(--dim); }
-.scan-status b { color: var(--text); }
+.scan-status b { color: var(--text); font-family: var(--font-mono); font-size: 12px; }
 
 .results { display: flex; flex-direction: column; gap: 6px; }
 
@@ -1574,16 +2022,17 @@ input::placeholder { color: var(--faint); }
   gap: 12px;
   padding: 9px 13px;
   border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
   background: var(--panel);
+  box-shadow: inset 2px 0 0 var(--line);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
 }
 .addr {
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
-  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--accent);
   user-select: text;
 }
-.val { flex: 1; font-size: 13px; font-weight: 550; }
+.val { flex: 1; font-size: 13px; font-weight: 550; font-variant-numeric: tabular-nums; }
 .row input { width: 120px; height: 28px; }
 
 /* ---------- settings ---------- */
@@ -1597,24 +2046,30 @@ input::placeholder { color: var(--faint); }
   gap: 20px;
   padding: 16px 18px;
   margin-bottom: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
+  border: 1px solid var(--line-soft);
   background: var(--panel);
+  box-shadow: inset 0 1px 0 var(--edge);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  transition: border-color 0.16s;
 }
+.setting:hover { border-color: var(--line); }
 .setting-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .setting-label strong { font-size: 13.5px; font-weight: 600; }
 .setting-label span { font-size: 12px; color: var(--faint); overflow-wrap: anywhere; }
 
 .segmented {
   display: flex;
+  align-items: center;
+  height: 34px;
   padding: 3px;
-  border-radius: var(--r-sm);
-  background: var(--raised-2);
+  border: 1px solid var(--line-soft);
+  background: var(--field);
+  clip-path: var(--chamfer-sm);
 }
 .segmented button {
   padding: 6px 14px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   background: none;
   color: var(--dim);
   font: inherit;
@@ -1622,7 +2077,11 @@ input::placeholder { color: var(--faint); }
   cursor: pointer;
   transition: background 0.14s, color 0.14s;
 }
-.segmented button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px var(--shadow); }
+.segmented button.on {
+  background: var(--raised-2);
+  color: var(--text);
+  box-shadow: 0 1px 3px var(--shadow), inset 0 0 0 1px var(--line);
+}
 
 .swatches { display: flex; gap: 9px; }
 .swatches button {
@@ -1634,10 +2093,12 @@ input::placeholder { color: var(--faint); }
   background: var(--swatch);
   cursor: pointer;
   outline-offset: 2px;
-  transition: transform 0.14s var(--ease), box-shadow 0.14s;
+  transition: transform 0.14s var(--spring), box-shadow 0.14s;
 }
 .swatches button:hover { transform: scale(1.12); }
-.swatches button.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--swatch); }
+.swatches button.on {
+  box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--swatch), 0 0 14px var(--swatch);
+}
 
 /* ---------- blanks, prose, sheet, toast ---------- */
 
@@ -1646,10 +2107,10 @@ input::placeholder { color: var(--faint); }
   margin: 40px auto;
   padding: 30px;
   border: 1px dashed var(--line);
-  border-radius: var(--r-lg);
+  clip-path: var(--chamfer);
   text-align: center;
 }
-.blank h3 { margin: 0 0 8px; font-size: 16px; font-weight: 620; }
+.blank h3 { margin: 0 0 8px; font-family: var(--font-display); font-size: 16px; font-weight: 600; }
 .blank p { margin: 0 0 18px; color: var(--dim); font-size: 13px; }
 
 .placeholder { padding: 14px 10px; color: var(--faint); font-size: 12.5px; }
@@ -1675,15 +2136,22 @@ input::placeholder { color: var(--faint); }
 .net-card {
   padding: 12px 14px;
   border: 1px solid var(--line-soft);
-  border-radius: var(--r);
   background: var(--raised);
+  box-shadow: inset 2px 0 0 var(--line);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
   user-select: text;
 }
 .net-card b { display: block; margin-bottom: 4px; font-size: 12.5px; font-weight: 620; }
 .net-card span { font-size: 12px; color: var(--faint); line-height: 1.55; }
 
 .prose { user-select: text; }
-.prose h2 { margin: 0 0 6px; font-size: 22px; font-weight: 680; letter-spacing: -0.3px; }
+.prose h2 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
 
 /* the version sat at the bottom under four paragraphs, which is nowhere.
    next to the name is where anybody checking which build they have looks */
@@ -1700,41 +2168,58 @@ input::placeholder { color: var(--faint); }
 .version {
   padding: 2px 8px;
   border: 1px solid var(--line);
-  border-radius: 999px;
   background: var(--raised-2);
   color: var(--dim);
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
   white-space: nowrap;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
 }
 .prose p { margin: 0 0 12px; color: var(--dim); font-size: 13.5px; line-height: 1.65; }
 .prose .lead { color: var(--text); font-size: 15px; margin-bottom: 18px; }
-.about-links { margin-top: 20px; }
 
 /* ---------- buttons ---------- */
 
 .primary, .ghost {
   height: 34px;
-  padding: 0 17px;
-  border-radius: 10px;
-  font: inherit;
+  padding: 0 18px;
+  font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 580;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  transition: background 0.14s, border-color 0.14s, transform 0.12s var(--spring), color 0.14s, box-shadow 0.16s, filter 0.14s;
+  transition: background 0.14s, border-color 0.14s, transform 0.12s var(--spring), color 0.14s, filter 0.16s;
 }
-/* the accent as a lit button: a touch of gradient for depth and a soft bloom
-   so the primary action reads as the lit one on the page */
+/* the lit button. cut corners, the accent as the surface, and the glow drawn
+   with a drop shadow so it follows the cut shape rather than the box */
 .primary {
+  position: relative;
   border: 0;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white), var(--accent));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 90%, white), var(--accent));
   color: var(--accent-ink);
-  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 55%, transparent);
+  clip-path: var(--chamfer-sm);
+  filter: drop-shadow(0 2px 10px color-mix(in srgb, var(--accent) 45%, transparent));
+  overflow: hidden;
 }
-.primary:hover { filter: brightness(1.06); box-shadow: var(--accent-bloom-soft); }
+/* a specular line crosses it on hover, once */
+.primary::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: skewX(-18deg);
+  transition: left 0.45s var(--ease);
+  pointer-events: none;
+}
+.primary:hover { filter: drop-shadow(0 0 14px color-mix(in srgb, var(--accent) 60%, transparent)) brightness(1.05); }
+.primary:hover::after { left: 120%; }
 .primary:active { transform: scale(0.97); }
-.primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; filter: none; }
+.primary:disabled { opacity: 0.5; cursor: default; filter: none; }
 
 .ghost {
   border: 1px solid var(--line);
@@ -1743,6 +2228,7 @@ input::placeholder { color: var(--faint); }
   text-decoration: none;
   display: inline-flex;
   align-items: center;
+  clip-path: var(--chamfer-sm);
 }
 .ghost:hover { border-color: var(--line-strong); color: var(--text); background: var(--raised-2); }
 .ghost:active { transform: scale(0.97); }
@@ -1753,23 +2239,28 @@ input::placeholder { color: var(--faint); }
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(var(--overlay), 0.6);
+  background: rgba(var(--overlay), 0.62);
+  backdrop-filter: blur(6px);
   z-index: 40;
   animation: rise 0.16s var(--ease);
 }
 .sheet-card {
   width: 440px;
   max-height: 72vh;
+  animation: pop 0.18s var(--spring);
   display: flex;
   flex-direction: column;
   padding: 18px;
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--panel);
-  box-shadow: 0 30px 70px var(--shadow-strong);
+  background: color-mix(in srgb, var(--panel-solid) 92%, transparent);
+  backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: inset 0 1px 0 var(--edge);
+  clip-path: var(--chamfer);
+  filter: drop-shadow(0 30px 50px var(--shadow-strong));
 }
 .sheet-card header { display: flex; align-items: center; margin-bottom: 12px; }
-.sheet-card h2 { flex: 1; margin: 0; font-size: 15px; font-weight: 620; }
+.sheet-card h2, .sheet-card h3 { font-family: var(--font-display); }
+.sheet-card h2 { flex: 1; margin: 0; font-size: 15px; font-weight: 600; }
 .sheet-card .filter { width: 100%; }
 
 .process-list { margin-top: 10px; overflow-y: auto; }
@@ -1790,8 +2281,8 @@ input::placeholder { color: var(--faint); }
 .process-list button:hover { background: var(--raised-2); color: var(--text); }
 .process-list .pid {
   margin-left: auto;
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--faint);
 }
 
@@ -1801,16 +2292,17 @@ input::placeholder { color: var(--faint); }
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 26px;
+  bottom: calc(var(--status) + 14px);
   transform: translate(-50%, 0);
   max-width: 460px;
   padding: 11px 18px;
   border: 1px solid var(--line);
-  border-radius: 99px;
-  background: var(--raised-2);
+  background: color-mix(in srgb, var(--panel-solid) 90%, transparent);
+  backdrop-filter: blur(16px);
   color: var(--text);
   font-size: 13px;
-  box-shadow: 0 14px 40px var(--shadow-strong);
+  box-shadow: 0 14px 40px var(--shadow-strong), inset 2px 0 0 var(--accent);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
   z-index: 60;
   animation: toast-in 0.2s var(--ease);
 }
@@ -1819,9 +2311,9 @@ input::placeholder { color: var(--faint); }
   from { opacity: 0; transform: translate(-50%, 8px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
-.toast.bad { border-color: var(--bad); }
+.toast.bad { box-shadow: 0 14px 40px var(--shadow-strong), inset 2px 0 0 var(--bad); border-color: rgba(255, 93, 93, 0.4); }
 
-.blank-actions { display: flex; gap: 10px; justify-content: center; }
+.blank-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 
 /* dropping a .CT anywhere on the window imports it */
 .dropping::after {
@@ -1832,12 +2324,15 @@ input::placeholder { color: var(--faint); }
   display: grid;
   place-items: center;
   border: 2px dashed var(--accent);
-  border-radius: var(--r-lg);
   background: rgba(var(--overlay), 0.72);
   color: var(--accent);
+  font-family: var(--font-display);
   font-size: 15px;
   font-weight: 600;
+  letter-spacing: 0.04em;
+  clip-path: var(--chamfer);
   pointer-events: none;
+  opacity: 1;
 }
 
 /* it lives inside .cheat-name, which breaks anywhere so a long name can wrap.
@@ -1848,13 +2343,14 @@ input::placeholder { color: var(--faint); }
   margin-left: 8px;
   padding: 1px 6px;
   border: 1px solid var(--line);
-  border-radius: 4px;
   color: var(--faint);
-  font-size: 9.5px;
-  font-weight: 650;
-  letter-spacing: 0.5px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   vertical-align: 1px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
 }
 
 /* the key on a cheat card. drawn like a keycap, small enough to sit in the
@@ -1868,10 +2364,10 @@ input::placeholder { color: var(--faint); }
   border-radius: 4px;
   background: var(--raised);
   color: var(--muted);
-  font: inherit;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   vertical-align: 1px;
   cursor: pointer;
   transition: border-color 0.14s, color 0.14s, opacity 0.14s;
@@ -1931,12 +2427,12 @@ input::placeholder { color: var(--faint); }
   margin: 8px 0 0;
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--raised);
+  background: var(--field);
   color: var(--muted);
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.55;
+  clip-path: var(--chamfer-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 220px;
@@ -1951,9 +2447,10 @@ input::placeholder { color: var(--faint); }
   border-bottom-width: 2px;
   border-radius: 4px;
   color: var(--muted);
-  font-size: 9.5px;
-  font-weight: 650;
-  letter-spacing: 0.4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   vertical-align: 1px;
 }
 
@@ -1971,39 +2468,34 @@ input::placeholder { color: var(--faint); }
   align-items: center;
   gap: 14px;
   padding: 12px 15px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
+  border: 1px solid var(--line-soft);
   background: var(--panel);
+  box-shadow: inset 2px 0 0 var(--line);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+  transition: border-color 0.16s, box-shadow 0.16s;
 }
-.shared-row.have { border-color: var(--accent-line); background: var(--accent-soft); }
+.shared-row:hover { border-color: var(--line); }
+.shared-row.have {
+  border-color: var(--accent-line);
+  background: linear-gradient(90deg, var(--accent-soft), transparent 70%), var(--panel);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
 .shared-main { flex: 1; min-width: 0; }
 .shared-name { font-size: 13.5px; font-weight: 570; }
 /* the uploader, under the game the table is for. it used to be the heading,
    which stopped telling you anything once one account had thousands up */
 .shared-by { margin-top: 1px; font-size: 12px; color: var(--dim); }
-.shared-facts { margin-top: 2px; font-size: 12px; color: var(--faint); }
-
-.verified {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 1px 6px;
-  border: 1px solid var(--accent-line);
-  border-radius: 4px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 9.5px;
-  font-weight: 650;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  vertical-align: 1px;
-  /* it broke after NAME and left VERIFIED on a line of its own, which reads
-     as two badges. the whole thing wraps or none of it does */
-  white-space: nowrap;
+.shared-facts {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--faint);
 }
 
 .ask-buttons { display: flex; align-items: center; gap: 8px; flex: none; }
 
-.setting-actions { display: flex; gap: 8px; flex: none; }
+.setting-actions { display: flex; gap: 9px; flex: none; }
 
 /* seventeen words somebody has to copy off the screen onto paper, so they get
    room and a number each */
@@ -2014,13 +2506,13 @@ input::placeholder { color: var(--faint); }
   margin: 14px 0 18px;
   padding: 14px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--raised);
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 12.5px;
+  background: var(--field);
+  clip-path: var(--chamfer-sm);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
   user-select: text;
 }
-.phrase b { margin-right: 5px; color: var(--faint); font-weight: 500; }
+.phrase b { margin-right: 5px; color: var(--accent); font-weight: 500; }
 
 #name-sheet .sheet-card { width: 560px; max-width: 90vw; }
 #name-sheet input, #name-sheet textarea {
@@ -2028,17 +2520,17 @@ input::placeholder { color: var(--faint); }
   margin-bottom: 10px;
   padding: 9px 11px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--raised);
+  background: var(--field);
   color: var(--text);
   font: inherit;
   font-size: 13px;
   outline: none;
   resize: vertical;
+  clip-path: var(--chamfer-sm);
 }
 #name-sheet input:focus, #name-sheet textarea:focus {
   border-color: var(--accent-line);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent) 30%, transparent));
 }
 .sheet-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
@@ -2061,19 +2553,52 @@ body.maximised .win .when-big { display: block; }
 
 .game-main { min-width: 0; }
 
-#cheats-panel .section-head { margin-bottom: 14px; }
+/* the console header rides the scroll: forty cheats down the page, the count
+   and the search are still under your cursor */
+#cheats-panel .section-head {
+  position: sticky;
+  top: calc(var(--titlebar) - 4px);
+  z-index: 5;
+  margin: 0 0 14px;
+  padding: 10px 0;
+  /* a narrow window folds the row instead of painting the count under the
+     search box */
+  flex-wrap: wrap;
+  row-gap: 8px;
+  background: color-mix(in srgb, var(--bg) 76%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+}
 #cheats-panel .section-head .dim { font-size: 12px; }
+#cheats-panel .section-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+}
+#cheats-panel .section-head h3::before {
+  content: "";
+  width: 3px;
+  height: 16px;
+  flex: none;
+  background: var(--accent);
+  clip-path: polygon(0 0, 100% 2px, 100% 100%, 0 calc(100% - 2px));
+}
 
 .shared-dock {
   position: sticky;
-  top: 0;
+  top: calc(var(--titlebar) + 8px);
   width: 320px;
-  max-height: calc(100vh - var(--titlebar) - 132px);
+  max-height: calc(100vh - var(--titlebar) - var(--status) - 70px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
   background: var(--panel);
+  backdrop-filter: blur(16px) saturate(130%);
+  box-shadow: inset 0 1px 0 var(--edge);
+  clip-path: var(--chamfer);
 }
 
 .dock-head {
@@ -2083,7 +2608,16 @@ body.maximised .win .when-big { display: block; }
   padding: 13px 14px;
   border-bottom: 1px solid var(--line-soft);
 }
-.dock-head h3 { flex: 1; margin: 0; font-size: 13px; font-weight: 620; }
+.dock-head h3 {
+  flex: 1;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
 .dock-head .icon-btn { flex: none; }
 
 .shared-dock .shared-tools {
@@ -2102,19 +2636,19 @@ body.maximised .win .when-big { display: block; }
 .dock-empty { padding: 4px 14px 14px; font-size: 12.5px; line-height: 1.55; }
 .dock-note { padding: 9px 14px 0; margin: 0; font-size: 12px; line-height: 1.5; }
 .dock-foot { padding: 0 14px 13px; }
-.dock-foot .ghost { width: 100%; }
+.dock-foot .ghost { width: 100%; justify-content: center; }
 
 .dock-open {
   position: sticky;
-  top: 0;
+  top: calc(var(--titlebar) + 8px);
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
   background: var(--panel);
   color: var(--dim);
+  clip-path: var(--chamfer-sm);
   font: inherit;
   font-size: 12.5px;
   font-weight: 560;
@@ -2123,7 +2657,7 @@ body.maximised .win .when-big { display: block; }
 }
 .dock-open:hover { color: var(--text); border-color: var(--faint); }
 .dock-open svg { width: 14px; height: 14px; rotate: 90deg; }
-.dock-open b { color: var(--accent); }
+.dock-open b { color: var(--accent); font-family: var(--font-mono); font-size: 11px; }
 
 @media (max-width: 1240px) {
   .game-layout { grid-template-columns: minmax(0, 1fr); }
@@ -2147,22 +2681,28 @@ body.maximised .win .when-big { display: block; }
   height: 27px;
   padding: 0 8px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--raised);
+  background: var(--field);
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
   color: var(--text);
-  font: inherit;
-  font-size: 12.5px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
 }
 .cheat-value select { width: auto; min-width: 108px; }
 .cheat-value input:focus, .cheat-value select:focus {
   outline: none;
   border-color: var(--accent-line);
 }
-.cheat-live { font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.cheat-once {
+.cheat-live {
+  font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 620;
-  letter-spacing: 0.4px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.cheat-once {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--faint);
 }
@@ -2182,9 +2722,9 @@ body.maximised .win .when-big { display: block; }
   gap: 11px;
   padding: 10px 11px;
   border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
   margin-bottom: 8px;
   cursor: pointer;
+  clip-path: var(--chamfer-sm);
 }
 .check:hover { border-color: var(--line); }
 .check input { margin-top: 2px; accent-color: var(--accent); }
@@ -2208,17 +2748,15 @@ body.maximised .win .when-big { display: block; }
   width: 100%;
   padding: 9px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--raised);
+  background: var(--field);
   color: var(--text);
   font: inherit;
   font-size: 13px;
   resize: vertical;
+  clip-path: var(--chamfer-sm);
 }
 
 .about-links { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 20px; }
-.setting-actions { display: flex; gap: 9px; }
-.blank-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; }
 
 /* ---------- a shared table in the side column ---------- */
 
@@ -2228,16 +2766,12 @@ body.maximised .win .when-big { display: block; }
   margin-bottom: 8px;
 }
 .shared-dock .shared-row:last-child { margin-bottom: 0; }
-.shared-dock .shared-facts { margin: 3px 0 9px; line-height: 1.5; }
+.shared-dock .shared-facts { margin: 3px 0 9px; line-height: 1.6; }
 .shared-dock .shared-row .row-actions { display: flex; gap: 7px; }
-.shared-dock .shared-row .row-actions button { flex: 1; height: 28px; padding: 0 10px; font-size: 12.5px; }
+.shared-dock .shared-row .row-actions button { flex: 1; height: 28px; padding: 0 10px; font-size: 12.5px; justify-content: center; }
 .mine { color: var(--accent); font-weight: 620; }
 
-/* anti-cheat games were dimmed so hard the cover read as an empty tile. muted
-   is enough, the badge and the red edge do the saying */
-.card.guarded .art > img { opacity: 0.78; }
-
-/* ---------- settings ---------- */
+/* ---------- settings grid ---------- */
 
 /* fills the window the way the library grid does, so nothing is left stranded
    on the right of a big monitor. the floor is a third of the row rather than a
@@ -2278,32 +2812,48 @@ body.maximised .win .when-big { display: block; }
 .setting-half span { font-size: 12px; color: var(--faint); line-height: 1.55; }
 .setting-half .setting-actions { margin-top: 7px; }
 .setting-half span.warn { color: var(--warn); }
-#view-settings .shelf { margin: 4px 0 10px; }
+/* the shelves are numbered like sections of a manual */
+#view-settings { counter-reset: shelf; }
+#view-settings .shelf { margin: 4px 0 10px; display: flex; align-items: center; gap: 8px; }
+#view-settings .shelf::before {
+  counter-increment: shelf;
+  content: "0" counter(shelf);
+  color: var(--accent);
+  opacity: 0.9;
+}
+#view-settings .shelf::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--line-soft), transparent 70%);
+}
 
 /* ---------- placeholder cards ---------- */
 
 .cheat.bone { pointer-events: none; }
+/* a light sweeps along the placeholder instead of the whole bar breathing */
 .cheat.bone .bar {
   display: block;
   height: 9px;
   width: 45%;
   margin: 4px 0;
   border-radius: 4px;
-  background: var(--raised-2);
-  animation: pulse 1.1s ease-in-out infinite;
+  background: linear-gradient(90deg,
+    var(--raised-2) 30%, var(--raised) 46%, var(--raised-2) 62%);
+  background-size: 300% 100%;
+  animation: shimmer 1.3s linear infinite;
 }
 .cheat.bone .bar.wide { width: 68%; height: 11px; }
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 0.85; }
+@keyframes shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -180% 0; }
 }
 
 /* ---------- a game we will not touch ---------- */
 
 .blank.stern {
-  border-color: rgba(255, 107, 107, 0.35);
-  background: rgba(255, 107, 107, 0.05);
+  border-color: rgba(255, 93, 93, 0.35);
+  background: rgba(255, 93, 93, 0.05);
   text-align: left;
   max-width: 720px;
 }
@@ -2314,11 +2864,14 @@ body.maximised .win .when-big { display: block; }
 /* nothing in the side column, so the main one takes the lot */
 .game-layout.alone { grid-template-columns: minmax(0, 1fr); }
 
-#cheats-panel .section-head .filter { width: 190px; }
+#cheats-panel .section-head .filter { width: 190px; flex: 0 1 190px; min-width: 130px; }
+/* the title and count hold their ground and the buttons refuse to squash, so
+   a short row folds instead of painting one thing over another */
+#cheats-panel .section-head .head-count { flex: 0 0 auto; min-width: max-content; }
+#cheats-panel .section-head .head-count .dim { white-space: nowrap; }
+#cheats-panel .section-head > .ghost { flex: none; white-space: nowrap; }
 #cheat-none { margin-top: 4px; }
 .shared-dock .shared-tools + .shared-tools { padding-top: 8px; }
-
-.badge.fav { background: var(--accent); color: #23180a; }
 
 .tick { display: flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 12px; color: var(--faint); cursor: pointer; }
 .tick input { accent-color: var(--accent); }
@@ -2336,35 +2889,41 @@ body.maximised .win .when-big { display: block; }
   font-weight: 560;
 }
 .shared-fit b { font-size: 12px; }
-.shared-fit.same { color: var(--good, #4ade80); }
+.shared-fit.same { color: var(--good); }
 .shared-fit.older, .shared-fit.newer { color: var(--warn); }
 .shared-fit.unknown { color: var(--faint); font-weight: 500; }
 
-.shared-row.pick { border-color: var(--accent-line); background: var(--accent-soft); }
+.shared-row.pick {
+  border-color: var(--accent-line);
+  background: linear-gradient(90deg, var(--accent-soft), transparent 70%), var(--panel);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
 .stale-flag {
   display: inline-block;
   margin-bottom: 6px;
   padding: 2px 7px;
-  border-radius: 4px;
   border: 1px solid var(--accent-line);
   color: var(--accent);
-  font-size: 9.5px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
   font-weight: 700;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
 }
 
 .pick-flag {
   display: inline-block;
   margin-bottom: 6px;
   padding: 2px 7px;
-  border-radius: 4px;
   background: var(--accent);
-  color: #23180a;
-  font-size: 9.5px;
+  color: var(--accent-ink);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
   font-weight: 700;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
 }
 
 /* it says who wrote it, not that it works */
@@ -2373,11 +2932,11 @@ body.maximised .win .when-big { display: block; }
   margin-left: 7px;
   padding: 1px 6px;
   border: 1px solid var(--line);
-  border-radius: 4px;
   color: var(--faint);
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.4px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   vertical-align: 1px;
   /* it broke after NAME and left VERIFIED on a line of its own, which reads
@@ -2405,16 +2964,16 @@ body.maximised .win .when-big { display: block; }
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  height: 32px;
+  height: 34px;
   padding: 0 10px 0 12px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--raised);
+  background: var(--field);
   color: var(--text);
   font: inherit;
   font-size: 13px;
   text-align: left;
   cursor: pointer;
+  clip-path: var(--chamfer-sm);
   transition: border-color 0.14s, background 0.14s;
 }
 .picker-face:hover { border-color: var(--faint); }
@@ -2444,9 +3003,11 @@ body.maximised .win .when-big { display: block; }
   overflow-y: auto;
   padding: 5px;
   border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--panel);
-  box-shadow: 0 18px 44px var(--shadow-strong);
+  background: color-mix(in srgb, var(--panel-solid) 90%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: inset 0 1px 0 var(--edge);
+  clip-path: var(--chamfer);
+  filter: drop-shadow(0 18px 30px var(--shadow-strong));
   animation: drop 0.13s var(--ease);
 }
 
@@ -2468,7 +3029,11 @@ body.maximised .win .when-big { display: block; }
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
+  animation: menu-in 0.16s var(--ease) backwards;
 }
+.picker-item:nth-child(2) { animation-delay: 20ms; }
+.picker-item:nth-child(3) { animation-delay: 40ms; }
+.picker-item:nth-child(n + 4) { animation-delay: 55ms; }
 .picker-item:hover, .picker-item:focus-visible {
   outline: none;
   background: var(--raised-2);
@@ -2480,23 +3045,24 @@ body.maximised .win .when-big { display: block; }
 /* the two places one lives */
 .shared-dock .shared-tools .picker { flex: 1; min-width: 0; }
 .cheat-value .picker { min-width: 118px; }
-.cheat-value .picker-face { height: 27px; font-size: 12.5px; padding: 0 8px 0 10px; }
-.finder-bar .picker-face { min-width: 92px; }
+.cheat-value .picker-face { height: 27px; font-family: var(--font-mono); font-size: 11.5px; padding: 0 8px 0 10px; }
+.finder-bar .picker-face { min-width: 92px; font-family: var(--font-mono); font-size: 12px; }
 
 /* ---------- the overlay shortcut ---------- */
 
 .keycap {
   min-width: 132px;
-  height: 32px;
+  height: 34px;
   padding: 0 14px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-bottom-width: 2px;
+  clip-path: var(--chamfer-sm);
   background: var(--raised);
   color: var(--text);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 620;
-  letter-spacing: 0.3px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   cursor: pointer;
   transition: border-color 0.14s, background 0.14s, color 0.14s;
 }
@@ -2505,6 +3071,7 @@ body.maximised .win .when-big { display: block; }
   border-color: var(--accent-line);
   background: var(--accent-soft);
   color: var(--accent);
+  box-shadow: var(--accent-bloom-soft);
 }
 .keycap:focus-visible { outline: none; border-color: var(--accent-line); }
 
@@ -2521,8 +3088,9 @@ body.maximised .win .when-big { display: block; }
   padding: 15px 18px;
   margin-bottom: 24px;
   border: 1px solid var(--accent-line);
-  border-radius: var(--r);
-  background: var(--accent-soft);
+  background: linear-gradient(90deg, var(--accent-soft), transparent 75%), var(--panel);
+  box-shadow: inset 2px 0 0 var(--accent), var(--accent-bloom-soft);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
 }
 .ask-body { flex: 1; min-width: 0; }
 .ask-body strong { display: block; font-size: 13.5px; font-weight: 620; }
@@ -2562,16 +3130,17 @@ body.maximised .win .when-big { display: block; }
   margin: 0 0 14px;
   padding: 10px 13px;
   border: 1px solid var(--line-soft);
-  border-left: 2px solid var(--line);
-  border-radius: var(--r-sm);
   font-size: 12.5px;
   line-height: 1.5;
+  background: var(--raised);
+  box-shadow: inset 2px 0 0 var(--line);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
 }
 .fit strong { display: block; font-weight: 600; color: var(--text); }
 .fit span { color: var(--faint); }
-.fit.good { border-left-color: var(--ok, var(--accent)); }
-.fit.iffy { border-left-color: var(--warn); }
-.fit.bad { border-left-color: var(--bad); }
+.fit.good { box-shadow: inset 2px 0 0 var(--good); }
+.fit.iffy { box-shadow: inset 2px 0 0 var(--warn); }
+.fit.bad { box-shadow: inset 2px 0 0 var(--bad); }
 .fit.bad strong { color: var(--bad); }
 .fit ul { margin: 7px 0 0; padding-left: 18px; color: var(--faint); }
 .fit li { margin-bottom: 2px; }
@@ -2582,9 +3151,10 @@ body.maximised .win .when-big { display: block; }
 .picker-tables-head {
   display: block;
   margin-bottom: 6px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.7px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--faint);
 }
@@ -2594,14 +3164,14 @@ body.maximised .win .when-big { display: block; }
   gap: 9px;
   padding: 5px 9px;
   border: 1px solid var(--line-soft);
-  border-radius: var(--r-sm);
   margin-bottom: 5px;
   font-size: 12.5px;
   cursor: pointer;
+  clip-path: var(--chamfer-sm);
 }
 .picker-table:hover { border-color: var(--line); }
 .picker-table.on { border-color: var(--accent-line); background: var(--accent-soft); }
-.picker-table input { flex: none; align-self: center; }
+.picker-table input { flex: none; align-self: center; accent-color: var(--accent); }
 .picker-table-name {
   flex: 1;
   min-width: 0;
@@ -2610,16 +3180,17 @@ body.maximised .win .when-big { display: block; }
   text-overflow: ellipsis;
   color: var(--text);
 }
-.picker-table-by { flex: none; font-size: 11.5px; color: var(--faint); }
+.picker-table-by { flex: none; font-family: var(--font-mono); font-size: 10px; color: var(--faint); }
 
 /* which table a cheat came from, when two of them are folded into one list */
 .cheat-from {
   margin-left: 6px;
   white-space: nowrap;
   overflow-wrap: normal;
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   color: var(--faint);
   opacity: 0.75;
 }
@@ -2635,4 +3206,506 @@ body.maximised .win .when-big { display: block; }
    difference used to shove the whole page down as the answer arrived */
 #attach-note-body {
   min-height: calc(12.5px * 1.5 * 2);
+}
+
+/* ---------- the status rail ---------- */
+
+/* a strip of instrument state along the floor of the window: what is
+   attached, and the key that turns everything off */
+#status-rail {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--status);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 16px;
+  border-top: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  user-select: none;
+}
+#status-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#status-mode::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--raised-2);
+  border: 1px solid var(--line);
+}
+#status-mode.live { color: var(--accent); }
+#status-mode.live::before {
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: 0 0 8px var(--accent);
+  animation: pulse 1.9s ease-in-out infinite;
+}
+#status-hint { margin-left: auto; white-space: nowrap; }
+
+/* ---------- the boot, part two ---------- */
+
+/* the letters the scrambler builds. inline blocks so the lock-in can pop */
+.splash-word span { display: inline-block; }
+.splash-word span.set { animation: glyph-lock 0.18s var(--ease); }
+@keyframes glyph-lock {
+  from { transform: scale(1.3); }
+  to { transform: none; }
+}
+
+/* the readout gets a prompt and a live cursor while it types */
+.splash-step::before {
+  content: "> ";
+  color: var(--accent);
+}
+.splash-step::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 11px;
+  margin-left: 5px;
+  vertical-align: -1px;
+  background: var(--accent);
+  animation: caret-blink 0.7s steps(2, jump-none) infinite;
+}
+@keyframes caret-blink {
+  50% { opacity: 0; }
+}
+
+/* letting go: the lights collapse, the word lifts, then the fade takes over */
+.splash.folding .glow {
+  animation: none;
+  transform: scale(0.15);
+  opacity: 0;
+  transition: transform 0.42s var(--ease), opacity 0.42s var(--ease);
+}
+.splash.folding .splash-body {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.98);
+  transition: opacity 0.35s var(--ease), transform 0.35s var(--ease);
+}
+.splash.folding .grain { opacity: 0; transition: opacity 0.4s; }
+
+/* one calibration line sweeps the library the moment the splash lets go */
+body.calibrate #view-library::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  z-index: 10;
+  background: var(--accent);
+  box-shadow: 0 0 18px 2px var(--accent);
+  animation: calib 0.6s var(--ease) forwards;
+  pointer-events: none;
+}
+@keyframes calib {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(72vh); opacity: 0; }
+}
+
+/* ---------- the first flip ---------- */
+
+/* the ring the knob throws the instant it lands */
+.switch.on::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 99px;
+  animation: spark 0.38s var(--ease) forwards;
+  pointer-events: none;
+}
+@keyframes spark {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+  to { box-shadow: 0 0 0 12px transparent; }
+}
+
+/* and a pulse runs down the card's lit rail */
+.cheat.on::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 2px;
+  height: 24px;
+  background: linear-gradient(transparent, rgba(255, 255, 255, 0.9), transparent);
+  opacity: 0;
+  animation: rail-run 0.5s var(--ease) forwards;
+  pointer-events: none;
+}
+@keyframes rail-run {
+  from { transform: translateY(-12px); opacity: 0; }
+  35% { opacity: 0.9; }
+  to { transform: translateY(64px); opacity: 0; }
+}
+
+/* how much of the table is armed, as a sliver of light under the console
+   header. bottom edge, zero layout, sprung */
+#cheats-panel .section-head::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), var(--accent));
+  box-shadow: 0 0 8px var(--accent);
+  transform: scaleX(var(--armed, 0));
+  transform-origin: left;
+  transition: transform 0.45s var(--spring);
+  pointer-events: none;
+}
+
+/* ---------- lock on ---------- */
+
+/* the line that sweeps the window when a game is taken */
+#lockon {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: -100px;
+  height: 2px;
+  z-index: 45;
+  background: var(--accent);
+  box-shadow:
+    0 0 24px 4px var(--accent),
+    0 0 90px 24px color-mix(in srgb, var(--accent) 35%, transparent);
+  pointer-events: none;
+}
+
+/* and the frame it leaves behind. the whole window reads armed until detach */
+#frame {
+  position: fixed;
+  inset: 6px;
+  z-index: 28;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow:
+    0 0 24px -6px color-mix(in srgb, var(--accent) 45%, transparent),
+    inset 0 0 44px -22px color-mix(in srgb, var(--accent) 40%, transparent);
+  clip-path: var(--chamfer);
+  opacity: 0.8;
+}
+#frame::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  padding: 2px;
+  background: conic-gradient(from var(--a),
+    transparent 0 82%,
+    color-mix(in srgb, var(--accent) 70%, transparent) 93%,
+    transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: ring-sweep 12s linear infinite;
+}
+/* the panic key barks it red before everything settles */
+#frame.alarm {
+  animation: frame-alarm 0.3s var(--ease) 2;
+}
+@keyframes frame-alarm {
+  50% {
+    border-color: var(--bad);
+    box-shadow:
+      0 0 36px -4px var(--bad),
+      inset 0 0 70px -24px var(--bad);
+  }
+}
+
+/* ---------- the palette ---------- */
+
+.palette {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 16vh;
+  background: rgba(var(--overlay), 0.55);
+  backdrop-filter: blur(8px);
+  animation: view-in 0.14s var(--ease);
+}
+.palette-card {
+  width: 520px;
+  max-width: 90vw;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-solid) 93%, transparent);
+  backdrop-filter: blur(24px) saturate(140%);
+  clip-path: var(--chamfer);
+  filter: drop-shadow(0 30px 60px var(--shadow-strong));
+  overflow: hidden;
+  animation: palette-pop 0.18s var(--spring);
+}
+@keyframes palette-pop {
+  from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.palette-top {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.palette-top svg { width: 16px; height: 16px; flex: none; color: var(--accent); }
+#palette-input,
+#palette-input:focus {
+  flex: 1;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  filter: none;
+  clip-path: none;
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--text);
+}
+.palette-key {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.palette-list {
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 2px 0 0 transparent;
+}
+.palette-row.sel {
+  background: linear-gradient(90deg, var(--accent-soft), transparent 75%);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.palette-thumb {
+  width: 26px;
+  height: 36px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--raised-2);
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.palette-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.palette-thumb .initials { font-size: 11px; letter-spacing: 0; text-shadow: none; }
+.palette-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.palette-main b {
+  font-size: 13.5px;
+  font-weight: 570;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.palette-main i {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+  color: var(--faint);
+}
+.palette-row.live .palette-main i { color: var(--accent); }
+.palette-kind {
+  flex: none;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.palette-none {
+  margin: 0;
+  padding: 18px;
+  font-size: 13px;
+  color: var(--faint);
+  text-align: center;
+}
+
+/* ---------- the pointer field ---------- */
+
+/* the ambient backdrop leans away from the cursor. only the backdrop: it
+   lives outside the pages, so nothing that measures them ever sees it move */
+#page-art {
+  transform: translate3d(calc(var(--mx, 0) * -16px), calc(var(--my, 0) * -9px), 0);
+}
+
+/* a spotlight tracks the cursor across the covers */
+.card .art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    240px circle at var(--lx, 50%) var(--ly, 50%),
+    color-mix(in srgb, var(--accent) 26%, transparent),
+    transparent 65%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  transition: opacity 0.25s var(--ease);
+  pointer-events: none;
+}
+.card.lit .art::before { opacity: 1; }
+
+/* anti-cheat games wear hazard stripes instead, still and quiet until hovered */
+.card.guarded .art::before {
+  background: repeating-linear-gradient(-45deg, var(--bad) 0 2px, transparent 2px 14px);
+  mix-blend-mode: normal;
+  opacity: 0.07;
+  transition: none;
+}
+.card.guarded:hover .art::before {
+  animation: hazard-drift 1.4s linear infinite;
+}
+@keyframes hazard-drift {
+  to { background-position: 22.6px 0; }
+}
+
+/* the hero recedes as you scroll past it, like a title card handing over */
+@supports (animation-timeline: scroll()) {
+  .game-hero-art {
+    animation: hero-recede linear both;
+    animation-timeline: scroll(nearest);
+    animation-range: 0px 420px;
+  }
+  @keyframes hero-recede {
+    to {
+      transform: translateY(64px);
+      opacity: 0.35;
+    }
+  }
+}
+
+/* ---------- directional travel ---------- */
+
+/* pages slide in from the side you came from. the edge to edge surfaces only
+   fade: sliding them sideways opens a strip of bare canvas along the window
+   edge for as long as the animation runs */
+.content[data-dir="fwd"] .view > * { animation-name: slide-fwd; }
+.content[data-dir="back"] .view > * { animation-name: slide-back; }
+.content[data-dir] .view > .feature,
+.content[data-dir] .view > .game-hero,
+.content[data-dir] .view > .detail { animation-name: view-in; }
+@keyframes slide-fwd {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-back {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- the scan, live ---------- */
+
+.finder-bar { position: relative; }
+#finder-panel.scanning .finder-bar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 14px var(--accent);
+  animation: crawl 0.9s var(--ease) infinite;
+}
+#finder-panel.scanning #scan-status::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 12px;
+  margin-left: 6px;
+  vertical-align: -1px;
+  background: var(--accent);
+  animation: caret-blink 0.7s steps(2, jump-none) infinite;
+}
+
+/* ---------- odds and ends ---------- */
+
+/* the outgoing cover, wiped off by the incoming one */
+#game-hero-ghost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#status-tick {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.75;
+}
+
+/* ---------- motion off ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .view, .view > *, .card, .grid.deal .card, .rail-list.deal .rail-game,
+  .game-hero-body > *, .feature, .feature-art::after, .game-hero-art::after,
+  .game-hero-art, .menu-item, .picker-item, .primary::after, #page-art img,
+  .cheat.on, .cheat.on::after, .cheat.bone .bar, .splash::before,
+  #status-mode.live::before, .splash-word span.set, .splash-step::after,
+  .switch.on::before, #frame::before, #frame.alarm,
+  .palette, .palette-card, body.calibrate #view-library::after,
+  #finder-panel.scanning .finder-bar::after,
+  #finder-panel.scanning #scan-status::after,
+  .card.guarded:hover .art::before {
+    animation: none;
+    transition: none;
+  }
+  .card.running .art::after { animation: none; }
+  .feature-art, .game-hero-art, #page-art { transform: none; }
 }
