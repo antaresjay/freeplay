@@ -10,6 +10,11 @@
   padding: 0;
 }
 
+/* the canvas layers style.css paints behind the main window. in here the
+   window has to stay transparent so the game shows through */
+.overlay-body::before,
+.overlay-body::after { display: none; }
+
 /* the window is sized to the game, not to this. a table with three cheats in
    it used to leave nine hundred pixels of empty card hanging down the side of
    the screen, so the card takes what it needs and the rest of the window stays
@@ -19,12 +24,21 @@
   flex-direction: column;
   height: auto;
   max-height: 100vh;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 12px;
-  background: rgba(9, 10, 13, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(7, 8, 11, 0.72);
   backdrop-filter: blur(26px) saturate(140%);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  clip-path: polygon(
+    12px 0, 100% 0, 100% calc(100% - 12px),
+    calc(100% - 12px) 100%, 0 100%, 0 12px);
   overflow: hidden;
+}
+
+/* summoned, not switched on: it slides in from the edge every time the
+   shortcut brings it up */
+.ov.in { animation: ov-in 0.26s var(--spring) backwards; }
+@keyframes ov-in {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: none; }
 }
 
 /* ---------- head ---------- */
@@ -33,17 +47,54 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 10px 9px 10px 11px;
+  padding: 10px 9px 10px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 60%);
+  box-shadow: inset 2px 0 0 var(--accent);
   cursor: grab;
 }
 .ov-head:active { cursor: grabbing; }
-.ov-mark { width: 17px; height: 17px; flex: none; border-radius: 4px; opacity: 0.9; }
+
+/* alive or not, at a glance, without reading anything */
+.ov-pip {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.ov-pip.live {
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: 0 0 8px var(--accent);
+  animation: ov-pulse 1.9s ease-in-out infinite;
+}
+@keyframes ov-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* how much of the table is on, as a strip of light under the header */
+.ov-meter {
+  height: 2px;
+  flex: none;
+  background: rgba(255, 255, 255, 0.06);
+}
+.ov-meter span {
+  display: block;
+  width: calc(var(--fill, 0) * 100%);
+  height: 100%;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), var(--accent));
+  box-shadow: 0 0 8px var(--accent);
+  transition: width 0.35s var(--ease);
+}
 
 .ov-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .ov-title b {
+  font-family: var(--font-display);
   font-size: 12.5px;
-  font-weight: 620;
+  font-weight: 600;
   line-height: 1.3;
   color: var(--text);
   overflow: hidden;
@@ -51,8 +102,10 @@
   white-space: nowrap;
 }
 .ov-title span {
-  font-size: 10px;
-  line-height: 1.35;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
   color: var(--faint);
   font-variant-numeric: tabular-nums;
   overflow: hidden;
@@ -81,13 +134,13 @@
   height: 27px;
   padding: 0 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
   color: var(--text);
   font: inherit;
   font-size: 12px;
 }
-.ov-search:focus { outline: none; border-color: var(--accent-line); background: rgba(255, 255, 255, 0.06); }
+.ov-search:focus { outline: none; border-color: var(--accent-line); background: rgba(0, 0, 0, 0.4); }
 .ov-search::placeholder { color: var(--faint); }
 
 /* ---------- the list ---------- */
@@ -119,9 +172,10 @@
 }
 .ov-group-head h3 {
   margin: 6px 0 4px 0;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1.1px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.32);
 }
@@ -160,24 +214,37 @@
   align-items: center;
   gap: 9px;
   padding: 6px 8px 6px 10px;
-  border-radius: 7px;
+  border-radius: 0;
   border-left: 2px solid transparent;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
 }
 /* two lit rows next to each other used to sit flush and read as one panel
    with a seam down the middle of it */
 .ov-cheat + .ov-cheat { margin-top: 3px; }
 .ov-cheat:hover { background: rgba(255, 255, 255, 0.045); }
 
+/* rows land a beat apart when the list is built */
+.ov-cheat { animation: ov-row 0.24s var(--ease) backwards; }
+.ov-cheat:nth-child(2) { animation-delay: 30ms; }
+.ov-cheat:nth-child(3) { animation-delay: 60ms; }
+.ov-cheat:nth-child(4) { animation-delay: 85ms; }
+.ov-cheat:nth-child(n + 5) { animation-delay: 105ms; }
+@keyframes ov-row {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: none; }
+}
+
 .ov-cheat.armed:not(.on) {
   background: rgba(255, 255, 255, 0.05);
-  border-left-color: rgba(255, 255, 255, 0.22);
+  border-left-color: var(--warn);
 }
 
 /* the one that is actually running, and it should be obvious at a glance
    while you are looking at the game and not at this */
 .ov-cheat.on {
-  background: var(--accent-soft);
+  background: linear-gradient(90deg, var(--accent-soft), transparent 70%);
   border-left-color: var(--accent);
+  box-shadow: inset 6px 0 14px -8px var(--accent);
 }
 .ov-cheat.on .ov-name { color: var(--accent); font-weight: 620; }
 
@@ -207,8 +274,8 @@
 
 /* the toggle, smaller than the one in the main window */
 .ov-cheat .switch { width: 30px; height: 17px; }
-.ov-cheat .switch::after { width: 13px; height: 13px; }
-.ov-cheat .switch.on::after { transform: translateX(13px); }
+.ov-cheat .switch::after { width: 12px; height: 12px; top: 2px; }
+.ov-cheat .switch.on::after { transform: translateX(12px); }
 
 /* ---------- a number ---------- */
 
@@ -218,11 +285,11 @@
   height: 21px;
   padding: 0 6px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 5px;
+  border-radius: 4px;
   background: rgba(0, 0, 0, 0.3);
   color: var(--text);
-  font: inherit;
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
 }
 .ov-value select { width: auto; min-width: 78px; }
 .ov-value input:focus, .ov-value select:focus {
@@ -230,7 +297,8 @@
   border-color: var(--accent-line);
 }
 .ov-live {
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
   color: rgba(255, 255, 255, 0.34);
   font-variant-numeric: tabular-nums;
 }
@@ -253,15 +321,23 @@
   gap: 8px;
   padding: 8px 10px 9px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
   color: rgba(255, 255, 255, 0.36);
 }
 .ov-key {
   padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom-width: 2px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.05);
   font-weight: 600;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.05em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov.in, .ov-cheat, .ov-pip.live, .ov-meter span { animation: none; transition: none; }
 }
 
 /* a bright windows scrollbar over a game looks like a mistake */

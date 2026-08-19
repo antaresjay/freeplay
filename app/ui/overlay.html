@@ -10,7 +10,7 @@
 
 <div class="ov">
   <header class="ov-head" data-tauri-drag-region>
-    <img class="ov-mark" src="icon.png" alt="" data-tauri-drag-region>
+    <span class="ov-pip" data-tauri-drag-region></span>
     <div class="ov-title" data-tauri-drag-region>
       <b id="ov-game" data-tauri-drag-region>Freeplay</b>
       <span id="ov-sub" data-tauri-drag-region></span>
@@ -19,6 +19,9 @@
       <svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg>
     </button>
   </header>
+
+  <!-- how much of the table is switched on, as a sliver of light -->
+  <div id="ov-meter" class="ov-meter"><span></span></div>
 
   <input id="ov-filter" class="ov-search" type="search" placeholder="Search" autocomplete="off">
 

@@ -151,6 +151,18 @@ function patch(row, item) {
   }
 }
 
+/* a hotkey landed in the game: the row it flipped glows for a beat, so a
+   glance at the panel says which one just changed without reading anything */
+let lastMarks = new Map();
+
+function flashRow(row) {
+  if (!row || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  row.animate(
+    [{ filter: "brightness(2.1)" }, { filter: "brightness(1)" }],
+    { duration: 350, easing: "ease-out" }
+  );
+}
+
 function draw() {
   const host = $("ov-list");
   const next = attached
@@ -211,13 +223,26 @@ function draw() {
     }
     applyFilter();
   } else {
-    for (const row of rows) patch(cards.get(row.id), row);
+    for (const row of rows) {
+      const mark = row.armed + "," + row.live;
+      const card = cards.get(row.id);
+      if (lastMarks.has(row.id) && lastMarks.get(row.id) !== mark) flashRow(card);
+      patch(card, row);
+    }
   }
+  lastMarks = new Map(rows.map((r) => [r.id, r.armed + "," + r.live]));
 
   const armed = rows.filter((r) => r.armed).length;
-  $("ov-count").textContent = rows.length
-    ? `${armed} of ${many(rows.length, "cheat")} on`
-    : "";
+  const said = rows.length ? `${armed} of ${many(rows.length, "cheat")} on` : "";
+  const count = $("ov-count");
+  if (count.textContent !== said) {
+    count.textContent = said;
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      count.animate([{ opacity: 0.2 }, { opacity: 1 }], { duration: 150 });
+    }
+  }
+  // the sliver of light under the header follows how much of the table is on
+  $("ov-meter").style.setProperty("--fill", rows.length ? armed / rows.length : 0);
 }
 
 /* ---------- filter ---------- */
@@ -271,6 +296,7 @@ async function refresh() {
 
   const changed = (now && now.process) !== (attached && attached.process);
   attached = now;
+  document.querySelector(".ov-pip").classList.toggle("live", !!attached);
 
   if (!attached) {
     $("ov-game").textContent = "Freeplay";
@@ -330,9 +356,19 @@ async function dress() {
   }
 }
 
+/* the panel slides in whenever it is summoned, not only on its first build.
+   the window sits hidden between presses, so the wake is the entrance */
+function arrive() {
+  const card = document.querySelector(".ov");
+  card.classList.remove("in");
+  void card.offsetWidth;
+  card.classList.add("in");
+}
+
 async function start() {
   await dress();
   await refresh();
+  arrive();
   setInterval(refresh, 1000);
 
   // shown again after sitting hidden, so catch up now rather than showing
@@ -342,6 +378,7 @@ async function start() {
       $("ov-filter").value = "";
       dress();
       refresh();
+      arrive();
     });
     // a cheat key landed, so the rows are stale until the next tick
     window.__TAURI__.event.listen("keys-fired", () => refresh());
