@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "freeplay-aa"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "freeplay-asm",
  "freeplay-core",
@@ -1038,7 +1038,7 @@ dependencies = [
 
 [[package]]
 name = "freeplay-app"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "freeplay-aa",
  "freeplay-core",
@@ -1059,14 +1059,14 @@ dependencies = [
 
 [[package]]
 name = "freeplay-asm"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "thiserror 2.0.19",
 ]
 
 [[package]]
 name = "freeplay-cli"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "clap",
  "freeplay-aa",
@@ -1084,7 +1084,7 @@ dependencies = [
 
 [[package]]
 name = "freeplay-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "memchr",
  "rayon",
@@ -1095,7 +1095,7 @@ dependencies = [
 
 [[package]]
 name = "freeplay-id"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ed25519-dalek",
  "rand_core",
@@ -1106,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "freeplay-library"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "rayon",
@@ -1121,7 +1121,7 @@ dependencies = [
 
 [[package]]
 name = "freeplay-session"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "freeplay-aa",
  "freeplay-core",
@@ -1132,7 +1132,7 @@ dependencies = [
 
 [[package]]
 name = "freeplay-sync"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "freeplay-id",
  "freeplay-table",
@@ -1145,7 +1145,7 @@ dependencies = [
 
 [[package]]
 name = "freeplay-table"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "freeplay-aa",
  "freeplay-core",

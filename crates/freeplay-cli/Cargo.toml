@@ -24,4 +24,4 @@ freeplay-sync = { path = "../freeplay-sync" }
 freeplay-table = { path = "../freeplay-table" }
 tracing.workspace = true
 tracing-subscriber = "0.3"
-freeplay-asm = { version = "0.1.1", path = "../freeplay-asm" }
+freeplay-asm = { version = "0.2.0", path = "../freeplay-asm" }
