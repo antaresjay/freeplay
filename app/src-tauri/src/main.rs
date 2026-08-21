@@ -2821,6 +2821,20 @@ fn set_cheat_value(
 ) -> Result<String, String> {
     let text = value.trim().to_string();
 
+    // clearing the box means forget the override, not "parse nothing". there
+    // was no way to untype a number once it had been typed
+    if text.is_empty() {
+        let mut settings = state.settings.lock().unwrap();
+        if let Some(map) = settings.values.get_mut(&exe.to_lowercase()) {
+            map.remove(&id);
+            if map.is_empty() {
+                settings.values.remove(&exe.to_lowercase());
+            }
+        }
+        let _ = settings::save(&settings);
+        return Ok(text);
+    }
+
     {
         let guard = state.session.lock().unwrap();
         if let Some(session) = guard.as_ref().filter(|s| s.table().matches_process(&exe)) {
