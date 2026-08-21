@@ -148,14 +148,21 @@ def main():
 
     print("settings controls all do something")
     t.view("settings")
+    # this runs against somebody's real install, so whatever was set going in
+    # is what has to be set coming out. the long sleeps matter: three saves in
+    # quick succession race in the backend and the loser's accent sticks
+    had_accent = t.js("document.documentElement.dataset.accent")
     for accent in ["cyan", "rose", "amber"]:
         t.js("document.querySelector('#accent-pick button[data-accent=%s]').click(); true"
              % json.dumps(accent))
-        time.sleep(0.6)
+        time.sleep(1.2)
         got = t.js("document.documentElement.dataset.accent")
         if got != accent:
             bad("settings", "accent %s did not take (%s)" % (accent, got))
     ok("accent swatches change the accent")
+    t.js("document.querySelector('#accent-pick button[data-accent=%s]').click(); true"
+         % json.dumps(had_accent))
+    time.sleep(1.2)
 
     # they are buttons carrying a class, not checkboxes, so "on" is the class
     toggles = t.js("""[...document.querySelectorAll('#view-settings .switch')].map(c => c.id)""") or []
@@ -177,15 +184,20 @@ def main():
             bad("settings", "%s does not flip back, left it %s" % (which, not before))
     ok("%d settings switches flip and flip back (%s)" % (len(toggles), ", ".join(toggles)))
 
-    # and the theme, which is a segmented row rather than a switch
+    # and the theme, which is a segmented row rather than a switch. same
+    # deal as the accent: put back whatever was chosen before the cycle
+    had_theme = t.js("document.documentElement.dataset.theme")
     for theme in ["light", "dark", "system"]:
         t.js("document.querySelector('#theme-pick button[data-theme=%s]').click(); true"
              % json.dumps(theme))
-        time.sleep(0.7)
+        time.sleep(1.2)
         got = t.js("document.documentElement.dataset.theme")
         if got != theme:
             bad("settings", "theme %s did not take (%s)" % (theme, got))
     ok("the theme buttons change the theme")
+    t.js("document.querySelector('#theme-pick button[data-theme=%s]').click(); true"
+         % json.dumps(had_theme))
+    time.sleep(1.2)
     t.check_quiet("settings")
 
     print("the finder")
@@ -300,7 +312,12 @@ def main():
             ok("every category folds and opens again (%d)" % groups)
         t.check_quiet("cheats")
 
-        # a value cheat takes a number without the page falling over
+        # a value cheat takes a number without the page falling over. the old
+        # value goes back afterwards: this is somebody's real config
+        was = t.js("""(() => {
+          const box = document.querySelector('#cheat-groups .cheat-value input');
+          return box ? box.value : null;
+        })()""")
         typed = t.js("""(() => {
           const box = document.querySelector('#cheat-groups .cheat-value input');
           if (!box) return "none";
@@ -311,6 +328,14 @@ def main():
         time.sleep(1.2)
         if typed == "typed":
             ok("a value cheat takes a number")
+            t.js("""(() => {
+              const box = document.querySelector('#cheat-groups .cheat-value input');
+              if (!box) return false;
+              box.value = %s;
+              box.dispatchEvent(new Event('change'));
+              return true;
+            })()""" % json.dumps(was if was is not None else ""))
+            time.sleep(1.2)
         t.check_quiet("cheats")
 
     print("the shared panel")
