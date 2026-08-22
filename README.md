@@ -160,7 +160,7 @@ ensuring they stay useful and up-to-date.
 If you appreciate my work and want to help me keep going, buying me a coffee is
 a great way to show your support. Thank you! :coffee:
 
-<a href="https://www.buymeacoffee.com/antaresjeet" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+<a href="https://www.buymeacoffee.com/antaresjeet" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="217" height="60"></a>
 
 ## License
 
